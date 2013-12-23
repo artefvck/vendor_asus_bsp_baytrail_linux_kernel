@@ -174,6 +174,7 @@ extern struct intel_dsi_dev_ops auo_b101uan01_dsi_display_ops;
 extern struct intel_dsi_dev_ops panasonic_vvx09f006a00_dsi_display_ops;
 extern struct intel_dsi_dev_ops auo_b080xat_dsi_display_ops;
 extern struct intel_dsi_dev_ops jdi_lpm070w425b_dsi_display_ops;
+extern struct intel_dsi_dev_ops nov_m176_dsi_display_ops;
 extern struct intel_dsi_dev_ops vbt_generic_dsi_display_ops;
 void intel_dsi_clear_device_ready(struct intel_encoder *encoder);
 
@@ -183,5 +184,5 @@ void intel_dsi_clear_device_ready(struct intel_encoder *encoder);
 #define	MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID	0x03
 #define	MIPI_DSI_AUO_B080XAT_PANEL_ID			0x04
 #define	MIPI_DSI_JDI_LPM070W425B_PANEL_ID		0x05
-
+#define	MIPI_DSI_NOV_M176_PANEL_ID		0x06
 #endif /* _INTEL_DSI_H */

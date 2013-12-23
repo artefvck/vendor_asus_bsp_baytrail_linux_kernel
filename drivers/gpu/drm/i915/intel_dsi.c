@@ -66,6 +66,12 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.name = "jdi-lpm070w425b-dsi-vid-mode-display",
 		.dev_ops = &jdi_lpm070w425b_dsi_display_ops,
 	},
+	{
+		.panel_id = MIPI_DSI_NOV_M176_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "nov-m176-dsi-vid-mode-display",
+		.dev_ops = &nov_m176_dsi_display_ops,
+	},	
 };
 
 
