@@ -84,6 +84,9 @@ ifdef CONFIG_VIDEO_ATOMISP_TMP
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9E013))				+= platform_mt9e013.o
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9D113))				+= platform_mt9d113.o
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9M114))				+= platform_mt9m114.o
+obj-$(subst m,y,$(CONFIG_VIDEO_HM2056))				        += platform_hm2056.o
+obj-$(subst m,y,$(CONFIG_VIDEO_GC0339))					+= platform_gc0339.o
+obj-$(subst m,y,$(CONFIG_VIDEO_AR0543))					+= platform_ar0543.o
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9V113))				+= platform_mt9v113.o
 obj-$(subst m,y,$(CONFIG_VIDEO_OV8830))					+= platform_ov8830.o
 obj-$(subst m,y,$(CONFIG_VIDEO_IMX))					+= platform_imx175.o

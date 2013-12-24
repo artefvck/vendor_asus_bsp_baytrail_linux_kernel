@@ -22,6 +22,10 @@
 #include "platform_imx134.h"
 #include "platform_ov2722.h"
 #include "platform_lm3554.h"
+#include "platform_hm2056.h"
+#include "platform_gc0339.h"
+#include "platform_ar0543.h"
+
 #ifdef CONFIG_CRYSTAL_COVE
 #include <linux/mfd/intel_mid_pmic.h>
 #endif
@@ -31,6 +35,9 @@
  *       set this info in the platform data of each sensor
  */
 const struct intel_v4l2_subdev_id v4l2_ids[] = {
+	{"ar0543", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"hm2056", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"gc0339", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"mt9e013", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"ov8830", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"imx175", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
@@ -67,6 +74,18 @@ static struct byt_device_table byt_ffrd10_cam_table[] = {
 		{SFI_DEV_TYPE_I2C, 4, 0x53, 0x0, 0x0, "lm3554"},
 		{"lm3554", SFI_DEV_TYPE_I2C, 0, &lm3554_platform_data_func,
 			&intel_register_i2c_camera_device}
+	}, {
+		{SFI_DEV_TYPE_I2C, 3, 0x24, 0x0, 0x0, "hm2056"},		//<ASUS-Oscar131209>
+		{"hm2056", SFI_DEV_TYPE_I2C, 0, &hm2056_platform_data,
+			&intel_register_i2c_camera_device}
+	}, {
+		{SFI_DEV_TYPE_I2C, 3, 0x21, 0x0, 0x0, "gc0339"},		//<ASUS-Oscar131209>
+		{"gc0339", SFI_DEV_TYPE_I2C, 0, &gc0339_platform_data,
+			&intel_register_i2c_camera_device}
+	},{                                                         //<ASUS-Lew131219>
+		{SFI_DEV_TYPE_I2C, 3, 0x37, 0x0, 0x0, "ar0543"},	//slave address 0x36??
+		{"ar0543",SFI_DEV_TYPE_I2C, 0, &ar0543_platform_data,
+			&intel_register_i2c_camera_device}
 	}
 };
 
@@ -82,6 +101,18 @@ static struct byt_device_table byt_ffrd8_cam_table[] = {
 	}, {
 		{SFI_DEV_TYPE_I2C, 3, 0x53, 0x0, 0x0, "lm3554"},
 		{"lm3554", SFI_DEV_TYPE_I2C, 0, &lm3554_platform_data_func,
+			&intel_register_i2c_camera_device}
+	}, {
+		{SFI_DEV_TYPE_I2C, 3, 0x24, 0x0, 0x0, "hm2056"},		//<ASUS-Oscar131209>
+		{"hm2056", SFI_DEV_TYPE_I2C, 0, &hm2056_platform_data,
+			&intel_register_i2c_camera_device}
+	}, {
+		{SFI_DEV_TYPE_I2C, 3, 0x21, 0x0, 0x0, "gc0339"},		//<ASUS-Oscar131209>
+		{"gc0339", SFI_DEV_TYPE_I2C, 0, &gc0339_platform_data,
+			&intel_register_i2c_camera_device}
+	},{
+		{SFI_DEV_TYPE_I2C, 3, 0x37, 0x0, 0x0, "ar0543"},        //<ASUS-Lew131219>
+		{"ar0543",SFI_DEV_TYPE_I2C, 0, &ar0543_platform_data,	//slave address 0x36??
 			&intel_register_i2c_camera_device}
 	}
 };
