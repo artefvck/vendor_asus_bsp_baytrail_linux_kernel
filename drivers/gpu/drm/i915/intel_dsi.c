@@ -696,7 +696,7 @@ bool intel_dsi_init(struct drm_device *dev)
 			dev_priv->mipi_panel_id = dev_priv->vbt.dsi.panel_id;
 	} else
 		dev_priv->mipi_panel_id = i915_mipi_panel_id;
-
+	dev_priv->mipi_panel_id = 6; //pbtest
 	for (i = 0; i < ARRAY_SIZE(intel_dsi_devices); i++) {
 		dsi = &intel_dsi_devices[i];
 		if (dsi->panel_id == dev_priv->mipi_panel_id) {

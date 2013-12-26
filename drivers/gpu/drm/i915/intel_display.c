@@ -3947,8 +3947,8 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 
 	WARN_ON(!crtc->enabled);
 
-	if (intel_crtc->active)
-		return;
+	//if (intel_crtc->active)	//pbtest
+	//	return;
 
 	intel_crtc->active = true;
 	if (dev_priv->s0ixstat == true)
