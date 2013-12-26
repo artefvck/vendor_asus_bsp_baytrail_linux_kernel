@@ -88,13 +88,13 @@ static int const bptherm_curve_data[BPTHERM_CURVE_MAX_SAMPLES]
 
 static bool msic_battery_check(void)
 {
-	if (get_oem0_table() == NULL) {
-		pr_info("Invalid battery detected\n");
-		return false;
-	} else {
-		pr_info("Valid battery detected\n");
+	//tan if (get_oem0_table() == NULL) {
+	//	pr_info("Invalid battery detected\n");
+	//	return false;
+	//} else {
+	//	pr_info("Valid battery detected\n");
 		return true;
-	}
+	//}
 }
 
 void *platform_init_battery_adc(int num_sensors, int chan_number, int flag)
@@ -102,9 +102,9 @@ void *platform_init_battery_adc(int num_sensors, int chan_number, int flag)
 	pr_debug("%s\n", __func__);
 
 	/* Allocate ADC Channels */
-	return
-		(chgr_gpadc_handle = intel_mid_gpadc_alloc(num_sensors,
-				  chan_number | flag));
+	return NULL; //tan
+	//tan	(chgr_gpadc_handle = intel_mid_gpadc_alloc(num_sensors,
+	//			  chan_number | flag));
 }
 
 static void dump_batt_chrg_profile(struct ps_pse_mod_prof *bcprof,
@@ -142,8 +142,8 @@ static void dump_batt_chrg_profile(struct ps_pse_mod_prof *bcprof,
 
 static void platform_get_sfi_batt_table(void *table, bool fpo_override_bit)
 {
-	struct sfi_table_simple *sb =
-			 (struct sfi_table_simple *)get_oem0_table();
+	struct sfi_table_simple *sb = NULL;//tan
+	//tan		 (struct sfi_table_simple *)get_oem0_table();
 	struct platform_batt_profile *batt_prof;
 	u8 *bprof_ptr;
 
@@ -407,16 +407,16 @@ static int initialize_platform_data(void)
 {
 
 	pr_debug("%s:\n", __func__);
-
+	
 	chgr_gpadc_handle = platform_init_battery_adc(
 			BATT_NUM_GPADC_SENSORS,	GPADC_BPTHERM_CHNUM,
 			CH_NEED_VCALIB | CH_NEED_VREF);
-
+	
 	if (chgr_gpadc_handle == NULL) {
 		pr_err("%s: unable to get the adc value\n", __func__);
 		return -1;
 	}
-
+	
 	platform_init_battery_threshold(TEMP_NR_RNG,
 				&platform_data.safety_param,
 				&platform_data.batt_profile);
@@ -550,9 +550,9 @@ static int platform_read_adc_temp(int *temp,
 		goto read_adc_exit;
 	}
 
-	ret = intel_mid_gpadc_sample(chgr_gpadc_handle,
-				GPADC_BPTHERM_SAMPLE_COUNT,
-				&gpadc_sensor_val);
+	//tan ret = intel_mid_gpadc_sample(chgr_gpadc_handle,
+	//			GPADC_BPTHERM_SAMPLE_COUNT,
+	//			&gpadc_sensor_val);
 	if (ret) {
 		pr_err("EM:%s:adc driver api returned error(%d)\n",
 							__func__, ret);
@@ -575,11 +575,11 @@ EXPORT_SYMBOL(platform_get_battery_pack_temp);
 static void platform_free_data(void)
 {
 	pr_debug("%s\n", __func__);
-	if (chgr_gpadc_handle)
-		intel_mid_gpadc_free(chgr_gpadc_handle);
+	//tan if (chgr_gpadc_handle)
+	//tan	intel_mid_gpadc_free(chgr_gpadc_handle);
 
-	kfree(ps_batt_chrg_prof);
-	kfree(ps_pse_mod_prof);
+	//kfree(ps_batt_chrg_prof);
+	//kfree(ps_pse_mod_prof);
 }
 
 void *bq24192_platform_data(void *info)
@@ -604,12 +604,25 @@ void *bq24192_platform_data(void *info)
 	platform_data.query_otg = NULL;
 	platform_data.free_platform_data = platform_free_data;
 	platform_data.slave_mode = 0;
-
+	/*tan
 	register_rpmsg_service("rpmsg_bq24192", RPROC_SCU,
 				RP_BQ24192);
 	/* WA for pmic rpmsg service registration
 	   for power source detection driver */
-	register_rpmsg_service("rpmsg_pmic_charger", RPROC_SCU,
+	/*tan register_rpmsg_service("rpmsg_pmic_charger", RPROC_SCU,
 				RP_PMIC_CHARGER);
+	*/
 	return &platform_data;
 }
+
+
+static struct i2c_board_info __initdata bq24192_i2c_device = {
+	 I2C_BOARD_INFO("bq24192", 0x6b),
+	.platform_data = bq24192_platform_data,
+};
+
+static int __init bq24192_platform_init(void)
+{
+	return i2c_register_board_info(1, &bq24192_i2c_device, 1);
+}
+module_init(bq24192_platform_init);
