@@ -23,6 +23,14 @@ config TOUCHSCREEN_88PM860X
 	  To compile this driver as a module, choose M here: the
 	  module will be called 88pm860x-ts.
 
+config TOUCHSCREEN_GT9271
+        tristate "Goodix touch screen gt901X2 support for rockchip based platform"
+        help
+          Say Y here if you have a touchscreen interface using the
+          two goodix gt901  , and your board-specific initialization
+          code includes that in its table of IIC devices.
+          If unsure, say N.
+
 config TOUCHSCREEN_ADS7846
 	tristate "ADS7846/TSC2046/AD7873 and AD(S)7843 based touchscreens"
 	depends on SPI_MASTER

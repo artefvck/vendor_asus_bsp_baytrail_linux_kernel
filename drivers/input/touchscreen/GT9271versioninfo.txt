@@ -1,0 +1,10 @@
+//  GT928 Config Versions & FW Versions  //
+Configs:
+J-Touch: 70
+Wintek: 70
+Innolux: 70
+
+FWversion: 
+J-Touch: 1040
+Wintek: 1047
+Innolux: 1047
