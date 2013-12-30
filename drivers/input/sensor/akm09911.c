@@ -31,6 +31,7 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
+//#include <linux/mfd/intel_mid_pmic.h>
 
 #define AKM_DEBUG_IF			0
 #define AKM_HAS_RESET			1
@@ -42,6 +43,7 @@
 #define AKM_I2C_ADDRESS			0x0c
 static struct akm09911_platform_data akm09911_pdata = {
 	.layout = 1,
+        .gpio_RSTN = 0,
 };
 static struct i2c_board_info akm09911_board_info = {
     I2C_BOARD_INFO(AKM_I2C_NAME, AKM_I2C_ADDRESS),
@@ -1607,6 +1609,7 @@ static int __init akm_compass_init(void)
 {
 //gpio_direction_output(acpi_get_value("\\_SB.GPO0",4), 1);
 	pr_info("AKM compass driver: initialize.");
+
 	return i2c_add_driver(&akm_compass_driver);
 }
 
