@@ -22,7 +22,6 @@
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -423,7 +422,12 @@ static const struct snd_soc_dapm_widget byt_dapm_widgets[] = {
 static const struct snd_soc_dapm_route byt_audio_map[] = {
 	{"IN2P", NULL, "Headset Mic"},
 	{"IN2N", NULL, "Headset Mic"},
-	{"DMIC1", NULL, "Int Mic"},
+	//terry_tao@asus.com++ change for Analog MIC, not Digital MIC
+	//{"DMIC1", NULL, "Int Mic"},
+	{"micbias1", NULL, "Int Mic"},
+	{"IN1P", NULL, "micbias1"},
+	{"IN1N", NULL, "micbias1"},
+	//terry_tao@asus.com--
 	{"Headphone", NULL, "HPOL"},
 	{"Headphone", NULL, "HPOR"},
 	{"Ext Spk", NULL, "SPOLP"},
@@ -704,7 +708,6 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 	int codec_gpio;
 
 	pr_debug("Entry %s\n", __func__);
-
 	drv = devm_kzalloc(&pdev->dev, sizeof(*drv), GFP_ATOMIC);
 	if (!drv) {
 		pr_err("allocation failed\n");
