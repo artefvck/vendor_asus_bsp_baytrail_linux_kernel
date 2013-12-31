@@ -108,7 +108,7 @@ static struct KXTJ2_platform_data kxtj2_pdata = {
     .axis_map_y = 1,
     .axis_map_z = 2,
 
-    .negate_x = 1,
+    .negate_x = 0,
     .negate_y = 1,
     .negate_z = 1,
     .res_12bit = RES_12BIT,
