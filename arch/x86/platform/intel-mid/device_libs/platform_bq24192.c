@@ -407,7 +407,7 @@ static int initialize_platform_data(void)
 {
 
 	pr_debug("%s:\n", __func__);
-	
+	/*
 	chgr_gpadc_handle = platform_init_battery_adc(
 			BATT_NUM_GPADC_SENSORS,	GPADC_BPTHERM_CHNUM,
 			CH_NEED_VCALIB | CH_NEED_VREF);
@@ -416,7 +416,7 @@ static int initialize_platform_data(void)
 		pr_err("%s: unable to get the adc value\n", __func__);
 		return -1;
 	}
-	
+	*/
 	platform_init_battery_threshold(TEMP_NR_RNG,
 				&platform_data.safety_param,
 				&platform_data.batt_profile);
@@ -615,14 +615,33 @@ void *bq24192_platform_data(void *info)
 	return &platform_data;
 }
 
+static struct bq24192_platform_data platform_data_init=
+{
+	.throttle_states = bq24192_throttle_states,
+	.supplied_to = bq24192_supplied_to,
+	.num_throttle_states = ARRAY_SIZE(bq24192_throttle_states),
+	.num_supplicants = ARRAY_SIZE(bq24192_supplied_to),
+	.supported_cables = POWER_SUPPLY_CHARGER_TYPE_USB,
+	.init_platform_data = initialize_platform_data,
+	.get_irq_number = platform_get_irq_number,
+	.drive_vbus = platform_drive_vbus,
+	.get_battery_pack_temp = NULL,
+	.query_otg = NULL,
+	.free_platform_data = platform_free_data,
+	.slave_mode = 0,	
+};
 
 static struct i2c_board_info __initdata bq24192_i2c_device = {
 	 I2C_BOARD_INFO("bq24192", 0x6b),
-	.platform_data = bq24192_platform_data,
+	.platform_data = &platform_data_init,
 };
 
 static int __init bq24192_platform_init(void)
 {
+	if (msic_battery_check())
+		platform_data_init.sfi_tabl_present = true;
+	else
+		platform_data_init.sfi_tabl_present = false;
 	return i2c_register_board_info(1, &bq24192_i2c_device, 1);
 }
 module_init(bq24192_platform_init);

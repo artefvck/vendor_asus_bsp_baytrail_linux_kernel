@@ -179,12 +179,22 @@ static bool in_early_suspend = false;
 static int delta_q_in_suspend = 0;
 static int rsoc_before_suspend = 0;
 static bool fix_time_60s = false;
-
+/*-----------------------tan#--------------*/
+extern enum bq24192_chrgr_stat {
+	BQ24192_CHRGR_STAT_UNKNOWN =0,
+	BQ24192_CHRGR_STAT_CHARGING,
+	BQ24192_CHRGR_STAT_FAULT,
+	BQ24192_CHRGR_STAT_LOW_SUPPLY_FAULT,
+	BQ24192_CHRGR_STAT_BAT_FULL,
+};
+extern enum bq24192_chrgr_stat bq24192_is_charging();
+/*-----------------------------------------*/
 static bool is_charging_full(void)
 {
   int charger_status;
 
   //tan charger_status = smb345_get_charging_status();
+  charger_status = bq24192_is_charging();
   if (charger_status == POWER_SUPPLY_STATUS_FULL)
   {
     return (true);
@@ -200,6 +210,7 @@ static bool is_charging(void)
   int charger_status;
 
   //tan charger_status = smb345_get_charging_status();
+  charger_status = bq24192_is_charging();
   if ((charger_status == POWER_SUPPLY_STATUS_FULL) ||
       (charger_status == POWER_SUPPLY_STATUS_CHARGING))
   {
@@ -646,6 +657,7 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 			else
 			{
 				//tan ug31->batt_status = smb345_get_charging_status();
+				ug31->batt_status = bq24192_is_charging();
 				if (ug31->batt_status < 0)
 					ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
 				else
@@ -776,7 +788,7 @@ static void ug31xx_battery_external_power_changed(struct power_supply *psy)
         cur_cable_status = UG31XX_NO_CABLE;
         GAUGE_err("[%s] UG31XX_NO_CABLE\n", __func__);
     }
-    */
+   
 	if(ug31xx_drv_status == UG31XX_DRV_NOT_READY)
 	{
 		GAUGE_err("[%s] Gauge driver not init finish\n", __func__);
@@ -786,7 +798,7 @@ static void ug31xx_battery_external_power_changed(struct power_supply *psy)
 	if(old_cable_status != cur_cable_status)
 	{
 		cable_status_changed = CABLE_STATUS_CHANGE_RELEASE_COUNT;
-	}
+	}*/
 }
 
 #endif	///< end of UG31XX_REGISTER_POWERSUPPLY
@@ -1635,6 +1647,7 @@ static void batt_probe_work_func(struct work_struct *work)
 */
 	/* request charger driver to update "power supply changed" */
 	//tan request_power_supply_changed();
+	//power_supply_changed(&ug31xx_supply[PWR_SUPPLY_BATTERY]);//tan#
 
 	/* register switch device for battery information versions report */
 	batt_dev.name = "battery";
@@ -1695,9 +1708,7 @@ static  int ug31xx_i2c_probe(struct i2c_client *client,
 	//tan INIT_DELAYED_WORK_DEFERRABLE(&ug31->batt_probe_work, batt_probe_work_func);
 	INIT_DELAYED_WORK(&ug31->batt_probe_work, batt_probe_work_func);//tan
 #ifdef  UG31XX_PROBE_CHARGER_OFF
-
-	probe_with_cable = is_charging();
-
+	//probe_with_cable = is_charging();
 	if(probe_with_cable == true)
 	{
 		schedule_delayed_work(&ug31->batt_probe_work, UG31XX_PROBE_CHARGER_OFF_DELAY*HZ);
@@ -2044,7 +2055,7 @@ static int __init ug31xx_i2c_init(void)
 	int ret = 0;
 
 	//tan if (entry_mode == 5) return -1;
-	//tan hwid = Read_HW_ID();
+	//tan hwid = Read_HW_ID();	ok
 	pr_info("<BATT> ++++++++++++++++ %s ++++++++++++++++\n", __func__);
 
 	#ifdef	UG31XX_REGISTER_I2C
@@ -2087,7 +2098,8 @@ err2:
 err1:
 	return ret;
 }
-module_init(ug31xx_i2c_init);
+//tan module_init(ug31xx_i2c_init); 
+late_initcall(ug31xx_i2c_init);
 
 static void __exit ug31xx_i2c_exit(void)
 {

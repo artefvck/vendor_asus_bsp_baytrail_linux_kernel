@@ -151,7 +151,7 @@ int crystal_cove_disable_vbus(void)
 	return ret;
 }
 EXPORT_SYMBOL(crystal_cove_disable_vbus);
-
+extern unsigned char VbusDetach;
 static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 {
 	int spwrsrc, mask;
@@ -162,9 +162,11 @@ static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 
 	if (pwrsrcirq & PWRSRC_VBUS_DET) {
 		if (spwrsrc & PWRSRC_VBUS_DET) {
+			VbusDetach = 0;
 			dev_dbg(&info->pdev->dev, "VBUS attach event\n");
 			mask = 1;
 		} else {
+			VbusDetach = 1;
 			dev_dbg(&info->pdev->dev, "VBUS detach event\n");
 			mask = 0;
 		}
