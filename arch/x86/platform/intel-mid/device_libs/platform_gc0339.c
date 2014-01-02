@@ -18,6 +18,7 @@
 #include <media/v4l2-subdev.h>
 #include <linux/mfd/intel_mid_pmic.h>
 #include <linux/regulator/consumer.h>
+#include <linux/lnw_gpio.h>
 
 #ifdef CONFIG_VLV2_PLAT_CLK
 #include <linux/vlv2_plat_clock.h>
@@ -31,15 +32,117 @@
 #define CLK_19P2MHz 0x1
 #endif
 
-//#define VPROG1_VAL 1800000
-
 static int camera_power_down;
 static int camera_reset;
-//static int camera_suspend;
 static int camera_vprog1_on;
 
-//static struct regulator *vprog1_reg;
+static int camera_I2C_3_SCL;
+static int camera_I2C_3_SDA;
 
+static int gc0339_i2c_gpio_set_alt(int flag)
+{
+	int ret;
+
+	if (flag){
+	    lnw_gpio_set_alt(SIO_I2C3_SCL, LNW_GPIO);
+	    lnw_gpio_set_alt(SIO_I2C3_SDA, LNW_GPIO);
+
+	    if (camera_I2C_3_SCL < 0) {
+	        ret = camera_sensor_gpio(SIO_I2C3_SCL, GP_I2C_3_SCL,
+	                GPIOF_DIR_OUT, 0);
+	        if (ret < 0){
+	            printk("%s not available.\n", GP_I2C_3_SCL);
+	            return ret;
+	        }
+	        camera_I2C_3_SCL = SIO_I2C3_SCL;
+	    }
+
+	    if (camera_I2C_3_SDA < 0) {
+	        ret = camera_sensor_gpio(SIO_I2C3_SDA, GP_I2C_3_SDA,
+	                GPIOF_DIR_OUT, 0);
+	        if (ret < 0){
+	            printk("%s not available.\n", GP_I2C_3_SDA);
+	            return ret;
+	        }
+	        camera_I2C_3_SDA = SIO_I2C3_SDA;
+	    }
+
+		if (camera_I2C_3_SCL >= 0){
+			gpio_set_value(camera_I2C_3_SCL, 1);
+			printk("<<< I2C_3 SCL = 1\n");
+			msleep(1);
+		}
+		
+		if (camera_I2C_3_SDA >= 0){
+			gpio_set_value(camera_I2C_3_SDA, 1);
+			printk("<<< I2C_3 SDA = 1\n");
+			msleep(1);
+		}
+
+		lnw_gpio_set_alt(SIO_I2C3_SCL, LNW_ALT_1);
+		lnw_gpio_set_alt(SIO_I2C3_SDA, LNW_ALT_1);
+		
+		msleep(2);
+	}else{
+		if (camera_I2C_3_SCL >= 0){
+			gpio_free(camera_I2C_3_SCL);
+			camera_I2C_3_SCL = -1;
+			mdelay(1);
+		}
+		
+		if (camera_I2C_3_SDA >= 0){
+			gpio_free(camera_I2C_3_SDA);
+			camera_I2C_3_SDA = -1;
+			mdelay(1);
+		}
+	}
+
+	return ret;
+}
+
+static int gc0339_gpio_init()
+{
+	int pin;
+	int ret = 0;
+
+	pin = CAMERA_1_RESET;
+	if (camera_reset < 0) {
+		ret = gpio_request(pin, NULL);
+		if (ret) {
+			pr_err("%s: failed to request gpio(pin %d)\n",
+				__func__, pin);
+			return ret;
+		}
+		camera_reset = pin;
+		ret = gpio_direction_output(pin, 1);
+		if (ret) {
+			pr_err("%s: failed to set gpio(pin %d) direction\n",
+				__func__, pin);
+			gpio_free(pin);
+			return ret;
+		}
+	}
+
+	pin = CAMERA_1_PWDN;
+	if (camera_power_down < 0) {
+		ret = gpio_request(pin, NULL);
+		if (ret) {
+			pr_err("%s: failed to request gpio(pin %d)\n",
+				__func__, pin);
+			return ret;
+		}
+		camera_power_down = pin;
+		ret = gpio_direction_output(pin, 0);
+		if (ret) {
+			pr_err("%s: failed to set gpio(pin %d) direction\n",
+				__func__, pin);
+			gpio_free(pin);
+			return ret;
+		}
+	}
+
+	return ret;
+}
 
 static int gc0339_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 {
@@ -65,145 +168,18 @@ static int gc0339_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 
 static int gc0339_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 {
-	return 0;
-}
-
-static int gc0339_power_ctrl(struct v4l2_subdev *sd, int flag)
-{
-	int reg_err;
-	int pin;
 	int ret;
-	printk("%s: ++\n",__func__);
+	printk("%s: ++ %d\n",__func__, flag);
 
-	//if (HW_ID == 0xFF){ 
-	//	HW_ID = Read_HW_ID(); 
-	//}
-
-	//printk("HW ID:%d\n", HW_ID);
-	//switch (HW_ID){
-	//	case HW_ID_SR1:
-	//	case HW_ID_SR2:
-		/*
-			if (camera_reset < 0) {
-				ret = camera_sensor_gpio(-1, GP_CAMERA_VGA_RESET,
-							 GPIOF_DIR_OUT, 0);
-				if (ret < 0){
-					printk("%s not available.\n", GP_CAMERA_VGA_RESET);
-					return ret;
-				}
-				printk("%s = %d\n",GP_CAMERA_VGA_RESET,ret);
-				camera_reset = ret;
-			}
-		*/
-	//		break;
-	//	case HW_ID_ER:
-	//	case HW_ID_PR:
-	//	case HW_ID_MP:
-	//	default:
-		/*
-			if (camera_power_2p8_en < 0) {
-				ret = camera_sensor_gpio(-1, GP_CAMERA_2_8V,
-							 GPIOF_DIR_OUT, 0);
-				if (ret < 0){
-					printk("%s not available.\n", GP_CAMERA_2_8V);
-					return ret;
-				}
-				camera_power_2p8_en = ret;
-				printk("%s = %d\n",GP_CAMERA_2_8V,ret);
-			}
-			if (camera_reset < 0) {
-				ret = camera_sensor_gpio(-1, GP_CAMERA_VGA_RESET,
-							 GPIOF_DIR_OUT, 0);
-				if (ret < 0){
-					printk("%s not available.\n", GP_CAMERA_VGA_RESET);
-					return ret;
-				}
-				printk("%s = %d\n",GP_CAMERA_VGA_RESET,ret);
-				camera_reset = ret;
-			}
-		*/
-	//		break;
-	//}
-
-
-	pin = CAMERA_1_RESET;
-	if (camera_reset < 0) {
-		ret = gpio_request(pin, "camera_1_reset");
-		if (ret) {
-			pr_err("%s: failed to request gpio(pin %d)\n",
-				__func__, pin);
-			return ret;
-		}
-	}
-	camera_reset = pin;
-	ret = gpio_direction_output(pin, 0);
-	if (ret) {
-		pr_err("%s: failed to set gpio(pin %d) direction\n",
-			__func__, pin);
-		gpio_free(pin);
-		return ret;
-	}
-
-	pin = CAMERA_1_PWDN;
-	if (camera_power_down < 0) {
-		ret = gpio_request(pin, "camera_1_power");
-		if (ret) {
-			pr_err("%s: failed to request gpio(pin %d)\n",
-				__func__, pin);
-			return ret;
-		}
-	}
-	camera_power_down = pin;
-	
-	//if (spid.hardware_id == BYT_TABLET_BLK_8PR0 ||
-	//	spid.hardware_id == BYT_TABLET_BLK_8PR1)
-		ret = gpio_direction_output(pin, 0);
-	//else
-	//	ret = gpio_direction_output(pin, 1);
-	
-	if (ret) {
-		pr_err("%s: failed to set gpio(pin %d) direction\n",
-			__func__, pin);
-		gpio_free(pin);
-		return ret;
-	}
+	gc0339_gpio_init();
 
 	if (flag){
-		//pull high reset first
+		//pull low power down first
 		if (camera_power_down >= 0){
-			gpio_set_value(camera_power_down, 1);
-			printk("<<< camera_reset = 1\n");
+			gpio_set_value(camera_power_down, 0);
+			printk("<<< camera_power_down = 0\n");
 			msleep(10);
 		}
-
-		//turn on power VDD_SEN VDD_HOST 1.8V
-		if (!camera_vprog1_on) {
-			camera_vprog1_on = 1;
-#ifdef CONFIG_CRYSTAL_COVE
-			ret = camera_set_pmic_power(CAMERA_2P8V, true);
-			if (ret)
-				return ret;
-			ret = camera_set_pmic_power(CAMERA_1P8V, true);
-#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
-			ret = intel_scu_ipc_msic_vprog1(1);
-#else
-			pr_err("gc0339 power is not set.\n");
-#endif
-/*
-			reg_err = regulator_enable(vprog1_reg);
-			if (reg_err) {
-				printk(KERN_ALERT "Failed to enable regulator vprog1\n");
-				return reg_err;
-			}
-*/
-			printk("<<< VDD_SEN VDD_HOST 1.8V = 1\n");
-			msleep(10);
-		}
-
-		//turn on MCLK
-		gc0339_flisclk_ctrl(sd, 1);
-		msleep(10); 
-
 		//pull high reset first
 		if (camera_reset >= 0){
 			gpio_set_value(camera_reset, 0);
@@ -220,6 +196,57 @@ static int gc0339_power_ctrl(struct v4l2_subdev *sd, int flag)
 			msleep(10);
 		}
 
+		//pull high power down
+		if (camera_power_down >= 0){
+			gpio_set_value(camera_power_down, 1);
+			printk("<<< camera_power_down = 1\n");
+			msleep(10);
+		}
+
+		//pull low reset first
+		if (camera_reset >= 0){
+			gpio_set_value(camera_reset, 0);
+			printk("<<< camera_reset = 0\n");
+			msleep(10);
+		}
+	}
+
+	gc0339_i2c_gpio_set_alt(flag);
+
+	return ret;
+}
+
+static int gc0339_power_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	int ret;
+
+	if (flag){
+		//turn on power VDD_SEN VDD_HOST 1.8V
+		if (!camera_vprog1_on) {
+			camera_vprog1_on = 1;
+#ifdef CONFIG_CRYSTAL_COVE
+			ret = camera_set_pmic_power(CAMERA_2P8V, true);
+			if (ret)
+				return ret;
+			ret = camera_set_pmic_power(CAMERA_1P8V, true);
+#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
+			ret = intel_scu_ipc_msic_vprog1(1);
+#else
+			pr_err("gc0339 power is not set.\n");
+#endif
+			printk("<<< VDD_SEN VDD_HOST 1.8V = 1\n");
+			msleep(10);
+		}
+
+		//turn on MCLK
+		gc0339_flisclk_ctrl(sd, 1);
+		gc0339_gpio_ctrl(sd, flag);
+
+		msleep(10); 
+	}else{
+		//turn off MCLK
+		gc0339_flisclk_ctrl(sd, 0);
+		gc0339_gpio_ctrl(sd, flag);
 		//turn off power VDD_SEN VDD_HOST 1.8V
 		if (camera_vprog1_on) {
 			camera_vprog1_on = 0;
@@ -233,28 +260,11 @@ static int gc0339_power_ctrl(struct v4l2_subdev *sd, int flag)
 #else
 			pr_err("gc0339 power is not set.\n");
 #endif
-/*
-			reg_err = regulator_disable(vprog1_reg);
-			if (reg_err) {
-				printk(KERN_ALERT "Failed to disable regulator vprog1\n");
-				return reg_err;
-			}
-*/
 			printk("<<< VDD_SEN VDD_HOST 1.8V = 0\n");
 			msleep(10);
 		}
-		//pull low reset first
-		if (camera_power_down >= 0){
-			gpio_set_value(camera_power_down, 0);
-			printk("<<< camera_reset = 0\n");
-			msleep(10);
-		}
-
-		//turn off MCLK
-		gc0339_flisclk_ctrl(sd, 0);
-		msleep(10); 
 	}
-		
+
 	return 0;
 
 }
@@ -268,60 +278,12 @@ static int gc0339_csi_configure(struct v4l2_subdev *sd, int flag)
 
 static int gc0339_platform_init(struct i2c_client *client)
 {
-	int ret;
-
-	printk("%s: ++\n", __func__);
-
-#ifdef CONFIG_CRYSTAL_COVE
-	/*
-	 * This should call VRF APIs.
-	 *
-	 * VRF not implemented for BTY, so call this
-	 * as WAs
-	 */
-	ret = camera_set_pmic_power(CAMERA_2P8V, true);
-	if (ret)
-		return ret;
-	ret = camera_set_pmic_power(CAMERA_1P8V, true);
-#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
-	ret = intel_scu_ipc_msic_vprog1(1);
-#else
-	pr_err("gc0339 power is not set.\n");
-#endif
-
-/*
-	//VPROG1 for VDD_HOST and VDD_SEN, 1.8V
-	vprog1_reg = regulator_get(&client->dev, "vprog1");
-	if (IS_ERR(vprog1_reg)) {
-		dev_err(&client->dev, "vprog1 failed\n");
-		return PTR_ERR(vprog1_reg);
-	}
-	ret = regulator_set_voltage(vprog1_reg, VPROG1_VAL, VPROG1_VAL);
-	if (ret) {
-		dev_err(&client->dev, "vprog1 set failed\n");
-		regulator_put(vprog1_reg);
-	}
-*/
-	return ret;
+	return 0;
 }
 
 static int gc0339_platform_deinit(void)
 {
-	int ret;
-#ifdef CONFIG_CRYSTAL_COVE
-	ret = camera_set_pmic_power(CAMERA_2P8V, false);
-	if (ret)
-		return ret;
-	ret = camera_set_pmic_power(CAMERA_1P8V, false);
-#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
-	ret = intel_scu_ipc_msic_vprog1(0);
-#else
-	pr_err("gc0339 power is not set.\n");
-#endif
-
-	//regulator_put(vprog1_reg);
-
-	return ret;
+	return 0;
 }
 
 static struct camera_sensor_platform_data gc0339_sensor_platform_data = {
@@ -335,9 +297,11 @@ static struct camera_sensor_platform_data gc0339_sensor_platform_data = {
 
 void *gc0339_platform_data(void *info)
 {
+    camera_I2C_3_SCL = -1;
+    camera_I2C_3_SDA = -1;
+
 	camera_power_down = -1;
 	camera_reset = -1;
-	//camera_suspend = -1;
 	camera_vprog1_on = 0;
 	return &gc0339_sensor_platform_data;
 }
