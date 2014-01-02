@@ -24,125 +24,147 @@
 #include <linux/mfd/intel_mid_pmic.h>
 #include <linux/vlv2_plat_clock.h>
 #include <asm/intel_vlv2.h>
+#include <linux/lnw_gpio.h>
+
 #include "platform_camera.h"
 #include "platform_ar0543.h"
 
 /* workround - pin defined for byt */
-//#define CAMERA_1_RESET 127
-//#define CAMERA_0_PWDN 128		// <ASUS-Ian20131204>
-//#define CAMERA_0_VCM_PD 123		// <ASUS-Ian20131204>
 #ifdef CONFIG_VLV2_PLAT_CLK
 #define OSC_CAM0_CLK	0x0
 #define CLK_19P2MHz	0x1
 #endif
 
-//#define VPROG1_VAL 2800000
 static int camera_reset;
 static int camera_power_down;
 static int camera_vcm_power_down;
-static int camera_led_mask;			// <ASUS-Ian20131204>
 static int camera_vprog1_on;
-
-static struct regulator *vprog1_reg;
+static int camera_I2C_3_SCL;
+static int camera_I2C_3_SDA;
 
 /*
  * CLV PR0 primary camera sensor - AR0543 platform data
  */
-
-static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
+static int ar0543_i2c_gpio_set_alt(int flag)
 {
 	int ret;
-	int pin;
+	lnw_gpio_set_alt(SIO_I2C3_SCL, LNW_GPIO);
+    lnw_gpio_set_alt(SIO_I2C3_SDA, LNW_GPIO);
 
-	//<ASUS-Vincent_Liu-20131219175217+>
-	//TODO 5M_CAM1_RESET_N <--> MCSI_GPIO_09
-	//TODO 5M_CAM1_PWRDWN <--> MCSI_GPIO_06
+	if (flag){
+	    if (camera_I2C_3_SCL < 0) {
+	        ret = camera_sensor_gpio(SIO_I2C3_SCL, GP_I2C_3_SCL,
+	                GPIOF_DIR_OUT, 1);
+	        if (ret < 0){
+	            printk("%s not available.\n", GP_I2C_3_SCL);
+	            return ret;
+	        }
+	        camera_I2C_3_SCL = SIO_I2C3_SCL;
+	    }
 
-	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		if (camera_reset < 0) {
-			ret = camera_sensor_gpio(-1, GP_CAMERA_0_RESET,
-					GPIOF_DIR_OUT, 1);
-			if (ret < 0)
-				return ret;
-			camera_reset = ret;
-		}
-	} else {
-		/*
-		 * FIXME: WA using hardcoded GPIO value here.
-		 * The GPIO value would be provided by ACPI table, which is
-		 * not implemented currently.
-		 */
-		pin = CAMERA_0_RESET;
-		if (camera_reset < 0) {
-			ret = gpio_request(pin, "camera_0_reset");
-			if (ret) {
-				pr_err("%s: failed to request gpio(pin %d)\n",
-					__func__, pin);
-				return ret;
-			}
-		}
-		camera_reset = pin;
-		ret = gpio_direction_output(pin, 1);
-		if (ret) {
-			pr_err("%s: failed to set gpio(pin %d) direction\n",
-				__func__, pin);
-			gpio_free(pin);
-			return ret;
-		}
+	    if (camera_I2C_3_SDA < 0) {
+	        ret = camera_sensor_gpio(SIO_I2C3_SDA, GP_I2C_3_SDA,
+	                GPIOF_DIR_OUT, 1);
+	        if (ret < 0){
+	            printk("%s not available.\n", GP_I2C_3_SDA);
+	            return ret;
+	        }
+	        camera_I2C_3_SDA = SIO_I2C3_SDA;
+	    }
 
-		pin = CAMERA_0_PWDN;
-		if (camera_power_down < 0) {
-			ret = gpio_request(pin, "camera_0_powerdown");
-			if (ret) {
-				pr_err("%s: failed to request gpio(pin %d)\n",
-					__func__, pin);
-				return ret;
-			}
-		}
+	    if (camera_I2C_3_SCL >= 0){
+	        gpio_set_value(camera_I2C_3_SCL, 1);
+	        printk("<<< I2C_4 SCL = 1\n");
+	        msleep(1);
+	    }
 
-		camera_power_down = pin;
-		ret = gpio_direction_output(pin, 1);
-		if (ret) {
-			pr_err("%s: failed to set gpio(pin %d) direction\n",
-				__func__, pin);
-			gpio_free(pin);
-			return ret;
-		}
+	    if (camera_I2C_3_SDA >= 0){
+	        gpio_set_value(camera_I2C_3_SDA, 1);
+	        printk("<<< I2C_4 SDA = 1\n");
+	        msleep(1);
+	    }
+		lnw_gpio_set_alt(SIO_I2C3_SCL, LNW_ALT_1);
+	    lnw_gpio_set_alt(SIO_I2C3_SDA, LNW_ALT_1);
 
-/*		
-        //for vcm
-        pin = CAMERA_0_VCM_PD;
-		if (camera_vcm_power_down < 0) {
-			ret = gpio_request(pin, "camera_vcm_pd to non-acive");
-			if (ret) {
-				pr_err("%s: failed to request gpio(pin %d)\n",
-					__func__, pin);
-				return ret;
-			}
+	    msleep(2);
+	}else{
+		if (camera_I2C_3_SCL >= 0){
+			gpio_free(camera_I2C_3_SCL);
+			camera_I2C_3_SCL = -1;
+			mdelay(1);
 		}
-		camera_vcm_power_down = pin;
-		ret = gpio_direction_output(pin, 1);
-		if (ret) {
-			pr_err("%s: failed to set gpio(pin %d) direction\n",
-				__func__, pin);
-			gpio_free(pin);
-			return ret;
+		
+		if (camera_I2C_3_SDA >= 0){
+			gpio_free(camera_I2C_3_SDA);
+			camera_I2C_3_SDA = -1;
+			mdelay(1);
 		}
-*/
 	}
+	return ret;
+}
+static int ar0543_gpio_init()
+{
+	int pin;
+	int ret = 0;
+	pin = CAMERA_0_RESET;
+	if (camera_reset < 0) {
+		ret = gpio_request(pin, NULL);
+		if (ret) {
+			pr_err("%s: failed to request gpio(pin %d)\n",
+				__func__, pin);
+			return ret;
+		}
+
+		camera_reset = pin;
+		ret = gpio_direction_output(pin, 0);
+		if (ret) {
+			pr_err("%s: failed to set gpio(pin %d) direction\n",
+				__func__, pin);
+			gpio_free(pin);
+			return ret;
+		}
+	}
+	pin = CAMERA_0_PWDN;
+	if (camera_power_down < 0) {
+		ret = gpio_request(pin, NULL);
+		if (ret) {
+			pr_err("%s: failed to request gpio(pin %d)\n",
+				__func__, pin);
+			return ret;
+		}
+		camera_power_down = pin;
+		ret = gpio_direction_output(pin, 0);
+		if (ret) {
+			pr_err("%s: failed to set gpio(pin %d) direction\n",
+			__func__, pin);
+			gpio_free(pin);
+			return ret;
+		}
+	}
+	return ret;
+}
+static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	ar0543_gpio_init();
+	
 	if (flag) {
 #ifdef CONFIG_BOARD_CTP
 		gpio_set_value(camera_reset, 0);
 		msleep(60);
 #endif
 		gpio_set_value(camera_power_down, 1);
+		msleep(2);
 		gpio_set_value(camera_reset, 1);
+		msleep(2);
+		
         //gpio_set_value(camera_vcm_power_down, 1);
 	} else {
-		gpio_set_value(camera_power_down, 0);
-		gpio_set_value(camera_reset, 0);
+
+
         //gpio_set_value(camera_vcm_power_down, 0);
     }
+		
+	ar0543_i2c_gpio_set_alt(flag);
 	return 0;
 }
 
@@ -150,14 +172,6 @@ static int ar0543_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	static const unsigned int clock_khz = 19200;
 	int ret = 0;
-/*
- * if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		return intel_scu_ipc_osc_clk(OSC_CLK_CAM0,
-					     flag ? clock_khz : 0);
-*/
-
-	//<ASUS-Vincent_Liu-20131219175021+>
-	//TODO here PLT_CLK0_CAM1 <---> PMC_PLT_CLK0/GPIO_S0_96
 
 #ifdef CONFIG_VLV2_PLAT_CLK
 	if (flag) {
@@ -184,18 +198,15 @@ static int ar0543_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 static int ar0543_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret = 0;
+	pr_err("%s ++.\n",__func__);
 
 	//<ASUS-Vincent_Liu-20131219180431+>
 	//BD2610GW PMIC
 	//TODO 1.8v <--> V1P8SX
 	//TODO 2.8v <--> V2P85SX
-
 	if (flag) {
 		if (!camera_vprog1_on) {
-/*			if (intel_mid_identify_cpu() !=
-			    INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-				ret = intel_scu_ipc_msic_vprog1(1);
-*/
+
 #ifdef CONFIG_CRYSTAL_COVE
 			/*
 			 * This should call VRF APIs.
@@ -204,18 +215,16 @@ static int ar0543_power_ctrl(struct v4l2_subdev *sd, int flag)
 			 * as WAs
 			 */
 			ret = camera_set_pmic_power(CAMERA_1P8V, true);
+			msleep(2);
 			if (ret)
 				return ret;
 			ret = camera_set_pmic_power(CAMERA_2P8V, true);
-#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
-			return intel_scu_ipc_msic_vprog1(1);
-#else
-			pr_err("ar0543 power ctrl is not set.\n");
-			return -1;
+			msleep(2);
+
 #endif
 			if (!ret) {
 				camera_vprog1_on = 1;
-				msleep(10);
+				//msleep(10);
 			} else {
 				camera_set_pmic_power(CAMERA_1P8V, false);
 			}
@@ -223,14 +232,10 @@ static int ar0543_power_ctrl(struct v4l2_subdev *sd, int flag)
 			return ret;
 		}
 	} else {
-		if (camera_vprog1_on) {
-/*
- * if (intel_mid_identify_cpu() !=
-			    INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-				ret = intel_scu_ipc_msic_vprog1(0);
-*/
+		if (camera_vprog1_on) {		
 #ifdef CONFIG_CRYSTAL_COVE
 			ret = camera_set_pmic_power(CAMERA_2P8V, false);
+			msleep(1);
 			//FIXME: bug anyway
 			if (ret)
 				return ret;
@@ -293,6 +298,9 @@ static struct camera_sensor_platform_data ar0543_sensor_platform_data = {
 
 void *ar0543_platform_data(void *info)
 {
+	camera_I2C_3_SCL = -1;
+	camera_I2C_3_SDA = -1;
+
 	camera_reset = -1;
 	camera_power_down = -1;
 	camera_vcm_power_down = -1;
