@@ -31,6 +31,7 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
+#include <linux/acpi.h>
 //#include <linux/mfd/intel_mid_pmic.h>
 
 #define AKM_DEBUG_IF			0
@@ -1408,6 +1409,11 @@ int akm_compass_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	int err = 0;
 	int i;
 
+        client->dev.platform_data = &akm09911_pdata;
+        if (client->irq == -1) {
+            client->irq = 0;
+        }
+
 	dev_dbg(&client->dev, "start probing.");
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
@@ -1594,6 +1600,10 @@ static int __init akm_compass_attach(struct i2c_adapter *adapter)
 		      &akm_client->driver->clients);
 	return 0;
 }
+static struct acpi_device_id akm_acpi_match[] = {
+        { "XAK0991", 0 },
+        { },
+};
 static struct i2c_driver akm_compass_driver = {
 	.probe		= akm_compass_probe,
 	.remove		= akm_compass_remove,
@@ -1601,8 +1611,9 @@ static struct i2c_driver akm_compass_driver = {
 	.driver = {
 		.name	= AKM_I2C_NAME,
 		.pm		= &akm_compass_pm_ops,
+                .acpi_match_table = ACPI_PTR(akm_acpi_match),
 	},
-        .attach_adapter = akm_compass_attach,
+        //.attach_adapter = akm_compass_attach,
 };
 
 static int __init akm_compass_init(void)

@@ -25,6 +25,7 @@
 #include <linux/slab.h>
 #include <linux/input/kxtj2.h>
 #include <linux/input-polldev.h>
+#include <linux/acpi.h>
 
 #define NAME			"KXTJ2100"
 #define G_MAX			8000
@@ -543,9 +544,12 @@ static int kxtj2_probe(struct i2c_client *client,
 	const struct KXTJ2_platform_data *pdata = &kxtj2_pdata;//client->dev.platform_data;
 	struct kxtj2_data *tj2;
 	int err;
-client->dev.platform_data = &kxtj2_pdata;
 
-printk("kxtj2_probe\n");
+        client->dev.platform_data = &kxtj2_pdata;
+        if (client->irq == -1) {
+            client->irq = 0;
+        }
+
        /* struct i2c_adapter *adapter = i2c_get_adapter(KXTJ2_I2C_ADAPTER);
         i2c_new_device(adapter, &kxtj2_board_info);
         i2c_put_adapter(adapter);*/
@@ -724,6 +728,11 @@ static const struct i2c_device_id kxtj2_id[] = {
 	{ },
 };
 
+static struct acpi_device_id kxtj2_acpi_match[] = {
+	{ "KXTJ2100", 0 },
+	{ },
+};
+
 MODULE_DEVICE_TABLE(i2c, kxtj2_id);
 
 static struct i2c_driver kxtj2_driver = {
@@ -731,11 +740,12 @@ static struct i2c_driver kxtj2_driver = {
 		.name	= NAME,
 		.owner	= THIS_MODULE,
 		.pm	= &kxtj2_pm_ops,
+                .acpi_match_table = ACPI_PTR(kxtj2_acpi_match),
 	},
 	.probe		= kxtj2_probe,
 	.remove		= kxtj2_remove,
 	.id_table	= kxtj2_id,
-        .attach_adapter = kxtj2_attach,
+        //.attach_adapter = kxtj2_attach,
 };
 static int __init kxtj2_init(void)
 {
