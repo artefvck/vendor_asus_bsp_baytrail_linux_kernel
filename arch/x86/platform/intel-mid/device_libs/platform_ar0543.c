@@ -159,8 +159,9 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		
         //gpio_set_value(camera_vcm_power_down, 1);
 	} else {
-
-
+		gpio_set_value(camera_power_down, 0);
+		gpio_set_value(camera_reset, 0);
+		msleep(2);
         //gpio_set_value(camera_vcm_power_down, 0);
     }
 		
@@ -226,7 +227,7 @@ static int ar0543_power_ctrl(struct v4l2_subdev *sd, int flag)
 				camera_vprog1_on = 1;
 				//msleep(10);
 			} else {
-				camera_set_pmic_power(CAMERA_1P8V, false);
+				//Can't disable 1.8V for HW request.	camera_set_pmic_power(CAMERA_1P8V, false);
 			}
 
 			return ret;
@@ -239,7 +240,7 @@ static int ar0543_power_ctrl(struct v4l2_subdev *sd, int flag)
 			//FIXME: bug anyway
 			if (ret)
 				return ret;
-			ret = camera_set_pmic_power(CAMERA_1P8V, false);
+			//Can't disable 1.8V for HW request.	ret = camera_set_pmic_power(CAMERA_1P8V, false);
 #elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 			return intel_scu_ipc_msic_vprog1(0);
 #else

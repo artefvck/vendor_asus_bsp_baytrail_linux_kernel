@@ -240,7 +240,7 @@ static int hm2056_power_ctrl(struct v4l2_subdev *sd, int flag)
 				ret = camera_set_pmic_power(CAMERA_2P8V, false);
 				if (ret)
 					return ret;
-				ret = camera_set_pmic_power(CAMERA_1P8V, false);
+				//Can't disable 1.8V for HW request.	ret = camera_set_pmic_power(CAMERA_1P8V, false);
 			#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 				ret = intel_suc_ipc_msic_vprog1(0);
 			#else
@@ -252,7 +252,6 @@ static int hm2056_power_ctrl(struct v4l2_subdev *sd, int flag)
             printk("<<< 1.8V and 2.8V = 0\n");
             msleep(1);
         }
-
         return ret;
     }
     return 0;
