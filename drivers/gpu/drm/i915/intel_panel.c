@@ -607,7 +607,7 @@ void intel_panel_enable_backlight(struct drm_device *dev,
 
 	if (IS_VALLEYVIEW(dev) && dev_priv->is_mipi) {
 #ifdef CONFIG_CRYSTAL_COVE
-		intel_mid_pmic_writeb(0x4B, 0xFF);
+		intel_mid_pmic_writeb(0x4B, 0x80);	//change PWM0 frequency to 23.437KHz
 		intel_mid_pmic_writeb(0x4E, 0xFF);
 		intel_mid_pmic_writeb(0x51, 0x01);
 		intel_mid_pmic_writeb(0x52, 0x01);
