@@ -28,7 +28,7 @@ config INPUT_SENSOR_KXTJ2
 config INPUT_SENSOR_KXTJ2_POLLED_MODE
 	bool "Enable polling mode support"
         default n
-	depends on INPUT_KXTJ2
+	depends on INPUT_SENSOR_KXTJ2
 	select INPUT_POLLDEV
 	help
 	  Say Y here if you need accelerometer to work in polling mode.
