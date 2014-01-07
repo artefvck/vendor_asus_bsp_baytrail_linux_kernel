@@ -64,7 +64,8 @@
 #define RES_INT_CTRL1		2
 #define RESUME_ENTRIES		3
 
-#define CONFIG_INPUT_SENSOR_KXTJ2_POLLED_MODE 1
+//the Makefile will trans this macro to me
+//#define CONFIG_INPUT_SENSOR_KXTJ2_POLLED_MODE 1
 
 /*
  * The following table lists the maximum appropriate poll interval for each
@@ -96,6 +97,11 @@ struct kxtj2_data {
 	u8 int_ctrl;
         
         bool enable;
+	atomic_t enable;
+        s16 axis_x_buf;
+        s16 axis_y_buf;
+        s16 axis_z_buf;
+        spinlock_t axis_buf_lock;
 };
 
 
@@ -162,6 +168,13 @@ static void kxtj2_report_acceleration_data(struct kxtj2_data *tj2)
 	x >>= tj2->shift;
 	y >>= tj2->shift;
 	z >>= tj2->shift;
+
+	spin_lock(&tj2->axis_buf_lock);
+        tj2->axis_x_buf = tj2->pdata.negate_x ? -x : x;
+        tj2->axis_y_buf = tj2->pdata.negate_y ? -y : y;
+        tj2->axis_z_buf = tj2->pdata.negate_z ? -z : z;
+        spin_unlock(&tj2->axis_buf_lock);
+
 
 	input_report_abs(tj2->input_dev, ABS_X, tj2->pdata.negate_x ? -x : x);
 	input_report_abs(tj2->input_dev, ABS_Y, tj2->pdata.negate_y ? -y : y);
@@ -425,7 +438,106 @@ static ssize_t kxtj2_set_poll(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
+//=======================================================================
+static ssize_t kxtj2_delay_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+        struct i2c_client *client = to_i2c_client(dev);
+        struct kxtj2_data *tj2 = i2c_get_clientdata(client);
+        struct input_polled_dev *poll_dev = tj2->poll_dev;
+
+        return sprintf(buf, "%d\n", poll_dev->poll_interval);
+}
+
+static ssize_t kxtj2_delay_store(struct device *dev, struct device_attribute *attr,
+                                                const char *buf, size_t count)
+{
+        struct i2c_client *client = to_i2c_client(dev);
+        struct kxtj2_data *tj2 = i2c_get_clientdata(client);
+        struct input_polled_dev *poll_dev = tj2->poll_dev;
+        struct input_dev *input_dev = tj2->input_dev;
+        unsigned int interval;
+        int error;
+
+        error = kstrtouint(buf, 10, &interval);
+        if (error < 0)
+                return error;
+
+        /* Lock the device to prevent races with open/close (and itself) */
+        mutex_lock(&input_dev->mutex);
+
+        if( interval >= poll_dev->poll_interval_min
+                &&
+                interval <= poll_dev->poll_interval_max)        {
+
+                //we should change the rate both of the hardware and the poll dev
+                poll_dev->poll_interval = interval;
+                tj2->last_poll_interval = interval;
+                kxtj2_update_odr(tj2, interval);
+        }
+
+        mutex_unlock(&input_dev->mutex);
+
+        return count;
+}
+
+static ssize_t kxtj2_enable_show(struct device *dev,
+                                struct device_attribute *attr, char *buf)
+{
+        struct i2c_client *client = to_i2c_client(dev);
+        struct kxtj2_data *tj2 = i2c_get_clientdata(client);
+        printk("alp : kxtj2_enable_show (%d)\n",atomic_read(&tj2->enable));
+        return sprintf(buf, "%d\n", atomic_read(&tj2->enable));
+}
+
+static ssize_t kxtj2_enable_store(struct device *dev,
+                                        struct device_attribute *attr,
+                                                const char *buf, size_t count)
+{
+        struct i2c_client *client = to_i2c_client(dev);
+        struct kxtj2_data *tj2 = i2c_get_clientdata(client);
+        int val = simple_strtoul(buf, NULL, 10);
+        switch(val){
+                case 0:
+                        //if tj2->enable !=  0, then, tj2->enable -= 1
+                        atomic_add_unless(&tj2->enable, -1, 0);
+
+                        if( atomic_read(&tj2->enable) == 0 )
+                                kxtj2_disable(tj2);
+                        break;
+                case 1:
+                        if( atomic_inc_return(&tj2->enable) == 1 )
+                                kxtj2_enable(tj2);
+                        break;
+                default:
+                        break;
+        }
+        return count;
+}
+
+static ssize_t kxtj2_get_rawdata(struct device *dev, struct device_attribute *devattr, char *buf)
+{       
+        struct i2c_clinet * client = to_i2c_client(dev);
+        struct kxtj2_data * tj2 = i2c_get_clientdata(client);
+        int ret = 0;
+        
+        //printk("get_raw_data: begin read raw data\n");        
+        spin_lock(&tj2->axis_buf_lock);
+        ret = snprintf(buf, 4096/*PAGE_SIZE*/, "%4hx %4hx %4hx\n", tj2->axis_x_buf, tj2->axis_y_buf, tj2->axis_z_buf );
+        spin_unlock(&tj2->axis_buf_lock);
+                                        
+        //printk("kxtj2: buf is %s\n", buf);    
+        //printk("kxtj2: get_raw_data : x: 0x%x y: 0x%x z: 0x%x\n", tj2->axis_x_buf, tj2->axis_y_buf, tj2->axis_z_buf);
+        //printk("get_raw_data: end read raw data\n");  
+        return ret;
+}
+
+
 static DEVICE_ATTR(poll, S_IRUGO|S_IWUSR, kxtj2_get_poll, kxtj2_set_poll);
+static DEVICE_ATTR(delay, S_IRUGO|S_IWUSR, kxtj2_delay_show, kxtj2_delay_store);
+static DEVICE_ATTR(enable, S_IRGRP|S_IWGRP|S_IRUSR|S_IWUSR,kxtj2_enable_show,kxtj2_enable_store);
+static DEVICE_ATTR(rawdata, S_IRUGO, kxtj2_get_rawdata, NULL);
+
 
 static struct attribute *kxtj2_attributes[] = {
 	&dev_attr_poll.attr,
@@ -434,6 +546,12 @@ static struct attribute *kxtj2_attributes[] = {
 
 static struct attribute_group kxtj2_attribute_group = {
 	.attrs = kxtj2_attributes
+	#ifdef CONFIG_INPUT_KXTJ2_POLLED_MODE
+                &dev_attr_delay.attr,
+        #endif
+        &dev_attr_enable.attr,
+        &dev_attr_rawdata.attr,
+
 };
 
 
@@ -618,7 +736,19 @@ static int kxtj2_probe(struct i2c_client *client,
 		err = kxtj2_setup_polled_device(tj2);
 		if (err)
 			goto err_pdata_exit;
+
+		err = sysfs_create_group(&client->dev.kobj, &kxtj2_attribute_group);
+                if (err) {
+                        dev_err(&client->dev, "sysfs create failed: %d\n", err);
+                        goto err_destroy_polled_dev;
+
 	}
+
+	atomic_set(&tj2->enable, 0);
+        tj2->axis_x_buf = 0;
+        tj2->axis_y_buf = 0;
+        tj2->axis_z_buf = 0;
+        spin_lock_init(&tj2->axis_buf_lock);
 
 	return 0;
 
