@@ -96,7 +96,7 @@ struct kxtj2_data {
 	u8 data_ctrl;
 	u8 int_ctrl;
         
-        bool enable;
+        //bool enable;
 	atomic_t enable;
         s16 axis_x_buf;
         s16 axis_y_buf;
@@ -541,17 +541,16 @@ static DEVICE_ATTR(rawdata, S_IRUGO, kxtj2_get_rawdata, NULL);
 
 static struct attribute *kxtj2_attributes[] = {
 	&dev_attr_poll.attr,
-	NULL
-};
-
-static struct attribute_group kxtj2_attribute_group = {
-	.attrs = kxtj2_attributes
 	#ifdef CONFIG_INPUT_KXTJ2_POLLED_MODE
                 &dev_attr_delay.attr,
         #endif
         &dev_attr_enable.attr,
         &dev_attr_rawdata.attr,
+	NULL
+};
 
+static struct attribute_group kxtj2_attribute_group = {
+	.attrs = kxtj2_attributes
 };
 
 
@@ -742,6 +741,7 @@ static int kxtj2_probe(struct i2c_client *client,
                         dev_err(&client->dev, "sysfs create failed: %d\n", err);
                         goto err_destroy_polled_dev;
 
+		}
 	}
 
 	atomic_set(&tj2->enable, 0);
@@ -754,6 +754,10 @@ static int kxtj2_probe(struct i2c_client *client,
 
 err_free_irq:
 	free_irq(client->irq, tj2);
+err_destroy_polled_dev:
+        if( ! client->irq )
+                kxtj2_teardown_polled_device(tj2);
+
 err_destroy_input:
 	input_unregister_device(tj2->input_dev);
 err_pdata_exit:
