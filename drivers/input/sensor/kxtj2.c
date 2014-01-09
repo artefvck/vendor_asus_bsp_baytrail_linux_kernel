@@ -160,7 +160,6 @@ static void kxtj2_report_acceleration_data(struct kxtj2_data *tj2)
 	err = kxtj2_i2c_read(tj2, XOUT_L, (u8 *)acc_data, 6);
 	if (err < 0)
 		dev_err(&tj2->client->dev, "accelerometer data read failed\n");
-
 	x = le16_to_cpu(acc_data[tj2->pdata.axis_map_x]);
 	y = le16_to_cpu(acc_data[tj2->pdata.axis_map_y]);
 	z = le16_to_cpu(acc_data[tj2->pdata.axis_map_z]);
@@ -541,7 +540,7 @@ static DEVICE_ATTR(rawdata, S_IRUGO, kxtj2_get_rawdata, NULL);
 
 static struct attribute *kxtj2_attributes[] = {
 	&dev_attr_poll.attr,
-	#ifdef CONFIG_INPUT_KXTJ2_POLLED_MODE
+	#ifdef CONFIG_INPUT_SENSOR_KXTJ2_POLLED_MODE
                 &dev_attr_delay.attr,
         #endif
         &dev_attr_enable.attr,
