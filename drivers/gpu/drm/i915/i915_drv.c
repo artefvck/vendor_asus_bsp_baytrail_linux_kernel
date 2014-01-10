@@ -111,10 +111,10 @@ MODULE_PARM_DESC(vbt_sdvo_panel_type,
 		"(-2=ignore, -1=auto [default], index in VBT BIOS table)");
 
 int i915_mipi_panel_id __read_mostly = 6;
-module_param_named(mipi_panel_id, i915_mipi_panel_id, int, 0600);
-MODULE_PARM_DESC(mipi_panel_id,
-		"MIPI Panel selection in case MIPI block is not present in VBT "
-		"(-1=auto [default], mipi panel id)");
+//module_param_named(mipi_panel_id, i915_mipi_panel_id, int, 0600);
+//MODULE_PARM_DESC(mipi_panel_id,
+//		"MIPI Panel selection in case MIPI block is not present in VBT "
+//		"(-1=auto [default], mipi panel id)");
 
 static bool i915_try_reset __read_mostly = true;
 module_param_named(reset, i915_try_reset, bool, 0600);

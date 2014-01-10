@@ -69,7 +69,8 @@ bool m176_init(struct intel_dsi_device *dsi)
 	intel_dsi->hs = 1;
 	intel_dsi->channel = 0;
 	intel_dsi->lane_count = 4;
-	intel_dsi->eot_disable = 1;
+//	intel_dsi->eot_disable = 1;
+	intel_dsi->eotp_pkt = 0;
 	//intel_dsi->dsi_clock_freq = 513;
 	intel_dsi->video_mode_type = DSI_VIDEO_NBURST_SEVENT;
 	intel_dsi->pixel_format = VID_MODE_FORMAT_RGB888;
@@ -127,100 +128,48 @@ bool m176_mode_fixup(struct intel_dsi_device *dsi,
 }
 void  m176_disable_panel_power(struct intel_dsi_device *dsi)
 {
-	/*
-		int err;
+
+
 	printk("----pbtest----m176_disable_panel_power----\n");
 
-    //msleep(200);
-	lnw_gpio_set_alt(69,0);
-	err = gpio_request(69, "sd_pwr_en");
-				if (err){
-					printk("----pbtest----m176_panel_reset----10000----\n");
 
-				}
-		//reset_inno = gpio_request(69, "reset_inno_pin");		//pbtest
-		gpio_direction_output(69, 0);
     intel_mid_pmic_setb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 pbtest ??
 //    intel_mid_pmic_writeb(0x51,0);//BACKLIGHT_EN
     intel_mid_pmic_writeb(0x52,0);//PANEL_EN
 
     msleep(500);
-*/
+
 }
 void m176_panel_reset(struct intel_dsi_device *dsi)
 {
-/*
+
 //	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 //	struct drm_device *dev = intel_dsi->base.base.dev;
 //	struct drm_i915_private *dev_priv = dev->dev_private;
-//	int reset_inno
-//	int err;
+
+	int err;
 	printk("----pbtest----m176_panel_reset----\n");
-//    intel_mid_pmic_setb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 pbtest ??
-//    intel_mid_pmic_writeb(0x51,0);//BACKLIGHT_EN
-  //  intel_mid_pmic_writeb(0x52,0);//PANEL_EN
-	//lnw_gpio_set_alt(69,0);
-//err = gpio_request(69, "sd_pwr_en");
-	//		if (err){
-		//		printk("----pbtest----m176_panel_reset----10000----\n");
 
-			//}
-	//reset_inno = gpio_request(69, "reset_inno_pin");		//pbtest
-	//gpio_direction_output(69, 0);
-	//msleep(40);
-	intel_mid_pmic_setb(0x3C,0x25);
-	  intel_mid_pmic_writeb(0x52,1);//PANEL_EN
-//	vlv_gpio_nc_write(dev_priv, 0x4100, 0x2000CD00);
-//	vlv_gpio_nc_write(dev_priv, 0x4108, 0x00000005);
-//	usleep_range(2000, 2500);
-//	vlv_gpio_nc_write(dev_priv, 0x4108, 0x00000004);
-//	usleep_range(2000, 2500);
-//	vlv_gpio_nc_write(dev_priv, 0x4108, 0x00000005);
-	msleep(40);
+   err = gpio_request(69, "sd_pwr_en");
+			if (err){
+				DRM_DEBUG_KMS("----pbtest----m176_panel_reset----10000----\n");
+	}
 
-//	  intel_mid_pmic_setb(0x3C,0x25);//GPIOxxxCTLO GPIO1P1 pbtest ??
-//    intel_mid_pmic_writeb(0x51,1);//BACKLIGHT_EN
-//    intel_mid_pmic_writeb(0x52,1);//PANEL_EN
+		gpio_direction_output(69, 1);
+		usleep_range(10000,15000);
+		gpio_set_value(69, 0);
+		usleep_range(10000,15000);
+		gpio_set_value(69, 1);
 
+    msleep(300);
 
-
-
-//#if 0
-//	reset_inno = acpi_get_gpio("\\_SB.GPO0", 69);
-//#else
-	//lnw_gpio_set_alt(69,0);
-//	err = gpio_request(69, "sd_pwr_en");
-			//if (err){
-			//	printk("----pbtest----m176_panel_reset----10000----\n");
-
-		//	}
-	//reset_inno = gpio_request(69, "reset_inno_pin");		//pbtest
-	//gpio_direction_output(69, 0);
-
-//#endif
-
-//	if(reset_inno < 0)
-//	{
-		printk("----pbtest----m176_panel_reset----1----\n");
-
-//	}
-//	else
-//	{
-		//gpio_direction_output(69, 1);
-		//usleep_range(10000,15000);
-		//gpio_set_value(69, 0);
-		//usleep_range(10000,15000);
-		//gpio_set_value(69, 1);
-//	}
-   // msleep(300);
-*/
 }
 
 
 
 void m176_send_otp_cmds(struct intel_dsi_device *dsi)
 {
-/* sdafasdfasdfasd
+
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 //	struct drm_device *dev = intel_dsi->base.base.dev;
@@ -232,7 +181,7 @@ void m176_send_otp_cmds(struct intel_dsi_device *dsi)
 	printk("----pbtest----m176_send_otp_cmds----\n");
 	//add reset function
 	msleep(40);			//pbtest t4
-	lnw_gpio_set_alt(69,0);
+
 	err = gpio_request(69, "sd_pwr_en1");
 			if (err){
 				printk("----pbtest----m176_panel_reset----10000----\n");
@@ -244,34 +193,8 @@ void m176_send_otp_cmds(struct intel_dsi_device *dsi)
 	usleep_range(10000,15000);
 	gpio_set_value(69, 1);
 	msleep(20);
-//#if 0
-//	reset_inno = acpi_get_gpio("\\_SB.GPO0", 69);
-//#else
-//	reset_inno = gpio_request(69, "reset_inno_pin");		//pbtest
-//#endif
-//	if(reset_inno < 0)
-//	{
-//		printk("----pbtest----m176_send_otp_cmds----1----\n");
-//
-//	}
-//	else
-//	{
-//		gpio_direction_output(reset_inno, 1);
-//		usleep_range(3500,4500);
-//		gpio_set_value(reset_inno, 0);
-//		usleep_range(3500,4500);
-//		gpio_set_value(reset_inno, 1);
-//	}
 
-//	vlv_gpio_nc_write(dev_priv, 0x4100, 0x2000CD00);
-//	vlv_gpio_nc_write(dev_priv, 0x4108, 0x00000005);
-//	usleep_range(2000, 2500);
-//	vlv_gpio_nc_write(dev_priv, 0x4108, 0x00000004);
-//	usleep_range(2000, 2500);
-//	vlv_gpio_nc_write(dev_priv, 0x4108, 0x00000005);
-//	msleep(20);
-
-	printk("----pbtest----m176_send_otp_cmds----2----\n");
+	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmds----2----\n");
 	intel_dsi->hs = 0 ;
 	msleep(30);		//pbtest t5>20
 
@@ -280,52 +203,41 @@ void m176_send_otp_cmds(struct intel_dsi_device *dsi)
 		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
 	}
 	//========== Internal setting ==========
-	printk("----pbtest----m176_send_otp_cmdstttt----\n");
-	usleep_range(1500,2500);
+	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmdstttt----\n");
+
 	{
 		unsigned char data[] = {0x6F, 0x11, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
-	usleep_range(1500,2500);
+
 	{
 		unsigned char data[] = {0xF7, 0x20, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
 
 
-	printk("----pbtest----m176_send_otp_cmdstttt--2--\n");
-	{
-	unsigned char data[] = {0x6f, 0x06};
-			dsi_vc_dcs_write(intel_dsi, 0, data, 2);
-	}//dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x06);
-	usleep_range(15000,25000);
-	{
-	unsigned char data[] = {0xF7, 0xa0};
-			dsi_vc_dcs_write(intel_dsi, 0, data, 2);
-	}//dsi_vc_dcs_write_1(intel_dsi, 0, 0xF7, 0xA0);
-	usleep_range(15000,25000);
-	{
-	unsigned char data[] = {0x6f, 0x19};
-				dsi_vc_dcs_write(intel_dsi, 0, data, 2);
-	}//dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x19);
-	usleep_range(15000,25000);
+	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmdstttt--2--\n");
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x06);
+
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0xF7, 0xA0);
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x19);
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xF7, 0x12);
-	usleep_range(15000,25000);
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x08);
-	usleep_range(15000,25000);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xFA, 0x40);
-	usleep_range(15000,25000);
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x11);
-	usleep_range(15000,25000);
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xF3, 0x01);
-	usleep_range(15000,25000);
+
 	//========== page0 relative ==========
-	printk("----pbtest----m176_send_otp_cmdstttt--3--\n");
+	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmdstttt--3--\n");
 	{
 		unsigned char data[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	printk("----pbtest----m176_send_otp_cmdstttt--4--\n");
+	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmdstttt--4--\n");
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC8, 0x80);
 	{
 		unsigned char data[] = {0xB1, 0x68, 0x01};
@@ -785,36 +697,36 @@ void m176_send_otp_cmds(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE7, 0x02);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE9, 0x02);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xED, 0x33);
-	printk("----pbtest----m176_send_otp_cmdstttt--5--\n");
+	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmdstttt--5--\n");
 	msleep(120);
 	//dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);			//pbtest ??
 	//msleep(120);
 	//dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);			//pbtest ??
 
-*/
+
 }
 
 void m176_enable(struct intel_dsi_device *dsi)
 {
-	//struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	DRM_DEBUG_KMS("\n");
 
-	//dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);
-	//msleep(120);
-	//dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);
+	msleep(120);
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);
 }
 
 void m176_disable(struct intel_dsi_device *dsi)
 {
-	//struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	DRM_DEBUG_KMS("\n");
 
-//	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);
-//	msleep(20);
-	//dsi_vc_dcs_write_0(intel_dsi, 0, 0x10);
-	//msleep(80);
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);
+	msleep(20);
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x10);
+	msleep(80);
 }
 
 enum drm_connector_status m176_detect(struct intel_dsi_device *dsi)

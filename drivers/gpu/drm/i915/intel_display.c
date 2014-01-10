@@ -2156,7 +2156,7 @@ int i915_set_plane_180_rotation(struct drm_device *dev, void *data,
 		}
 
 		crtc = obj_to_crtc(obj);
-		DRM_DEBUG_DRIVER("[CRTC:%d]\n", crtc->base.id);
+//		DRM_DEBUG_DRIVER("[CRTC:%d]\n", crtc->base.id);
 		intel_crtc = to_intel_crtc(crtc);
 		intel_crtc->rotate180 = (rotation->rotate & 0x1) ?
 							true : false;
@@ -3947,8 +3947,8 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 
 	WARN_ON(!crtc->enabled);
 
-	//if (intel_crtc->active)	//pbtest
-	//	return;
+	if (intel_crtc->active)	//pbtest
+		return;
 
 	intel_crtc->active = true;
 	if (dev_priv->s0ixstat == true)
@@ -3964,10 +3964,22 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 	if (!is_dsi)
 		vlv_enable_pll(intel_crtc);
 
-	for_each_encoder_on_crtc(dev, crtc, encoder)
-		if (encoder->pre_enable)
-			encoder->pre_enable(encoder);
+//	for_each_encoder_on_crtc(dev, crtc, encoder)
+//		if (encoder->pre_enable)
+//			encoder->pre_enable(encoder);
 
+
+	for_each_encoder_on_crtc(dev, crtc, encoder) {
+		if (encoder->type != INTEL_OUTPUT_DSI) {
+			if (encoder->pre_enable)
+				encoder->pre_enable(encoder);
+			else
+				DRM_DEBUG_DRIVER("intel_dsi_pre_enable was done during mode_set\n");
+		} else {
+			/* For DSI recommended to enable PORT before plane and pipe */
+			encoder->enable(encoder);
+		}
+	}
 	i9xx_pfit_enable(intel_crtc);
 
 	intel_crtc_load_lut(crtc);
@@ -3979,8 +3991,13 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 
 	intel_update_fbc(dev);
 
-	for_each_encoder_on_crtc(dev, crtc, encoder)
-		encoder->enable(encoder);
+//	for_each_encoder_on_crtc(dev, crtc, encoder)
+//		encoder->enable(encoder);
+	for_each_encoder_on_crtc(dev, crtc, encoder) {
+		if (encoder->type != INTEL_OUTPUT_DSI)
+			/* For DSI already enabled above */
+			encoder->enable(encoder);
+	}
 }
 
 static void i9xx_crtc_enable(struct drm_crtc *crtc)
@@ -4091,14 +4108,7 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 
 	if (!intel_pipe_has_type(crtc, INTEL_OUTPUT_DSI))
 		i9xx_disable_pll(dev_priv, pipe);
-	else {
-		for_each_encoder_on_crtc(dev, crtc, encoder) {
-			if (encoder->type == INTEL_OUTPUT_DSI) {
-				intel_dsi_clear_device_ready(encoder);
-				break;
-			}
-		}
-	}
+
 
 	intel_crtc->active = false;
 	if (dev_priv->s0ixstat == true)
@@ -6996,6 +7006,8 @@ static int intel_crtc_mode_set(struct drm_crtc *crtc,
 			encoder->base.base.id,
 			drm_get_encoder_name(&encoder->base),
 			mode->base.id, mode->name);
+		if (encoder->type == INTEL_OUTPUT_DSI)
+			encoder->pre_enable(encoder);
 		encoder->mode_set(encoder);
 	}
 
