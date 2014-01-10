@@ -209,6 +209,19 @@ static int gc0339_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 			printk("<<< camera_reset = 0\n");
 			msleep(10);
 		}
+/*
+		if (camera_reset >= 0){
+			gpio_free(camera_reset);
+			camera_reset = -1;
+			mdelay(1);
+		}
+		
+		if (camera_power_down >= 0){
+			gpio_free(camera_power_down);
+			camera_power_down = -1;
+			mdelay(1);
+		}
+*/
 	}
 
 	gc0339_i2c_gpio_set_alt(flag);

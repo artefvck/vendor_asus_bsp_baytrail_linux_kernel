@@ -28,6 +28,8 @@
 #include "platform_camera.h"
 #include "platform_hm2056.h"
 
+extern int PCBVersion;
+
 static int camera_I2C_3_SCL;
 static int camera_I2C_3_SDA;
 
@@ -105,11 +107,14 @@ static int hm2056_gpio_init()
 {
 	int ret = 0;
 	if (camera_reset < 0) {
-		#if CAMERA_1_IS_HM2056
+		printk("<<< hm2056_gpio_init PCBVersion = %d\n",PCBVersion);
+		if(PCBVersion==1){
+			printk("<<< hm2056_gpio_init CAMERA_1_RESET\n");
 			ret = camera_sensor_gpio(CAMERA_1_RESET, NULL, GPIOF_DIR_OUT, 0);
-		#else
+		}else{
+			printk("<<< hm2056_gpio_init CAMERA_0_RESET\n");
         	ret = camera_sensor_gpio(CAMERA_0_RESET, NULL, GPIOF_DIR_OUT, 0);
-		#endif
+		}
         if (ret < 0){
             printk("camera_reset not available.\n");
             return ret;
@@ -119,11 +124,11 @@ static int hm2056_gpio_init()
     printk("<< camera_reset:%d \n", camera_reset);
 
     if (camera_power_down < 0) {
-		#if CAMERA_1_IS_HM2056
+		if(PCBVersion==1){
 			ret = camera_sensor_gpio(CAMERA_1_PWDN, NULL, GPIOF_DIR_OUT, 0);
-		#else
+		}else{
 			ret = camera_sensor_gpio(CAMERA_0_PWDN, NULL, GPIOF_DIR_OUT, 0);
-		#endif
+		}
         if (ret < 0){
             printk("camera_power_down not available.\n");
             return ret;
@@ -165,6 +170,19 @@ static int hm2056_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 			gpio_set_value(camera_reset, 0);
 	        printk("<<< camera_reset = 0\n");
 		}
+/*
+		if (camera_reset >= 0){
+			gpio_free(camera_reset);
+			camera_reset = -1;
+			mdelay(1);
+		}
+		
+		if (camera_power_down >= 0){
+			gpio_free(camera_power_down);
+			camera_power_down = -1;
+			mdelay(1);
+		}
+*/
     }
     mdelay(1);
 	hm2056_i2c_gpio_set_alt(flag);
@@ -180,26 +198,26 @@ static int hm2056_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 	if(flag)
 	{
 		int ret;
-		#if CAMERA_1_IS_HM2056
+		if(PCBVersion==1){
 			ret = vlv2_plat_set_clock_freq(OSC_CAM1_CLK,CLK_19P2MHz);
-		#else
+		}else{
 			ret = vlv2_plat_set_clock_freq(OSC_CAM0_CLK,CLK_19P2MHz);
-		#endif
+		}
 		if(ret){
 			return ret;
 		}
 	}
-	#if CAMERA_1_IS_HM2056
+	if(PCBVersion==1){
 		return vlv2_plat_configure_clock(OSC_CAM1_CLK,flag);
-	#else
+	}else{
 		return vlv2_plat_configure_clock(OSC_CAM0_CLK,flag);
-	#endif
+	}
 #elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
-	#if CAMERA_1_IS_HM2056
+	if(PCBVersion==1){
 		return intel_scu_ipc_osc_clk(OSC_CLK_CAM1, flag ? clock_khz : 0);
-	#else
+	}else{
 		return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag ? clock_khz : 0);
-	#endif
+	}
 #else
 	pr_err("hm2056 clock is not set.\n");
 	return 0;
@@ -260,13 +278,13 @@ static int hm2056_power_ctrl(struct v4l2_subdev *sd, int flag)
 static int hm2056_csi_configure(struct v4l2_subdev *sd, int flag)
 {
     static const int LANES = 1;
-#if CAMERA_1_IS_HM2056
-	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_SECONDARY, LANES,
-			ATOMISP_INPUT_FORMAT_RAW_8, atomisp_bayer_order_grbg, flag);
-#else
-    return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_PRIMARY, LANES,
-            ATOMISP_INPUT_FORMAT_RAW_8, atomisp_bayer_order_grbg, flag);
-#endif
+	if(PCBVersion==1){
+		return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_SECONDARY, LANES,
+				ATOMISP_INPUT_FORMAT_RAW_8, atomisp_bayer_order_grbg, flag);
+	}else{
+    	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_PRIMARY, LANES,
+    	        ATOMISP_INPUT_FORMAT_RAW_8, atomisp_bayer_order_grbg, flag);
+	}
 }
 
 static int hm2056_platform_init(struct i2c_client *client)

@@ -43,8 +43,7 @@ extern const struct intel_v4l2_subdev_id v4l2_ids[] __attribute__((weak));
 #define CAMERA_0_PWDN    (VV_NGPIO_SCORE + 21)	//5M_CAM1_PWRDWN    GPIONC_21
 #define CAMERA_1_PWDN    (VV_NGPIO_SCORE + 22)	//2M_CAM2_PWRDWN    GPIONC_22
 //Asus LewLiu 2013 1218 0920-
-#define CAMERA_0_IS_AR0543	1
-#define CAMERA_1_IS_HM2056	1
+
 
 extern int camera_sensor_gpio(int gpio, char *name, int dir, int value);
 extern int camera_sensor_csi(struct v4l2_subdev *sd, u32 port,
