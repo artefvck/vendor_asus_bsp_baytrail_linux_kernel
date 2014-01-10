@@ -438,6 +438,7 @@ static ssize_t kxtj2_set_poll(struct device *dev, struct device_attribute *attr,
 }
 
 //=======================================================================
+#ifdef CONFIG_INPUT_SENSOR_KXTJ2_POLLED_MODE
 static ssize_t kxtj2_delay_show(struct device *dev,
                                 struct device_attribute *attr, char *buf)
 {
@@ -479,6 +480,7 @@ static ssize_t kxtj2_delay_store(struct device *dev, struct device_attribute *at
 
         return count;
 }
+#endif
 
 static ssize_t kxtj2_enable_show(struct device *dev,
                                 struct device_attribute *attr, char *buf)
