@@ -560,8 +560,8 @@ static int byt_init(struct snd_soc_pcm_runtime *runtime)
 		/* The mic bias resistor in BYT FFRD8 PR1 is reduced from
 		2.1K to 1.5K. Therefore the correct over current threshold
 		for this bias resistance is 1500uA. */
-		rt5640_config_ovcd_thld(codec, RT5640_MIC1_OVTH_1500UA,
-					RT5640_MIC_OVCD_SF_1P0);
+		rt5640_config_ovcd_thld(codec, RT5640_MIC1_OVTH_600UA,
+					RT5640_MIC_OVCD_SF_1P5);
 	else
 		/* Threshold base = 2000uA; scale factor = 0.5 =>
 		effective threshold of 1000uA */
