@@ -163,6 +163,18 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		gpio_set_value(camera_reset, 0);
 		msleep(2);
         //gpio_set_value(camera_vcm_power_down, 0);
+
+		if (camera_reset >= 0){
+			gpio_free(camera_reset);
+			camera_reset = -1;
+			mdelay(1);
+		}
+		
+		if (camera_power_down >= 0){
+			gpio_free(camera_power_down);
+			camera_power_down = -1;
+			mdelay(1);
+		}
     }
 		
 	ar0543_i2c_gpio_set_alt(flag);

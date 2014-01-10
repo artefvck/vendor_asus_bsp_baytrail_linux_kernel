@@ -35,12 +35,8 @@
  */
 const struct intel_v4l2_subdev_id v4l2_ids[] = {
 	{"ar0543", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-#if CAMERA_0_IS_AR0543
-	{"hm2056", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
-#else
-	{"hm2056", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-#endif
 	{"gc0339", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"hm2056", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"lm3554", LED_FLASH, -1},
 	{"lm3559", LED_FLASH, -1},
 	{},
@@ -57,55 +53,40 @@ static struct byt_device_table byt_ffrd10_cam_table[] = {
 };
 
 static struct byt_device_table byt_ffrd8_cam_table[] = {
-	/*
-	{
-		{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx134"},
-		{"imx134", SFI_DEV_TYPE_I2C, 0, &imx134_platform_data,
-			&intel_register_i2c_camera_device}
-	}, {
-		{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
-		{"ov2722", SFI_DEV_TYPE_I2C, 0, &ov2722_platform_data,
-			&intel_register_i2c_camera_device}
-	}, {
-		{SFI_DEV_TYPE_I2C, 3, 0x53, 0x0, 0x0, "lm3554"},
-		{"lm3554", SFI_DEV_TYPE_I2C, 0, &lm3554_platform_data_func,
-			&intel_register_i2c_camera_device}
-	}, 
-	*/
-
-#if CAMERA_0_IS_AR0543
-	{
+	{								//note: AR0543 must be the first one.
 		{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ar0543"},		//<ASUS-Lew131219>
 		{"ar0543",SFI_DEV_TYPE_I2C, 0, &ar0543_platform_data,	//slave address 0x36??
 			&intel_register_i2c_camera_device}
 	},
-	#if CAMERA_1_IS_HM2056
-		{
-			{SFI_DEV_TYPE_I2C, 4, 0x24, 0x0, 0x0, "hm2056"},		//<ASUS-Oscar131209>
-			{"hm2056", SFI_DEV_TYPE_I2C, 0, &hm2056_platform_data,
-				&intel_register_i2c_camera_device}
-		}, 
-	#else
-		{
-			{SFI_DEV_TYPE_I2C, 4, 0x21, 0x0, 0x0, "gc0339"},		//<ASUS-Oscar131209>
-			{"gc0339", SFI_DEV_TYPE_I2C, 0, &gc0339_platform_data,
-				&intel_register_i2c_camera_device}
-		},
-	#endif
-#else
-	{
-		{SFI_DEV_TYPE_I2C, 4, 0x24, 0x0, 0x0, "hm2056"},		//<ASUS-Oscar131209>
-		{"hm2056", SFI_DEV_TYPE_I2C, 0, &hm2056_platform_data,
-			&intel_register_i2c_camera_device}
-	}, 
-	{
+
+	{								//note: AR0543 must be the second one.
 		{SFI_DEV_TYPE_I2C, 4, 0x21, 0x0, 0x0, "gc0339"},		//<ASUS-Oscar131209>
 		{"gc0339", SFI_DEV_TYPE_I2C, 0, &gc0339_platform_data,
 			&intel_register_i2c_camera_device}
 	},
-#endif
 
+	{
+		{SFI_DEV_TYPE_I2C, 4, 0x24, 0x0, 0x0, "hm2056"},		//<ASUS-Oscar131209>
+		{"hm2056", SFI_DEV_TYPE_I2C, 0, &hm2056_platform_data,
+			&intel_register_i2c_camera_device}
+	}
 };
+
+int	PCBVersion = -1;
+
+void SetPCBVersion(int version){
+	PCBVersion = version;
+}
+EXPORT_SYMBOL(SetPCBVersion);
+
+void GetPCBVersion(int *version){
+	*version = PCBVersion;
+}
+
+//int GetPCBVersion(){
+//	return PCBVersion;
+//}
+EXPORT_SYMBOL(GetPCBVersion);
 
 /*
  * One-time gpio initialization.
