@@ -349,119 +349,31 @@ static void intel_write_infoframe(struct drm_encoder *encoder,
 	intel_hdmi->write_infoframe(encoder, frame->any.type, buffer, len);
 }
 
-void intel_dip_infoframe_csum(struct dip_infoframe *frame)
-
-{
-
-	uint8_t *data = (uint8_t *)frame;
-	uint8_t sum = 0;
-	unsigned i;
-
-	frame->checksum = 0;
-	frame->ecc = 0;
-
-	for (i = 0; i < frame->len + DIP_HEADER_SIZE; i++)
-		sum += data[i];
-
-	frame->checksum = 0x100 - sum;
-
-}
-
-static void intel_set_infoframe(struct drm_encoder *encoder,
-					struct dip_infoframe *frame) {
-
-	unsigned len = (DIP_HEADER_SIZE + frame->len);
-	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(encoder);
-	intel_dip_infoframe_csum(frame);
-	intel_hdmi->write_infoframe(encoder, frame->type, (const uint8_t *) frame, len);
-
-}
-
 static void intel_hdmi_set_avi_infoframe(struct drm_encoder *encoder,
 					 struct drm_display_mode *adjusted_mode)
 {
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(encoder);
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
+	union hdmi_infoframe frame;
+	int ret;
 
-	enum hdmi_picture_aspect PAR;
-
-	struct dip_infoframe avi_if = {
-		.type = DIP_TYPE_AVI,
-		.ver = DIP_VERSION_AVI,
-		.len = DIP_LEN_AVI,
-		.body.avi.Y_A_B_S = 0,
-		.body.avi.C_M_R = 8,
-		.body.avi.ITC_EC_Q_SC = 0,
-		.body.avi.VIC = 0,
-		.body.avi.YQ_CN_PR = 0,
-		.body.avi.top_bar_end = 0,
-		.body.avi.bottom_bar_start = 0,
-		.body.avi.left_bar_end = 0,
-		.body.avi.right_bar_start = 0,
-	};
-
-	/* Bar information */
-	avi_if.body.avi.Y_A_B_S |= DIP_AVI_BAR_BOTH;
-
-	avi_if.body.avi.VIC = drm_match_cea_mode(adjusted_mode);
-
-	if (adjusted_mode->flags & DRM_MODE_FLAG_DBLCLK)
-		avi_if.body.avi.YQ_CN_PR |= DIP_AVI_PR_2;
+	ret = drm_hdmi_avi_infoframe_from_display_mode(&frame.avi,
+						       adjusted_mode);
+	if (ret < 0) {
+		DRM_ERROR("couldn't fill AVI infoframe\n");
+		return;
+	}
 
 	if (intel_hdmi->rgb_quant_range_selectable) {
 		if (intel_crtc->config.limited_color_range)
-			avi_if.body.avi.ITC_EC_Q_SC |= DIP_AVI_RGB_QUANT_RANGE_LIMITED;
+			frame.avi.quantization_range =
+				HDMI_QUANTIZATION_RANGE_LIMITED;
 		else
-			avi_if.body.avi.ITC_EC_Q_SC |= DIP_AVI_RGB_QUANT_RANGE_FULL;
-	} else {
-		/* Set full range quantization for non-CEA modes
-		and 640x480 */
-		if ((avi_if.body.avi.VIC == 0) || (avi_if.body.avi.VIC == 1))
-			avi_if.body.avi.ITC_EC_Q_SC |=
-				DIP_AVI_RGB_QUANT_RANGE_FULL;
-		else
-			avi_if.body.avi.ITC_EC_Q_SC |=
-				DIP_AVI_RGB_QUANT_RANGE_LIMITED;
+			frame.avi.quantization_range =
+				HDMI_QUANTIZATION_RANGE_FULL;
 	}
 
-	/*If picture aspect ratio (PAR) is set to custom value, then use that,
-	else if VIC > 1, then get PAR from CEA mode list, else, calculate
-	PAR based on resolution */
-	if (adjusted_mode->picture_aspect_ratio == HDMI_PICTURE_ASPECT_4_3 ||
-	adjusted_mode->picture_aspect_ratio == HDMI_PICTURE_ASPECT_16_9) {
-		avi_if.body.avi.C_M_R |=
-			adjusted_mode->picture_aspect_ratio << 4;
-		/*PAR is bit 5:4 of data byte 2 of AVI infoframe */
-	} else if (avi_if.body.avi.VIC) {
-		PAR = drm_get_cea_aspect_ratio(avi_if.body.avi.VIC);
-		avi_if.body.avi.C_M_R |= PAR << 4;
-	} else {
-		if (!(adjusted_mode->vdisplay % 3) &&
-			((adjusted_mode->vdisplay * 4 / 3) ==
-			adjusted_mode->hdisplay))
-			avi_if.body.avi.C_M_R |= HDMI_PICTURE_ASPECT_4_3 << 4;
-		else if (!(adjusted_mode->vdisplay % 9) &&
-			((adjusted_mode->vdisplay * 16 / 9) ==
-			adjusted_mode->hdisplay))
-			avi_if.body.avi.C_M_R |= HDMI_PICTURE_ASPECT_16_9 << 4;
-	}
-
-	if (avi_if.body.avi.VIC) {
-		/* colorimetry: Sections 5.1 and 5.2 of CEA 861-D spec */
-		if ((adjusted_mode->vdisplay == 480) ||
-			(adjusted_mode->vdisplay == 576) ||
-			(adjusted_mode->vdisplay == 240) ||
-			(adjusted_mode->vdisplay == 288)) {
-			avi_if.body.avi.C_M_R |= DIP_AVI_COLOR_ITU601;
-		} else if ((adjusted_mode->vdisplay == 720) ||
-			(adjusted_mode->vdisplay == 1080)) {
-			avi_if.body.avi.C_M_R |= DIP_AVI_COLOR_ITU709;
-		}
-	}
-
-	avi_if.body.avi.ITC_EC_Q_SC |= DIP_AVI_IT_CONTENT;
-	intel_set_infoframe(encoder, &avi_if);
-
+	intel_write_infoframe(encoder, &frame);
 }
 
 static void intel_hdmi_set_spd_infoframe(struct drm_encoder *encoder)
@@ -1006,48 +918,6 @@ bool intel_hdmi_compute_config(struct intel_encoder *encoder,
 	return true;
 }
 
-static int hdmi_live_status(struct drm_device *dev,
-			struct intel_hdmi *intel_hdmi)
-{
-	uint32_t bit;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_digital_port *intel_dig_port =
-					hdmi_to_dig_port(intel_hdmi);
-
-	DRM_DEBUG_KMS("Reading Live status");
-	switch (intel_dig_port->port) {
-	case PORT_B:
-		bit = HDMIB_HOTPLUG_LIVE_STATUS;
-		break;
-	case PORT_C:
-		bit = HDMIC_HOTPLUG_LIVE_STATUS;
-		break;
-	case PORT_D:
-		bit = HDMID_HOTPLUG_LIVE_STATUS;
-		break;
-	default:
-		bit = 0;
-	}
-
-	/* Return results in trems of connector */
-	return ((I915_READ(PORT_HOTPLUG_STAT) & bit) ?
-		connector_status_connected : connector_status_disconnected);
-}
-
-void intel_hdmi_reset(struct drm_connector *connector)
-{
-	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
-	struct drm_i915_private *dev_priv = connector->dev->dev_private;
-
-	/* Clean previous detects and modes */
-	dev_priv->is_hdmi = false;
-	intel_hdmi->edid_mode_count = 0;
-	intel_cleanup_modes(connector);
-	kfree(intel_hdmi->edid);
-	intel_hdmi->edid = NULL;
-	connector->status = connector_status_disconnected;
-}
-
 static enum drm_connector_status
 intel_hdmi_detect(struct drm_connector *connector, bool force)
 {
@@ -1060,32 +930,28 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 	struct edid *edid = NULL;
 	enum drm_connector_status status = connector_status_disconnected;
 
+	dev_priv->is_hdmi = false;
 	DRM_DEBUG_KMS("[CONNECTOR:%d:%s]\n",
 		      connector->base.id, drm_get_connector_name(connector));
 
-	/* If its force detection, dont read EDID again */
-	if (force && dev_priv->is_hdmi)
-		return connector->status;
-
-	/* Suppress spurious IRQ, if current status is same as live status*/
-	status = hdmi_live_status(dev, intel_hdmi);
-	if (connector->status == status)
-		return connector->status;
-
-	dev_priv->is_hdmi = false;
 	intel_hdmi->has_hdmi_sink = false;
 	intel_hdmi->has_audio = false;
 	intel_hdmi->rgb_quant_range_selectable = false;
+	/* Read live status, get EDID if connected */
+	/*
+	 * the belo patch removes g4x_hdmi_connected(), hence removing this func
+	 * commit 202adf4b9f5957b26a1cb97267d78e0edb319c5e
+	 * Author: Daniel Vetter <daniel.vetter@ffwll.ch>
+	 * Date:   Fri Feb 22 00:53:04 2013 +0100
+	 */
 
-	/* Read EDID only if live status permits */
-	if (status == connector_status_connected) {
-		edid = drm_get_edid(connector,
+	edid = drm_get_edid(connector,
 			intel_gmbus_get_adapter(dev_priv,
 					intel_hdmi->ddc_bus));
-	}
 
 	if (edid) {
 		if (edid->input & DRM_EDID_INPUT_DIGITAL) {
+			status = connector_status_connected;
 			dev_priv->is_hdmi = true;
 			if (intel_hdmi->force_audio != HDMI_AUDIO_OFF_DVI)
 				intel_hdmi->has_hdmi_sink =
@@ -1093,21 +959,8 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 			intel_hdmi->has_audio = drm_detect_monitor_audio(edid);
 			intel_hdmi->rgb_quant_range_selectable =
 				drm_rgb_quant_range_selectable(edid);
-
-			/* Free previously saved EDID and save new one
-			for read modes. kfree is NULL protected */
-			kfree(intel_hdmi->edid);
-			intel_hdmi->edid = edid;
-			connector->display_info.raw_edid = (char *)edid;
-		} else {
-			DRM_ERROR("\nEDID not in digital form ?");
-			return status;
 		}
-	} else {
-		/* HDMI is disconneted, so remove saved old EDID */
-		kfree(intel_hdmi->edid);
-		intel_hdmi->edid = NULL;
-		connector->display_info.raw_edid = NULL;
+		kfree(edid);
 	}
 
 /* Not needed.
@@ -1128,7 +981,6 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 		}
 	}
 #endif
-	/* Inform Audio */
 	if ((status == connector_status_connected)
 			&& (status != i915_hdmi_state)) {
 		/* Added for HDMI Audio */
@@ -1154,46 +1006,28 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 
 static int intel_hdmi_get_modes(struct drm_connector *connector)
 {
-	int count = 0;
-	struct drm_display_mode *mode = NULL;
 	struct intel_hdmi *intel_hdmi = intel_attached_hdmi(connector);
 	struct drm_i915_private *dev_priv = connector->dev->dev_private;
-	struct edid *edid = intel_hdmi->edid;
+	/* Added for HDMI Audio */
 	int ret;
 
-	/* No need to read modes if no connection */
-	if (connector->status != connector_status_connected)
-		return 0;
+	/* We should parse the EDID data and find out if it's an HDMI sink so
+	 * we can send audio to it.
+	 */
+	/* Added for HDMI Audio */
+#if 0
 
-	/* Need not to read modes again if previously read modes are
-	available and display is consistent */
-	if (dev_priv->is_hdmi) {
-		list_for_each_entry(mode, &connector->modes, head) {
-			if (mode) {
-				mode->status = MODE_OK;
-				count++;
-			}
-		}
-		/* If modes are available, no need to read again */
-		if (count)
-			return count;
-	}
-
-	/* EDID was saved in detect, re-use that if available, avoid
-	reading EDID everytime. If __unlikely(EDID not available), read now */
-	if (edid) {
-		drm_mode_connector_update_edid_property(connector, edid);
-		ret = drm_add_edid_modes(connector, edid);
-		drm_edid_to_eld(connector, edid);
-	} else {
-		ret = intel_ddc_get_modes(connector,
+	return intel_ddc_get_modes(connector,
+				   intel_gmbus_get_adapter(dev_priv,
+							   intel_hdmi->ddc_bus));
+#else
+	ret = intel_ddc_get_modes(connector,
 		intel_gmbus_get_adapter(dev_priv,
 			intel_hdmi->ddc_bus));
-	}
-
-	intel_hdmi->edid_mode_count = ret;
 	hdmi_get_eld(connector->eld);
+
 	return ret;
+#endif
 }
 
 static bool

@@ -104,85 +104,10 @@
 #define INTEL_DSI_COMMAND_MODE	0
 #define INTEL_DSI_VIDEO_MODE	1
 
-#define DIP_HEADER_SIZE 5
-
-#define DIP_TYPE_AVI    0x82
-#define DIP_VERSION_AVI 0x2
-#define DIP_LEN_AVI     13
-#define DIP_AVI_PR_1    0
-#define DIP_AVI_PR_2    1
-#define DIP_AVI_RGB_QUANT_RANGE_DEFAULT (0 << 2)
-#define DIP_AVI_RGB_QUANT_RANGE_LIMITED (1 << 2)
-#define DIP_AVI_RGB_QUANT_RANGE_FULL    (2 << 2)
-#define DIP_AVI_IT_CONTENT      (1 << 7)
-#define DIP_AVI_BAR_BOTH        (3 << 2)
-#define DIP_AVI_COLOR_ITU601    (1 << 6)
-#define DIP_AVI_COLOR_ITU709    (2 << 6)
-
-#define DIP_TYPE_SPD    0x83
-#define DIP_VERSION_SPD 0x1
-#define DIP_LEN_SPD     25
-#define DIP_SPD_UNKNOWN 0
-#define DIP_SPD_DSTB    0x1
-#define DIP_SPD_DVDP    0x2
-#define DIP_SPD_DVHS    0x3
-#define DIP_SPD_HDDVR   0x4
-#define DIP_SPD_DVC     0x5
-#define DIP_SPD_DSC     0x6
-#define DIP_SPD_VCD     0x7
-#define DIP_SPD_GAME    0x8
-#define DIP_SPD_PC      0x9
-#define DIP_SPD_BD      0xa
-#define DIP_SPD_SCD     0xb
-
-
 struct intel_framebuffer {
 	struct drm_framebuffer base;
 	struct drm_i915_gem_object *obj;
 };
-
-struct dip_infoframe {
-
-
-uint8_t type;		/* HB0 */
-uint8_t ver;            /* HB1 */
-uint8_t len;            /* HB2 - body len, not including checksum */
-uint8_t ecc;            /* Header ECC */
-uint8_t checksum;       /* PB0 */
-
-	union {
-		struct {
-			/* PB1 - Y 6:5, A 4:4, B 3:2, S 1:0 */
-			uint8_t Y_A_B_S;
-			/* PB2 - C 7:6, M 5:4, R 3:0 */
-			uint8_t C_M_R;
-			/* PB3 - ITC 7:7, EC 6:4, Q 3:2, SC 1:0 */
-			uint8_t ITC_EC_Q_SC;
-			/* PB4 - VIC 6:0 */
-			uint8_t VIC;
-			/* PB5 - YQ 7:6, CN 5:4, PR 3:0 */
-			uint8_t YQ_CN_PR;
-			/* PB6 to PB13 */
-			uint16_t top_bar_end;
-			uint16_t bottom_bar_start;
-			uint16_t left_bar_end;
-			uint16_t right_bar_start;
-		} __attribute__ ((packed)) avi;
-
-		struct {
-
-			uint8_t vn[8];
-			uint8_t pd[16];
-			uint8_t sdi;
-
-		} __attribute__ ((packed)) spd;
-
-	uint8_t payload[27];
-
-	} __attribute__ ((packed)) body;
-
-} __attribute__((packed));
-
 
 struct intel_fbdev {
 	struct drm_fb_helper helper;
@@ -442,8 +367,6 @@ struct intel_plane {
 	 * for the watermark calculations. Currently only Haswell uses this.
 	 */
 	struct intel_plane_wm_parameters wm;
-	/* Added for deffered plane disable*/
-	struct work_struct work;
 
 	void (*update_plane)(struct drm_plane *plane,
 			     struct drm_crtc *crtc,
@@ -499,11 +422,6 @@ struct cxsr_latency {
 #define to_intel_framebuffer(x) container_of(x, struct intel_framebuffer, base)
 #define to_intel_plane(x) container_of(x, struct intel_plane, base)
 
-/* HDMI bits are shared with the DP bits */
-#define   HDMIB_HOTPLUG_LIVE_STATUS             (1 << 29)
-#define   HDMIC_HOTPLUG_LIVE_STATUS             (1 << 28)
-#define   HDMID_HOTPLUG_LIVE_STATUS             (1 << 27)
-
 struct intel_hdmi {
 	u32 hdmi_reg;
 	int ddc_bus;
@@ -512,10 +430,8 @@ struct intel_hdmi {
 	bool has_hdmi_sink;
 	bool has_audio;
 	enum hdmi_force_audio force_audio;
-	enum panel_fitter pfit;
+	enum hdmi_panel_fitter pfit;
 	bool rgb_quant_range_selectable;
-	struct edid *edid;
-	uint32_t edid_mode_count;
 	void (*write_infoframe)(struct drm_encoder *encoder,
 				enum hdmi_infoframe_type type,
 				const uint8_t *frame, ssize_t len);
@@ -534,7 +450,6 @@ struct intel_dp {
 	uint8_t  link_configuration[DP_LINK_CONFIGURATION_SIZE];
 	bool has_audio;
 	enum hdmi_force_audio force_audio;
-	enum panel_fitter pfit;
 	uint32_t color_range;
 	bool color_range_auto;
 	uint8_t link_bw;
@@ -625,7 +540,6 @@ int intel_pch_rawclk(struct drm_device *dev);
 int intel_connector_update_modes(struct drm_connector *connector,
 				struct edid *edid);
 int intel_ddc_get_modes(struct drm_connector *c, struct i2c_adapter *adapter);
-void intel_cleanup_modes(struct drm_connector *connector);
 
 extern void intel_attach_force_audio_property(struct drm_connector *connector);
 extern void intel_attach_broadcast_rgb_property(struct drm_connector *connector);
@@ -867,8 +781,6 @@ extern bool vlv_rs_initialize(struct drm_device *dev);
 extern void vlv_rs_sleepstateinit(struct drm_device *dev,
 					bool   bdisable_rs);
 extern void vlv_rs_setstate(struct drm_device *dev, bool enable);
-extern void vlv_modify_rc6_promotion_timer(struct drm_i915_private *dev_priv,
-					    bool media_active);
 
 extern bool vlv_turbo_initialize(struct drm_device *dev);
 extern void vlv_turbo_disable(struct drm_device *dev);
@@ -960,7 +872,4 @@ bool is_sprite_enabled(struct drm_i915_private *dev_priv,
 bool is_cursor_enabled(struct drm_i915_private *dev_priv,
 			enum pipe pipe);
 bool is_maxfifo_needed(struct drm_i915_private *dev_priv);
-
-extern void intel_unpin_work_fn(struct work_struct *__work);
-extern void intel_unpin_sprite_work_fn(struct work_struct *__work);
 #endif /* __INTEL_DRV_H__ */

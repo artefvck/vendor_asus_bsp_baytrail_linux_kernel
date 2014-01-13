@@ -1473,13 +1473,6 @@ static void valleyview_update_wm(struct drm_device *dev)
 		      planeb_wm, cursorb_wm,
 		      plane_sr, cursor_sr);
 #endif
-	if (is_maxfifo_needed(dev_priv)) {
-		I915_WRITE(FW_BLC_SELF_VLV, FW_CSPWRDWNEN);
-	} else if (I915_READ(FW_BLC_SELF_VLV) & FW_CSPWRDWNEN &&
-	    !is_maxfifo_needed(dev_priv)) {
-		I915_WRITE(FW_BLC_SELF_VLV,
-			   I915_READ(FW_BLC_SELF_VLV) & ~FW_CSPWRDWNEN);
-	}
 
 	I915_WRITE(DSPFW1,
 		   (DSPFW_SR_VAL << DSPFW_SR_SHIFT) |
@@ -3137,14 +3130,6 @@ static void valleyview_update_sprite_wm(struct drm_plane *plane,
 	enable.cursor_enabled = false;
 	enable.sprite_enabled = enabled;
 
-	if (is_maxfifo_needed(dev_priv)) {
-		I915_WRITE(FW_BLC_SELF_VLV, FW_CSPWRDWNEN);
-	} else if (I915_READ(FW_BLC_SELF_VLV) & FW_CSPWRDWNEN &&
-	    !is_maxfifo_needed(dev_priv)) {
-		I915_WRITE(FW_BLC_SELF_VLV,
-			   I915_READ(FW_BLC_SELF_VLV) & ~FW_CSPWRDWNEN);
-	}
-
 	if (intel_plane->plane == 0) {
 		mask = 0x0000ff00;
 		shift = DDL_SPRITEA_SHIFT;
@@ -3551,14 +3536,17 @@ static void gen6_disable_rps(struct drm_device *dev)
 void valleyview_disable_rps(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	/* 1. Clear RC6 */
 	vlv_rs_setstate(dev, false);
 
-	/*Cancel any pending work-item*/
-	cancel_delayed_work_sync(&dev_priv->rps.vlv_media_timeout_work);
-
 	/* Disable Turbo */
 	vlv_turbo_disable(dev);
+
+	if (dev_priv->vlv_pctx) {
+		drm_gem_object_unreference(&dev_priv->vlv_pctx->base);
+		dev_priv->vlv_pctx = NULL;
+	}
 }
 
 int intel_enable_rc6(const struct drm_device *dev)
@@ -3937,10 +3925,6 @@ static void valleyview_setup_pctx(struct drm_device *dev)
 	unsigned long pctx_paddr;
 	u32 pcbr;
 	int pctx_size = 24*1024;
-
-	/* If PC Context is already there, then bail out*/
-	if (dev_priv->vlv_pctx)
-		return;
 
 	pcbr = I915_READ(VLV_PCBR);
 	/* PCBR Format: Bits 31:12 - Base address of Process Context
@@ -6280,9 +6264,23 @@ int vlv_freq_opcode(struct drm_i915_private *dev_priv, int val)
 	return opcode;
 }
 
+void program_pfi_credits(struct drm_i915_private *dev_priv)
+{
+	int cd_clk, cz_clk;
+
+	intel_get_cd_cz_clk(dev_priv, &cd_clk, &cz_clk);
+	if (cd_clk >= cz_clk)
+		I915_WRITE(GCI_CONTROL, 0x78000000);
+	else
+		DRM_ERROR("cd clk < cz clk");
+}
+
 void intel_pm_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	if (IS_VALLEYVIEW(dev))
+		program_pfi_credits(dev_priv);
 
 	INIT_DELAYED_WORK(&dev_priv->rps.delayed_resume_work,
 			  intel_gen6_powersave_work);
@@ -6417,25 +6415,6 @@ void vlv_rs_sleepstateinit(struct drm_device *dev,
 	return;
 }
 
-void vlv_modify_rc6_promotion_timer(struct drm_i915_private *dev_priv,
-				    bool media_active)
-{
-	/* Update RC6 promotion timers */
-	if (media_active)
-		I915_WRITE(VLV_RC6_RENDER_PROMOTION_TIMER_REG,
-				VLV_RC6_RENDER_PROMOTION_TIMER_TO_MEDIA);
-	else
-		I915_WRITE(VLV_RC6_RENDER_PROMOTION_TIMER_REG,
-				VLV_RC6_RENDER_PROMOTION_TIMER_TO);
-}
-
-static void vlv_media_timeout_work_func(struct work_struct *work)
-{
-	drm_i915_private_t *dev_priv = container_of(work, drm_i915_private_t,
-					    rps.vlv_media_timeout_work.work);
-
-	vlv_modify_rc6_promotion_timer(dev_priv, false);
-}
 
 bool vlv_rs_initialize(struct drm_device *dev)
 {
@@ -6462,12 +6441,6 @@ bool vlv_rs_initialize(struct drm_device *dev)
 	}
 
 	vlv_rs_setstate(dev, true);
-
-	/* Initialize a work item to modify RC6 promotion timer
-	 * based on MFX engine activity
-	 */
-	INIT_DELAYED_WORK(&dev_priv->rps.vlv_media_timeout_work,
-				vlv_media_timeout_work_func);
 
 	DRM_DEBUG_DRIVER("RC6 is enabled\n");
 

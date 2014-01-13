@@ -223,9 +223,13 @@ static void intel_dsi_enable(struct intel_encoder *encoder)
 		I915_WRITE(MIPI_MAX_RETURN_PKT_SIZE(pipe), 8 * 4);
 	}
 	else {
+		intel_dsi->hs = 0;
+		msleep(20); /* XXX */
 		dpi_send_cmd(intel_dsi, TURN_ON);
-		usleep_range(20000, 21000);
-
+//		msleep(100);
+		usleep_range(1000, 1500);
+		if (intel_dsi->dev.dev_ops->enable)
+			intel_dsi->dev.dev_ops->enable(&intel_dsi->dev);
 		temp = I915_READ(MIPI_PORT_CTRL(pipe));
 		temp = temp | intel_dsi->port_bits;
 		I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
@@ -438,7 +442,6 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 	u16 hactive, hfp, hsync, hbp, vfp, vsync, vbp;
 
 	hactive = mode->hdisplay;
-
 	hfp = mode->hsync_start - mode->hdisplay;
 	hsync = mode->hsync_end - mode->hsync_start;
 	hbp = mode->htotal - mode->hsync_end;
@@ -519,16 +522,12 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
+	struct drm_display_mode *adjusted_mode =
+		&intel_crtc->config.adjusted_mode;
 	int pipe = intel_crtc->pipe;
 	unsigned int bpp = intel_crtc->config.pipe_bpp;
-	struct drm_display_mode *adjusted_mode;
-	u32 val=0;
-
-	if (BYT_CR_CONFIG)
-		adjusted_mode =	intel_dsi->attached_connector->panel.fixed_mode;
-	else
-		adjusted_mode = &intel_crtc->config.adjusted_mode;
-
+	u32 val;
+	I915_WRITE(MIPI_DEVICE_READY(pipe), 0x0);
 	dsi_config(encoder);
 
 	I915_WRITE(MIPI_LP_RX_TIMEOUT(pipe), intel_dsi->lp_rx_timeout);
@@ -594,27 +593,46 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 
 		I915_WRITE(MIPI_DBI_BW_CTRL(pipe), intel_dsi->bw_timer);
 	}
+		I915_WRITE(MIPI_EOT_DISABLE(pipe), CLOCKSTOP);
 
-	if (BYT_CR_CONFIG) {
-		val = PFIT_ENABLE | (intel_crtc->pipe <<
-			PFIT_PIPE_SHIFT) | PFIT_SCALING_AUTO;
-		I915_WRITE(PFIT_CONTROL, val);
-	} else {
-		if (intel_dsi->pfit && (adjusted_mode->hdisplay <
-			PFIT_SIZE_LIMIT)) {
-			if (intel_dsi->pfit == AUTOSCALE)
-				val = PFIT_ENABLE | (intel_crtc->pipe <<
-					PFIT_PIPE_SHIFT) | PFIT_SCALING_AUTO;
-			if (intel_dsi->pfit == PILLARBOX)
-				val = PFIT_ENABLE | (intel_crtc->pipe <<
-					PFIT_PIPE_SHIFT) | PFIT_SCALING_PILLAR;
-			else if (intel_dsi->pfit == LETTERBOX)
-				val = PFIT_ENABLE | (intel_crtc->pipe <<
-					PFIT_PIPE_SHIFT) | PFIT_SCALING_LETTER;
-			DRM_DEBUG_DRIVER("pfit val = %x", val);
-			I915_WRITE(PFIT_CONTROL, val);
-		}
-	}
+	val = I915_READ(MIPI_DSI_FUNC_PRG(pipe));
+		val &= ~VID_MODE_FORMAT_MASK;
+		I915_WRITE(MIPI_DSI_FUNC_PRG(pipe), val);
+
+		I915_WRITE(MIPI_DEVICE_READY(pipe), 0x1);
+
+		if (intel_dsi->dev.dev_ops->send_otp_cmds)
+			intel_dsi->dev.dev_ops->send_otp_cmds(&intel_dsi->dev);
+
+		I915_WRITE(MIPI_DEVICE_READY(pipe), 0x0);
+
+		set_dsi_timings(encoder, adjusted_mode);
+		/* Some panels might have resolution which is not a multiple of
+		 * 64 like 1366 x 768. Enable RANDOM resolution support for such
+		 * panels by default */
+		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
+					intel_dsi->video_frmt_cfg_bits |
+					intel_dsi->video_mode_type |
+					IP_TG_CONFIG |
+					RANDOM_DPI_DISPLAY_RESOLUTION);
+
+		val = 0;
+		if (intel_dsi->eotp_pkt == 0)
+			val |= EOT_DISABLE;
+
+		if (intel_dsi->clock_stop)
+			val |= CLOCKSTOP;
+
+		I915_WRITE(MIPI_EOT_DISABLE(pipe), val);
+
+		val = intel_dsi->channel << VID_MODE_CHANNEL_NUMBER_SHIFT |
+			intel_dsi->lane_count << DATA_LANES_PRG_REG_SHIFT |
+			intel_dsi->pixel_format;
+		I915_WRITE(MIPI_DSI_FUNC_PRG(pipe), val);
+
+		I915_WRITE(MIPI_DEVICE_READY(pipe), 0x1);
+
+		I915_WRITE(MIPI_INTR_STAT(pipe), 0xFFFFFFFF);
 }
 
 static enum drm_connector_status
@@ -626,44 +644,11 @@ intel_dsi_detect(struct drm_connector *connector, bool force)
 	return intel_dsi->dev.dev_ops->detect(&intel_dsi->dev);
 }
 
-static struct drm_display_mode *get_mode_12x8(void)
-{
-	struct drm_display_mode *mode = NULL;
-	/* Allocate */
-	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
-	if (!mode) {
-		DRM_DEBUG_KMS("Panasonic panel: No memory\n");
-		return NULL;
-	}
-
-	/* Hardcode 1280x800 */
-	mode->hdisplay = 1280;
-	mode->hsync_start = mode->hdisplay + 110;
-	mode->hsync_end = mode->hsync_start + 38;
-	mode->htotal = mode->hsync_end + 90;
-
-	mode->vdisplay = 800;
-	mode->vsync_start = mode->vdisplay + 15;
-	mode->vsync_end = mode->vsync_start + 10;
-	mode->vtotal = mode->vsync_end + 10;
-
-	mode->vrefresh = 60;
-	mode->clock =  mode->vrefresh * mode->vtotal *
-			mode->htotal / 1000;
-
-	/* Configure */
-	drm_mode_set_name(mode);
-	drm_mode_set_crtcinfo(mode, 0);
-	mode->type |= DRM_MODE_TYPE_PREFERRED;
-	return mode;
-}
-
 static int intel_dsi_get_modes(struct drm_connector *connector)
 {
 	struct intel_connector *intel_connector = to_intel_connector(connector);
-	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
 	struct drm_display_mode *mode;
-	struct drm_display_mode *input_mode = NULL;
+
 	DRM_DEBUG_KMS("\n");
 
 	if (!intel_connector->panel.fixed_mode) {
@@ -671,21 +656,14 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 		return 0;
 	}
 
-	if (BYT_CR_CONFIG)
-		input_mode = get_mode_12x8();
-	else
-		input_mode = intel_connector->panel.fixed_mode;
-
 	mode = drm_mode_duplicate(connector->dev,
-				  input_mode);
+				  intel_connector->panel.fixed_mode);
 	if (!mode) {
 		DRM_DEBUG_KMS("drm_mode_duplicate failed\n");
 		return 0;
 	}
 
 	drm_mode_probed_add(connector, mode);
-	/*Fill the panel info here*/
-	intel_dsi->dev.dev_ops->get_info(0, connector);
 	return 1;
 }
 
@@ -699,28 +677,6 @@ static void intel_dsi_destroy(struct drm_connector *connector)
 	drm_sysfs_connector_remove(connector);
 	drm_connector_cleanup(connector);
 	kfree(connector);
-}
-
-static int intel_dsi_set_property(struct drm_connector *connector,
-		struct drm_property *property,
-		uint64_t value)
-{
-	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
-	struct drm_i915_private *dev_priv = connector->dev->dev_private;
-	int ret;
-
-	ret = drm_object_property_set_value(&connector->base, property, value);
-	if (ret)
-		return ret;
-
-	if (property == dev_priv->force_pfit_property) {
-		if (value == intel_dsi->pfit)
-			return 0;
-		DRM_DEBUG_DRIVER("val = %d", (int)value);
-		intel_dsi->pfit = value;
-	}
-
-	return 0;
 }
 
 static const struct drm_encoder_funcs intel_dsi_funcs = {
@@ -738,15 +694,7 @@ static const struct drm_connector_funcs intel_dsi_connector_funcs = {
 	.detect = intel_dsi_detect,
 	.destroy = intel_dsi_destroy,
 	.fill_modes = drm_helper_probe_single_connector_modes,
-	.set_property = intel_dsi_set_property,
 };
-
-static void
-intel_dsi_add_properties(struct intel_dsi *intel_dsi,
-				struct drm_connector *connector)
-{
-	intel_attach_force_pfit_property(connector);
-}
 
 bool intel_dsi_init(struct drm_device *dev)
 {
@@ -765,7 +713,6 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_dsi = kzalloc(sizeof(*intel_dsi), GFP_KERNEL);
 	if (!intel_dsi)
 		return false;
-	intel_dsi->pfit = 0;
 
 	intel_connector = kzalloc(sizeof(*intel_connector), GFP_KERNEL);
 	if (!intel_connector) {
@@ -839,7 +786,6 @@ bool intel_dsi_init(struct drm_device *dev)
 	connector->interlace_allowed = false;
 	connector->doublescan_allowed = false;
 
-	intel_dsi_add_properties(intel_dsi, connector);
 	intel_connector_attach_encoder(intel_connector, intel_encoder);
 
 	drm_sysfs_connector_add(connector);
@@ -851,10 +797,7 @@ bool intel_dsi_init(struct drm_device *dev)
 	}
 
 	dev_priv->is_mipi = true;
-
-	if (!BYT_CR_CONFIG)
-		fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
-
+	fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
 	intel_panel_init(&intel_connector->panel, fixed_mode);
 	intel_panel_setup_backlight(connector);
 

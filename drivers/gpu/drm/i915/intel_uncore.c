@@ -106,8 +106,7 @@ void gen6_gt_force_wake_restore(struct drm_i915_private *dev_priv)
 	}
 
 	dev_priv->uncore.fifo_count =
-		__raw_i915_read32(dev_priv, GTFIFOCTL) &
-						GT_FIFO_FREE_ENTRIES_MASK;
+		__raw_i915_read32(dev_priv, GT_FIFO_FREE_ENTRIES);
 }
 
 static void __gen6_gt_force_wake_mt_reset(struct drm_i915_private *dev_priv)
@@ -181,21 +180,14 @@ static int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv)
 	So, we need to read the	FREE_ENTRIES everytime */
 	if (IS_VALLEYVIEW(dev_priv->dev))
 		dev_priv->uncore.fifo_count =
-			__raw_i915_read32(dev_priv, GTFIFOCTL) &
-						GT_FIFO_FREE_ENTRIES_MASK;
+			__raw_i915_read32(dev_priv, GT_FIFO_FREE_ENTRIES);
 	if (dev_priv->uncore.fifo_count < GT_FIFO_NUM_RESERVED_ENTRIES) {
 		int loop = 500;
-		u32 fifo = __raw_i915_read32(dev_priv, GTFIFOCTL) &
-						GT_FIFO_FREE_ENTRIES_MASK;
+		u32 fifo = __raw_i915_read32(dev_priv, GT_FIFO_FREE_ENTRIES);
 		while (fifo <= GT_FIFO_NUM_RESERVED_ENTRIES && loop--) {
 			udelay(10);
-			fifo = __raw_i915_read32(dev_priv, GTFIFOCTL) &
-						GT_FIFO_FREE_ENTRIES_MASK;
+			fifo = __raw_i915_read32(dev_priv, GT_FIFO_FREE_ENTRIES);
 		}
-#ifdef CONFIG_DEBUG_FS
-		if (loop < 500)
-			atomic_inc(&dev_priv->wfifo_count);
-#endif
 		if (WARN_ON(loop < 0 && fifo <= GT_FIFO_NUM_RESERVED_ENTRIES))
 			++ret;
 		dev_priv->uncore.fifo_count = fifo;
@@ -329,8 +321,7 @@ void vlv_force_wake_restore(struct drm_i915_private *dev_priv,
 	}
 
 	dev_priv->uncore.fifo_count =
-		__raw_i915_read32(dev_priv, GTFIFOCTL) &
-						GT_FIFO_FREE_ENTRIES_MASK;
+		__raw_i915_read32(dev_priv, GT_FIFO_FREE_ENTRIES);
 }
 
 

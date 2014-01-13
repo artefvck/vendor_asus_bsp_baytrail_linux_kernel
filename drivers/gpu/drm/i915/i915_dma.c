@@ -283,7 +283,8 @@ static int i915_dma_init(struct drm_device *dev, void *data,
 	return retcode;
 }
 
-/* Implement check to validate batch buffer.
+/* Implement basically the same security restrictions as hardware does
+ * for MI_BATCH_NON_SECURE.  These can be made stricter at any time.
  *
  * Most of the calculations below involve calculating the size of a
  * particular instruction.  It's important to get the size right as
