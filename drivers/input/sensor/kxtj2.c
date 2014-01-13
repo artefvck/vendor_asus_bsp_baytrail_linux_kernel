@@ -64,8 +64,7 @@
 #define RES_INT_CTRL1		2
 #define RESUME_ENTRIES		3
 
-//the Makefile will trans this macro to me
-//#define CONFIG_INPUT_SENSOR_KXTJ2_POLLED_MODE 1
+#define	ENABLE_CALIBRATION_INTERFACE 1
 
 /*
  * The following table lists the maximum appropriate poll interval for each
@@ -87,21 +86,31 @@ struct kxtj2_data {
 	struct i2c_client *client;
 	struct KXTJ2_platform_data pdata;
 	struct input_dev *input_dev;
-#ifdef CONFIG_INPUT_SENSOR_KXTJ2_POLLED_MODE
+
+	#ifdef CONFIG_INPUT_SENSOR_KXTJ2_POLLED_MODE
 	struct input_polled_dev *poll_dev;
-#endif
+	#endif
+
 	unsigned int last_poll_interval;
 	u8 shift;
 	u8 ctrl_reg1;
 	u8 data_ctrl;
 	u8 int_ctrl;
         
-        //bool enable;
 	atomic_t enable;
         s16 axis_x_buf;
         s16 axis_y_buf;
         s16 axis_z_buf;
         spinlock_t axis_buf_lock;
+
+	//add for calibration
+	#ifdef ENABLE_CALIBRATION_INTERFACE
+	atomic_t cal_enable;
+	s16 cal_data_x;
+	s16 cal_data_y;
+	s16 cal_data_z;
+	spinlock_t axis_cal_lock;
+	#endif 
 };
 
 
@@ -168,16 +177,30 @@ static void kxtj2_report_acceleration_data(struct kxtj2_data *tj2)
 	y >>= tj2->shift;
 	z >>= tj2->shift;
 
+	x = tj2->pdata.negate_x ? -x : x;	
+	y = tj2->pdata.negate_y ? -y : y;	
+	z = tj2->pdata.negate_z ? -z : z;	
+
+	#ifdef ENABLE_CALIBRATION_INTERFACE
+	if( atomic_read(&tj2->cal_enable) )	{
+			spin_lock(&tj2->axis_cal_lock);
+			x += tj2->cal_data_x;
+			y += tj2->cal_data_y;
+			z += tj2->cal_data_z;
+			spin_unlock(&tj2->axis_cal_lock);
+	}
+	#endif
+
+
 	spin_lock(&tj2->axis_buf_lock);
-        tj2->axis_x_buf = tj2->pdata.negate_x ? -x : x;
-        tj2->axis_y_buf = tj2->pdata.negate_y ? -y : y;
-        tj2->axis_z_buf = tj2->pdata.negate_z ? -z : z;
+        tj2->axis_x_buf = x;
+        tj2->axis_y_buf = y;
+        tj2->axis_z_buf = z;
         spin_unlock(&tj2->axis_buf_lock);
 
-
-	input_report_abs(tj2->input_dev, ABS_X, tj2->pdata.negate_x ? -x : x);
-	input_report_abs(tj2->input_dev, ABS_Y, tj2->pdata.negate_y ? -y : y);
-	input_report_abs(tj2->input_dev, ABS_Z, tj2->pdata.negate_z ? -z : z);
+	input_report_abs(tj2->input_dev, ABS_X, x);
+	input_report_abs(tj2->input_dev, ABS_Y, y);
+	input_report_abs(tj2->input_dev, ABS_Z, z);
 	input_sync(tj2->input_dev);
 }
 
@@ -524,7 +547,7 @@ static ssize_t kxtj2_get_rawdata(struct device *dev, struct device_attribute *de
         
         //printk("get_raw_data: begin read raw data\n");        
         spin_lock(&tj2->axis_buf_lock);
-        ret = snprintf(buf, 4096/*PAGE_SIZE*/, "%4hx %4hx %4hx\n", tj2->axis_x_buf, tj2->axis_y_buf, tj2->axis_z_buf );
+        ret = snprintf(buf, 4096/*PAGE_SIZE*/, "%hd %hd %hd\n", tj2->axis_x_buf, tj2->axis_y_buf, tj2->axis_z_buf );
         spin_unlock(&tj2->axis_buf_lock);
                                         
         //printk("kxtj2: buf is %s\n", buf);    
@@ -533,20 +556,65 @@ static ssize_t kxtj2_get_rawdata(struct device *dev, struct device_attribute *de
         return ret;
 }
 
+#ifdef ENABLE_CALIBRATION_INTERFACE
+static ssize_t kxtj2_calibration_enable_store(struct device *dev, struct device_attribute *devattr, char *buf, ssize_t count)
+{
+        struct i2c_clinet * client = to_i2c_client(dev);
+        struct kxtj2_data * tj2 = i2c_get_clientdata(client);
+        int ret = 0;
+
+        int val = simple_strtoul(buf, NULL, 10) ? 1 : 0 ;
+	
+	atomic_set(&tj2->cal_enable, val);
+	printk("kxtj2: set calibration enable to %d\n", atomic_read(&tj2->cal_enable));
+	return count;
+}
+
+static ssize_t kxtj2_calibration_data_store(struct device *dev, struct device_attribute *devattr, char *buf, ssize_t count)
+{
+        struct i2c_clinet * client = to_i2c_client(dev);
+        struct kxtj2_data * tj2 = i2c_get_clientdata(client);
+	int cal_data_x;
+	int cal_data_y;
+	int cal_data_z;
+
+	printk("kxtj2: buf is %s\n", buf);
+	sscanf(buf, "%d%d%d", &cal_data_x, &cal_data_y, &cal_data_z);
+	spin_lock(&tj2->axis_cal_lock);
+	tj2->cal_data_x = cal_data_x;
+	tj2->cal_data_y = cal_data_y;
+	tj2->cal_data_z = cal_data_z;
+	spin_unlock(&tj2->axis_cal_lock);
+	
+	printk("kxtj2: set calibration data x=%d, y=%d, z=%d\n", cal_data_x, cal_data_y, cal_data_z);
+	return count;
+}
+#endif 
 
 static DEVICE_ATTR(poll, S_IRUGO|S_IWUSR, kxtj2_get_poll, kxtj2_set_poll);
 static DEVICE_ATTR(delay, S_IRUGO|S_IWUSR, kxtj2_delay_show, kxtj2_delay_store);
 static DEVICE_ATTR(enable, S_IRGRP|S_IWGRP|S_IRUSR|S_IWUSR,kxtj2_enable_show,kxtj2_enable_store);
 static DEVICE_ATTR(rawdata, S_IRUGO, kxtj2_get_rawdata, NULL);
 
+#ifdef ENABLE_CALIBRATION_INTERFACE
+static DEVICE_ATTR(cal_data, S_IWUGO, NULL, kxtj2_calibration_data_store);
+static DEVICE_ATTR(cal_enable, S_IWUGO, NULL, kxtj2_calibration_enable_store);
+#endif
 
 static struct attribute *kxtj2_attributes[] = {
 	&dev_attr_poll.attr,
-	#ifdef CONFIG_INPUT_SENSOR_KXTJ2_POLLED_MODE
-                &dev_attr_delay.attr,
-        #endif
         &dev_attr_enable.attr,
         &dev_attr_rawdata.attr,
+
+	#if CONFIG_INPUT_SENSOR_KXTJ2_POLLED_MODE
+        &dev_attr_delay.attr,
+        #endif
+
+	#ifdef ENABLE_CALIBRATION_INTERFACE
+	&dev_attr_cal_data.attr,
+	&dev_attr_cal_enable.attr,
+	#endif
+
 	NULL
 };
 
@@ -750,6 +818,14 @@ static int kxtj2_probe(struct i2c_client *client,
         tj2->axis_y_buf = 0;
         tj2->axis_z_buf = 0;
         spin_lock_init(&tj2->axis_buf_lock);
+
+	#ifdef ENABLE_CALIBRATION_INTERFACE
+	atomic_set(&tj2->enable, 0);
+	tj2->cal_data_x = 0;
+	tj2->cal_data_y = 0;
+	tj2->cal_data_z = 0;
+        spin_lock_init(&tj2->axis_cal_lock);
+	#endif
 
 	return 0;
 
