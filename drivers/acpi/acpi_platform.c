@@ -36,13 +36,18 @@ static const struct acpi_device_id acpi_platform_device_ids[] = {
 
   /* Telepĥony */
 	{ "MCD0001", 0 },
-
+	/* SSP devices */
+	{ "SSPM0000", 0 },
+	{ "SSPC0000", 0 },
+	{ "SSPB0000", 0 },
 	/* Baytrail Audio devices */
 	{ "HAD0F28", 0 },
 	{ "LPE0F28", 0 },
+	{ "80860F28", 0 },
 	{ "LPE0F281", 0 },
 	{ "AMCR0F28", 0 },
 	{ "DMA0F28", 0 },
+	{ "ADMA0F28", 0 },
 	{ "VIB8601", 0 },
 	{ "BYTEC001", 0 },
 	{ }

@@ -676,6 +676,7 @@ struct dwc3_hwregs {
  * @usb3_phy: pointer to USB3 PHY
  * @dcfg: saved contents of DCFG register
  * @gctl: saved contents of GCTL register
+ * @utmi_phy: Add utmi phy interface support
  * @is_selfpowered: true when we are selfpowered
  * @three_stage_setup: set if we perform a three phase setup
  * @ep0_bounced: true when we used bounce buffer
@@ -756,6 +757,7 @@ struct dwc3 {
 #define DWC3_REVISION_240A	0x5533240a
 #define DWC3_REVISION_250A	0x5533250a
 
+	unsigned		utmi_phy:1;
 	unsigned		is_selfpowered:1;
 	unsigned		three_stage_setup:1;
 	unsigned		ep0_bounced:1;
@@ -766,6 +768,7 @@ struct dwc3 {
 	unsigned		needs_fifo_resize:1;
 	unsigned		resize_fifos:1;
 	unsigned		pullups_connected:1;
+	unsigned		quirks_disable_irqthread:1;
 
 	enum dwc3_ep0_next	ep0_next_event;
 	enum dwc3_ep0_state	ep0state;
@@ -796,6 +799,8 @@ struct dwc3 {
 
 	/* delayed work for handling Link State Change */
 	struct delayed_work	link_work;
+
+	u8			is_ebc;
 
 	struct dwc3_scratchpad_array	*scratch_array;
 	dma_addr_t		scratch_array_dma;

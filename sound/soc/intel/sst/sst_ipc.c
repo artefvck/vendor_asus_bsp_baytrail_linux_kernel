@@ -139,9 +139,11 @@ static int sst_send_runtime_param(struct snd_sst_runtime_params *params)
 		return ret_val;
 	sst_fill_header(&msg->header, IPC_IA_SET_RUNTIME_PARAMS, 1,
 							params->str_id);
-	msg->header.part.data = sizeof(u32) + sizeof(*params) + params->size;
+	msg->header.part.data = sizeof(u32) + sizeof(*params) - sizeof(params->addr)
+				+ params->size;
 	memcpy(msg->mailbox_data, &msg->header.full, sizeof(u32));
-	memcpy(msg->mailbox_data + sizeof(u32), params, sizeof(*params));
+	memcpy(msg->mailbox_data + sizeof(u32), params, sizeof(*params)
+				- sizeof(params->addr));
 	/* driver doesn't need to send address, so overwrite addr with data */
 	memcpy(msg->mailbox_data + sizeof(u32) + sizeof(*params)
 			- sizeof(params->addr),
@@ -184,6 +186,9 @@ void sst_post_message_mrfld(struct work_struct *work)
 	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	pr_debug("sst: Post message: header = %x\n",
 					msg->mrfld_header.p.header_high.full);
+	pr_info("sst: Post message: header = %#x payload %#x\n",
+					msg->mrfld_header.p.header_high.full,
+					msg->mrfld_header.p.header_low_payload);
 	kfree(msg->mailbox_data);
 	kfree(msg);
 	return;
@@ -316,6 +321,9 @@ int sst_sync_post_message_mrfld(struct ipc_post *msg)
 	pr_debug("sst: Post message: header = %x\n",
 					msg->mrfld_header.p.header_high.full);
 	pr_debug("sst: size = 0x%x\n", msg->mrfld_header.p.header_low_payload);
+	pr_info("sst: Post message: sync: header = %#x payload %#x\n",
+					msg->mrfld_header.p.header_high.full,
+					msg->mrfld_header.p.header_low_payload);
 	if (msg->mrfld_header.p.header_high.part.large)
 		memcpy_toio(sst_drv_ctx->mailbox + SST_MAILBOX_SEND,
 			msg->mailbox_data, msg->mrfld_header.p.header_low_payload);
@@ -480,7 +488,7 @@ static int process_fw_init(struct ipc_post *msg)
 		(struct ipc_header_fw_init *)msg->mailbox_data;
 	int retval = 0;
 
-	pr_debug("*** FW Init msg came***\n");
+	pr_info("*** FW Init msg came***\n");
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
 		if (init->result) {
 			sst_drv_ctx->sst_state =  SST_ERROR;
@@ -590,38 +598,66 @@ void sst_process_message_mrfld(struct ipc_post *msg)
 
 	str_id = msg->mrfld_header.p.header_high.part.drv_id;
 
-	pr_debug("IPC process message header %x payload %x\n",
+	pr_info("sst: process message header %#x payload %#x\n",
 			msg->mrfld_header.p.header_high.full,
 			msg->mrfld_header.p.header_low_payload);
 
 	return;
 }
 
-/* Max 6 results each of size 14 bytes + numresults(2bytes) */
-#define MAX_VTSV_RESULT_SIZE 50
+#define VTSV_MAX_NUM_RESULTS 6
+#define VTSV_SIZE_PER_RESULT 7 /* 7 16 bit words */
+/* Max 6 results each of size 7 words + 1 num results word */
+#define VTSV_MAX_TOTAL_RESULT_SIZE \
+	(VTSV_MAX_NUM_RESULTS*VTSV_SIZE_PER_RESULT + 1)
+/* Each data word in the result is sent as a string in the format:
+DATAn=d, where n is the data word index varying from 0 to
+				VTSV_MAX_TOTAL_RESULT_SIZE-1
+d = string representation of data in decimal format;
+				unsigned 16bit data needs max 5 chars
+So total data string size = 4("DATA")+2("n")+1("=")
+				+5("d")+1(null)+5(reserved) = 18  */
+#define VTSV_DATA_STRING_SIZE 18
+
 static int send_vtsv_result_event(void *data, int size)
 {
-	char *envp[MAX_VTSV_RESULT_SIZE+2];
-	char res_size[30], result[MAX_VTSV_RESULT_SIZE][10];
+	char *envp[VTSV_MAX_TOTAL_RESULT_SIZE+3];
+	char res_size[30];
+	char ev_type[30];
+	char result[VTSV_MAX_TOTAL_RESULT_SIZE][VTSV_DATA_STRING_SIZE];
 	int offset = 0;
-	u8 *tmp;
-	int i = 0;
+	u16 *tmp;
+	int i;
+	int ret;
 
-	if (size > MAX_VTSV_RESULT_SIZE) {
+	if (!data) {
+		pr_err("Data pointer Null into %s\n", __func__);
+		return -EINVAL;
+	}
+	size = size / (sizeof(u16)); /* Number of 16 bit data words*/
+	if (size > VTSV_MAX_TOTAL_RESULT_SIZE) {
 		pr_err("VTSV result size exceeds expected value, no uevent sent\n");
-		return -1;
+		return -EINVAL;
 	}
 
-	sprintf(res_size, "VTSV_RESULT_SIZE=%d", size);
+	snprintf(ev_type, sizeof(res_size), "EVENT_TYPE=SST_VTSV");
+	envp[offset++] = ev_type;
+	snprintf(res_size, sizeof(ev_type), "VTSV_RESULT_SIZE=%u", size);
 	envp[offset++] = res_size;
-	tmp = (u8 *)(data);
-	while (size) {
-		sprintf(result[i], "%d", *tmp++);
-		envp[offset++] = result[i++];
-		size--;
+	tmp = (u16 *)(data);
+	for (i = 0; i < size; i++) {
+		/* Driver assumes all data to be u16; The VTSV service
+		layer will type cast to u16 or s16 as appropriate for
+		a given data word*/
+		snprintf(result[i], VTSV_DATA_STRING_SIZE,
+				"DATA%u=%u", i, *tmp++);
+		envp[offset++] = result[i];
 	}
 	envp[offset] = NULL;
-	return sst_create_and_send_uevent("SST_VOICE_TRIGGER", envp);
+	ret = kobject_uevent_env(&sst_drv_ctx->dev->kobj, KOBJ_CHANGE, envp);
+	if (ret)
+		pr_err("VTSV event send failed: ret = %d\n", ret);
+	return ret;
 }
 
 static void process_fw_async_large_msg(void *data, u32 msg_size)
@@ -681,6 +717,11 @@ void sst_process_reply_mrfld(struct ipc_post *msg)
 
 	if (!msg_high.part.large)
 		msg_id = msg_low & SST_ASYNC_MSG_MASK;
+
+	if (msg_id != IPC_SST_PERIOD_ELAPSED_MRFLD)
+		pr_info("sst: process reply header %#x payload %#x\n",
+			msg->mrfld_header.p.header_high.full,
+			msg->mrfld_header.p.header_low_payload);
 
 	if ((msg_id == IPC_SST_PERIOD_ELAPSED_MRFLD) &&
 		(msg_high.part.msg_id == IPC_CMD)) {

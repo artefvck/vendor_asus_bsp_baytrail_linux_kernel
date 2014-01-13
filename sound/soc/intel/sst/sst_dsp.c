@@ -43,6 +43,12 @@
 #include "../platform_ipc_v2.h"
 #include "sst.h"
 
+#ifndef CONFIG_X86_64
+#define MEMCPY_TOIO memcpy_toio
+#else
+#define MEMCPY_TOIO memcpy32_toio
+#endif
+
 static struct sst_module_info sst_modules_mrfld[] = {
 	{"mp3_dec", SST_CODEC_TYPE_MP3, 0, SST_LIB_NOT_FOUND},
 	{"aac_dec", SST_CODEC_TYPE_AAC, 0, SST_LIB_NOT_FOUND},
@@ -50,6 +56,27 @@ static struct sst_module_info sst_modules_mrfld[] = {
 	{"vtsv_lib", SST_ALGO_VTSV, 0, SST_LIB_NOT_FOUND},
 	{"geq_lib", SST_ALGO_GEQ, 0, SST_LIB_NOT_FOUND},
 };
+
+static struct sst_module_info sst_modules_byt[] = {
+	{"mp3_dec", SST_CODEC_TYPE_MP3, 0, SST_LIB_NOT_FOUND},
+	{"aac_dec", SST_CODEC_TYPE_AAC, 0, SST_LIB_NOT_FOUND},
+};
+
+/**
+ * memcpy32_toio: Copy using writel commands
+ *
+ * This is needed because the hardware does not support
+ * 64-bit moveq insructions while writing to PCI MMIO
+ */
+void memcpy32_toio(void *dst, const void *src, int count)
+{
+	int i;
+	const u32 *src_32 = src;
+	u32 *dst_32 = dst;
+
+	for (i = 0; i < count/sizeof(u32); i++)
+		writel(*src_32++, dst_32++);
+}
 
 /**
  * intel_sst_reset_dsp_medfield - Resetting SST DSP
@@ -461,6 +488,7 @@ static int sst_alloc_dma_chan(struct sst_dma *dma)
 	struct intel_mid_dma_slave *slave = &dma->slave;
 	int retval;
 	struct pci_dev *dmac = NULL;
+	const char *hid;
 
 	pr_debug("%s\n", __func__);
 	dma->dev = NULL;
@@ -473,9 +501,15 @@ static int sst_alloc_dma_chan(struct sst_dma *dma)
 	else if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 		dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
 				      PCI_DMAC_MRFLD_ID, NULL);
-	else if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID)
-		dma->dev = intel_mid_get_acpi_dma();
-
+	else if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		hid = sst_drv_ctx->hid;
+		if (!strncmp(hid, "LPE0F281", 8))
+			dma->dev = intel_mid_get_acpi_dma("DMA0F28");
+		if (!strncmp(hid, "80860F28", 8))
+			dma->dev = intel_mid_get_acpi_dma("ADMA0F28");
+		else if (!strncmp(hid, "LPE0F28", 7))
+			dma->dev = intel_mid_get_acpi_dma("DMA0F28");
+	}
 	if (!dmac && !dma->dev) {
 		pr_err("Can't find DMAC\n");
 		return -ENODEV;
@@ -874,7 +908,7 @@ void sst_fill_config(struct intel_sst_drv *sst_ctx, unsigned int offset)
 	memcpy(&sst_config.sst_pdata, sst_ctx->pdata->pdata, sizeof(struct sst_platform_config_data));
 	sst_config.shim_phy_add = sst_ctx->shim_phy_add;
 	sst_config.mailbox_add = sst_ctx->mailbox_add;
-	memcpy_toio(sst_ctx->dram + offset, &sst_config, sizeof(sst_config));
+	MEMCPY_TOIO(sst_ctx->dram + offset, &sst_config, sizeof(sst_config));
 
 }
 
@@ -1076,7 +1110,7 @@ static void sst_do_memcpy(struct list_head *memcpy_list)
 
 	list_for_each_entry(listnode, memcpy_list, memcpylist) {
 		if (listnode->is_io == true)
-			memcpy_toio((void __iomem *)listnode->dstn, listnode->src,
+			MEMCPY_TOIO((void __iomem *)listnode->dstn, listnode->src,
 							listnode->size);
 		else
 			memcpy(listnode->dstn, listnode->src, listnode->size);
@@ -1357,10 +1391,10 @@ static void sst_dccm_config_write(void __iomem *dram_base, unsigned int ddr_base
 	u32 bss_reset = 0;
 
 	addr = (void __iomem *)(dram_base + MRFLD_FW_DDR_BASE_OFFSET);
-	memcpy_toio(addr, (void *)&ddr_base, sizeof(u32));
+	MEMCPY_TOIO(addr, (void *)&ddr_base, sizeof(u32));
 	bss_reset |= (1 << MRFLD_FW_BSS_RESET_BIT);
 	addr = (void __iomem *)(dram_base + MRFLD_FW_FEATURE_BASE_OFFSET);
-	memcpy_toio(addr, &bss_reset, sizeof(u32));
+	MEMCPY_TOIO(addr, &bss_reset, sizeof(u32));
 	pr_debug("%s: config written to DCCM\n", __func__);
 }
 
@@ -1385,6 +1419,13 @@ void sst_post_download_byt(struct intel_sst_drv *ctx)
 {
 	sst_dccm_config_write(ctx->dram, ctx->ddr_base);
 	sst_fill_config(ctx, 2 * sizeof(u32));
+
+	pr_debug("%s: lib_dwnld = %u\n", __func__, ctx->lib_dwnld_reqd);
+	if (ctx->lib_dwnld_reqd) {
+		sst_load_all_modules_elf(ctx, sst_modules_byt,
+					ARRAY_SIZE(sst_modules_byt));
+		ctx->lib_dwnld_reqd = false;
+	}
 }
 
 static void sst_init_lib_mem_mgr(struct intel_sst_drv *ctx)
@@ -1726,7 +1767,7 @@ free_dma_res:
 		sst_do_memcpy(&sst->libmemcpy_list);
 		sst_memcpy_free_lib_resources();
 	}
-	pr_debug("download lib complete");
+	pr_info("download lib complete");
 	return retval;
 }
 
@@ -1758,7 +1799,7 @@ static int sst_request_lib_elf(struct sst_module_info *mod_entry,
 
 	snprintf(name, sizeof(name), "%s%s%04x%s", mod_entry->name,
 			"_", pci_id, ".bin");
-	pr_debug("Requesting %s\n", name);
+	pr_info("Requesting %s\n", name);
 
 	retval = request_firmware(fw_lib, name, dev);
 	if (retval) {

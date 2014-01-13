@@ -22,6 +22,9 @@
 #include <linux/proc_fs.h>
 #include <asm/intel_mid_rpmsg.h>
 
+#include <asm/hypervisor.h>
+#include <asm/xen/hypercall.h>
+
 #ifdef CONFIG_DRM_INTEL_MID
 #define GFX_ENABLE
 #endif
@@ -218,15 +221,16 @@ int _pmu2_wait_not_busy(void)
 
 static int _pmu2_wait_not_busy_yield(void)
 {
-	int pmu_busy_retry = 50000; /* 500msec minimum */
+	int pmu_busy_retry = PMU2_BUSY_TIMEOUT;
 
-	/* wait for the latest pmu command finished */
+	/* wait max 500ms that the latest pmu command finished */
 	do {
-		usleep_range(10, 500);
-
-		if (!_pmu_read_status(PMU_BUSY_STATUS))
+		if (_pmu_read_status(PMU_BUSY_STATUS) == 0)
 			return 0;
-	} while (--pmu_busy_retry);
+
+		usleep_range(10, 12);
+		pmu_busy_retry -= 11;
+	} while (pmu_busy_retry > 0);
 
 	WARN(1, "pmu2 busy!");
 
@@ -257,7 +261,8 @@ void log_wakeup_irq(void)
 
 	for (offset = (FIRST_EXTERNAL_VECTOR/32);
 	offset < (NR_VECTORS/32); offset++) {
-		irr = apic_read(APIC_IRR + (offset * 0x10));
+		irr = apic->read(APIC_IRR + (offset * 0x10));
+
 		while (irr) {
 			vector = __ffs(irr);
 			irr &= ~(1 << vector);
@@ -703,7 +708,7 @@ static void pmu_enumerate(void)
 	struct pci_dev *pdev = NULL;
 	unsigned int base_class;
 
-	while ((pdev = pci_get_device(PCI_ID_ANY, PCI_ID_ANY, pdev)) != NULL) {
+	for_each_pci_dev(pdev) {
 		if (platform_is(INTEL_ATOM_MRFLD) &&
 			pdev->device == MID_MRFL_HDMI_DRV_DEV_ID)
 			continue;
@@ -849,7 +854,7 @@ int set_enable_s3(const char *val, struct kernel_param *kp)
 	if (unlikely((!pmu_initialized)))
 		return 0;
 
-	if (platform_is(INTEL_ATOM_MRFLD)) {
+	if (platform_is(INTEL_ATOM_MRFLD) || platform_is(INTEL_ATOM_MOORFLD)) {
 		if (!enable_s3)
 			__pm_stay_awake(mid_pmu_cxt->pmu_wake_lock);
 		else
@@ -875,7 +880,7 @@ int set_enable_s0ix(const char *val, struct kernel_param *kp)
 	if (unlikely((!pmu_initialized)))
 		return 0;
 
-	if (platform_is(INTEL_ATOM_MRFLD)) {
+	if (platform_is(INTEL_ATOM_MRFLD) || platform_is(INTEL_ATOM_MOORFLD)) {
 		if (!enable_s0ix) {
 			mid_pmu_cxt->cstate_ignore =
 				~((1 << CPUIDLE_STATE_MAX) - 1);
@@ -973,7 +978,7 @@ int pmu_set_emmc_to_d0i0_atomic(void)
 	cur_pmssc.pmu2_states[sub_sys_index] = new_value;
 
 	/* Request SCU for PM interrupt enabling */
-	writel(PMU_PANIC_EMMC_UP_REQ_CMD, mid_pmu_cxt->emergeny_emmc_up_addr);
+	writel(PMU_PANIC_EMMC_UP_REQ_CMD, mid_pmu_cxt->emergency_emmc_up_addr);
 
 	status = pmu_issue_interactive_command(&cur_pmssc, false, false);
 
@@ -1434,7 +1439,8 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	cur_pmssc.pmu2_states[sub_sys_index] = new_value;
 
 	/* Check if the state is D3_cold or D3_Hot in TNG platform*/
-	if (platform_is(INTEL_ATOM_MRFLD) && (state == PCI_D3cold))
+	if ((platform_is(INTEL_ATOM_MRFLD) || platform_is(INTEL_ATOM_MOORFLD))
+		&& (state == PCI_D3cold))
 		d3_cold = true;
 
 	/* Issue the pmu command to PMU 2
@@ -1708,12 +1714,12 @@ static int pmu_init(void)
 	}
 
 	/* initialize the state variables here */
-	ss_config = kzalloc(sizeof(struct pmu_suspend_config), GFP_KERNEL);
-
-	if (ss_config == NULL) {
+	ss_config = devm_kzalloc(&mid_pmu_cxt->pmu_dev->dev,
+			sizeof(struct pmu_suspend_config), GFP_KERNEL);
+	if (!ss_config) {
 		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
 			"Allocation of memory for ss_config has failed\n");
-		status = PMU_FAILED;
+		status = -ENOMEM;
 		goto out_err1;
 	}
 
@@ -1764,7 +1770,7 @@ static int pmu_init(void)
 		" = %d\n", status);
 		status = PMU_FAILED;
 		up(&mid_pmu_cxt->scu_ready_sem);
-		goto out_err2;
+		goto out_err1;
 	}
 
 	/*
@@ -1797,9 +1803,6 @@ retry:
 
 	return PMU_SUCCESS;
 
-out_err2:
-	kfree(ss_config);
-	mid_pmu_cxt->ss_config = NULL;
 out_err1:
 	return status;
 }
@@ -1814,6 +1817,15 @@ mid_pmu_probe(struct pci_dev *dev, const struct pci_device_id *pci_id)
 	int ret;
 	struct mrst_pmu_reg __iomem *pmu;
 	u32 data;
+
+	u32 dc_islands = (OSPM_DISPLAY_A_ISLAND |
+			  OSPM_DISPLAY_B_ISLAND |
+			  OSPM_DISPLAY_C_ISLAND |
+			  OSPM_MIPI_ISLAND);
+	u32 gfx_islands = (APM_VIDEO_DEC_ISLAND |
+			   APM_VIDEO_ENC_ISLAND |
+			   APM_GL3_CACHE_ISLAND |
+			   APM_GRAPHICS_ISLAND);
 
 	mid_pmu_cxt->pmu_wake_lock =
 				wakeup_source_register("pmu_wake_lock");
@@ -1860,34 +1872,34 @@ mid_pmu_probe(struct pci_dev *dev, const struct pci_device_id *pci_id)
 	if (pmu == NULL) {
 		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
 				"Unable to map the PMU2 address space\n");
-		ret = PMU_FAILED;
+		ret = -EIO;
 		goto out_err2;
 	}
 
 	mid_pmu_cxt->pmu_reg = pmu;
 
 	/* Map the memory of emergency emmc up */
-	mid_pmu_cxt->emergeny_emmc_up_addr =
-		ioremap_nocache(PMU_PANIC_EMMC_UP_ADDR, 4);
-	if (mid_pmu_cxt->emergeny_emmc_up_addr == NULL) {
+	mid_pmu_cxt->emergency_emmc_up_addr =
+		devm_ioremap_nocache(&mid_pmu_cxt->pmu_dev->dev, PMU_PANIC_EMMC_UP_ADDR, 4);
+	if (!mid_pmu_cxt->emergency_emmc_up_addr) {
 		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
 		"Unable to map the emergency emmc up address space\n");
-		ret = PMU_FAILED;
+		ret = -ENOMEM;
 		goto out_err3;
 	}
 
-	if (request_irq(dev->irq, pmu_sc_irq, IRQF_NO_SUSPEND, PMU_DRV_NAME,
-			NULL)) {
+	if (devm_request_irq(&mid_pmu_cxt->pmu_dev->dev, dev->irq, pmu_sc_irq,
+			IRQF_NO_SUSPEND, PMU_DRV_NAME, NULL)) {
 		dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "Registering isr has failed\n");
-		ret = PMU_FAILED;
-		goto out_err4;
+		ret = -ENOENT;
+		goto out_err3;
 	}
 
 	/* call pmu init() for initialization of pmu interface */
 	ret = pmu_init();
 	if (ret != PMU_SUCCESS) {
 		dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "PMU initialization has failed\n");
-		goto out_err5;
+		goto out_err3;
 	}
 	dev_warn(&mid_pmu_cxt->pmu_dev->dev, "after pmu initialization\n");
 
@@ -1903,24 +1915,22 @@ mid_pmu_probe(struct pci_dev *dev, const struct pci_device_id *pci_id)
 	if (platform_is(INTEL_ATOM_MRFLD) && !enable_s3)
 		__pm_stay_awake(mid_pmu_cxt->pmu_wake_lock);
 #endif
-
+#ifdef CONFIG_XEN
+	/* Force gfx subsystem to be powered up */
+	pmu_nc_set_power_state(dc_islands, OSPM_ISLAND_UP, OSPM_REG_TYPE);
+	pmu_nc_set_power_state(gfx_islands, OSPM_ISLAND_UP, APM_REG_TYPE);
+#endif
 	return 0;
 
-out_err5:
-	free_irq(dev->irq, &pmu_sc_irq);
-out_err4:
-	iounmap(mid_pmu_cxt->emergeny_emmc_up_addr);
-	mid_pmu_cxt->emergeny_emmc_up_addr = NULL;
 out_err3:
 	iounmap(mid_pmu_cxt->pmu_reg);
-	mid_pmu_cxt->base_addr.pmu1_base = NULL;
-	mid_pmu_cxt->base_addr.pmu2_base = NULL;
 out_err2:
 	pci_release_region(dev, 0);
 out_err1:
 	pci_disable_device(dev);
 out_err0:
 	wakeup_source_unregister(mid_pmu_cxt->pmu_wake_lock);
+
 	return ret;
 }
 
@@ -1932,12 +1942,7 @@ static void mid_pmu_remove(struct pci_dev *dev)
 	if (pmu_ops->remove)
 		pmu_ops->remove();
 
-	iounmap(mid_pmu_cxt->emergeny_emmc_up_addr);
-	mid_pmu_cxt->emergeny_emmc_up_addr = NULL;
-
 	pci_iounmap(dev, mid_pmu_cxt->pmu_reg);
-	mid_pmu_cxt->base_addr.pmu1_base = NULL;
-	mid_pmu_cxt->base_addr.pmu2_base = NULL;
 
 	/* disable the current PCI device */
 	pci_release_region(dev, 0);
@@ -1982,10 +1987,13 @@ static int standby_enter(void)
 	/* time stamp for end of s3 entry */
 	time_stamp_for_sleep_state_latency(s3_state, false, true);
 
+#ifdef CONFIG_XEN
+	HYPERVISOR_mwait_op(mid_pmu_cxt->s3_hint, 1, (void *) &temp, 1);
+#else
 	__monitor((void *) &temp, 0, 0);
 	smp_mb();
 	__mwait(mid_pmu_cxt->s3_hint, 1);
-
+#endif
 	/* time stamp for start of s3 exit */
 	time_stamp_for_sleep_state_latency(s3_state, true, false);
 
@@ -2000,7 +2008,7 @@ static int standby_enter(void)
 	mid_pmu_cxt->camera_off = 0;
 	mid_pmu_cxt->display_off = 0;
 
-	if (platform_is(INTEL_ATOM_MRFLD))
+	if (platform_is(INTEL_ATOM_MRFLD) || platform_is(INTEL_ATOM_MOORFLD))
 		up(&mid_pmu_cxt->scu_ready_sem);
 
 	return 0;
@@ -2154,10 +2162,8 @@ static void __exit mid_pci_cleanup(void)
 	/* registering PCI device */
 	pci_unregister_driver(&driver);
 
-	if (mid_pmu_cxt) {
+	if (mid_pmu_cxt)
 		pmu_stats_finish();
-		kfree(mid_pmu_cxt->ss_config);
-	}
 
 	kfree(mid_pmu_cxt);
 }

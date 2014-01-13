@@ -348,9 +348,6 @@ static void i915_restore_display(struct drm_device *dev)
 		i915_restore_vga(dev);
 	else
 		i915_redisable_vga(dev);
-	/* Restore Gamma/Csc/Hue/Saturation/Brightness/Contrast */
-	if (!intel_restore_clr_mgr_status(dev))
-		DRM_ERROR("Restore Color manager status failed");
 }
 
 
@@ -826,7 +823,8 @@ static int valleyview_freeze(struct drm_device *dev)
 
 	/* Disable crct if audio driver prevented that earlier */
 	if (!dev_priv->audio_suspended) {
-		mutex_lock(&dev->mode_config.mutex);
+		drm_modeset_lock_all(dev);
+
 		/* audio was not suspended earlier; now we should
 		 * disable the crtc */
 		list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
@@ -837,7 +835,7 @@ static int valleyview_freeze(struct drm_device *dev)
 				break;
 			}
 		}
-		mutex_unlock(&dev->mode_config.mutex);
+		drm_modeset_unlock_all(dev);
 	}
 
 	/* Save Hue/Saturation/Brightness/Contrast status */

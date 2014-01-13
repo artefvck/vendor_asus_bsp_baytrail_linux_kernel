@@ -1559,14 +1559,19 @@ static int max17042_get_batt_health(void)
 	struct max17042_chip *chip = i2c_get_clientdata(max17042_client);
 	int vavg, temp, ret;
 
+	if (!chip->pdata->valid_battery) {
+		dev_err(&chip->client->dev, "Invalid battery detected");
+		return POWER_SUPPLY_HEALTH_UNKNOWN;
+	}
+
 	ret = read_batt_pack_temp(chip, &temp);
 	if (ret < 0) {
 		dev_err(&chip->client->dev,
 			"battery pack temp read fail:%d", ret);
 		return POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
 	}
-	if ((temp < chip->pdata->temp_min_lim) ||
-			(temp > chip->pdata->temp_max_lim)) {
+	if ((temp <= chip->pdata->temp_min_lim) ||
+			(temp >= chip->pdata->temp_max_lim)) {
 		dev_info(&chip->client->dev,
 			"Battery Over Temp condition Detected:%d\n", temp);
 		return POWER_SUPPLY_HEALTH_OVERHEAT;
@@ -1855,6 +1860,7 @@ static void configure_interrupts(struct max17042_chip *chip)
 {
 	int ret;
 	unsigned int edge_type;
+	int temp_threshold;
 
 	/* set SOC-alert threshold sholds to lowest value */
 	max17042_write_reg(chip->client, MAX17042_SALRT_Th,
@@ -1941,6 +1947,10 @@ static int max17042_probe(struct i2c_client *client,
 	struct max17042_chip *chip;
 	int ret, i, gpio;
 	struct acpi_gpio_info gpio_info;
+
+#ifdef CONFIG_XEN
+	return -ENODEV;
+#endif
 
 #ifdef CONFIG_ACPI
 	client->dev.platform_data = max17042_platform_data(NULL);
@@ -2231,6 +2241,9 @@ static const struct i2c_device_id max17042_id[] = {
 	{ "max17042", 0 },
 	{ "max17047", 1 },
 	{ "max17050", 2 },
+	{ "MAX17042", 0 },
+	{ "MAX17047", 1 },
+	{ "MAX17050", 2 },
 	{ },
 };
 MODULE_DEVICE_TABLE(i2c, max17042_id);
@@ -2285,7 +2298,17 @@ static int max17042_reboot_callback(struct notifier_block *nfb,
 	return NOTIFY_OK;
 }
 
-module_i2c_driver(max17042_i2c_driver);
+static int __init max17042_init(void)
+{
+	return i2c_add_driver(&max17042_i2c_driver);
+}
+late_initcall(max17042_init);
+
+static void __exit max17042_exit(void)
+{
+	i2c_del_driver(&max17042_i2c_driver);
+}
+module_exit(max17042_exit);
 
 int __init set_fake_batt_full(char *p)
 {

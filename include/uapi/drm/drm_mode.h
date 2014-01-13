@@ -70,6 +70,8 @@
 #define DRM_MODE_DPMS_STANDBY	1
 #define DRM_MODE_DPMS_SUSPEND	2
 #define DRM_MODE_DPMS_OFF	3
+#define DRM_MODE_DPMS_ASYNC_ON	4
+#define DRM_MODE_DPMS_ASYNC_OFF	5
 
 /* Scaling mode options */
 #define DRM_MODE_SCALE_NONE		0 /* Unmodified timing (display or
@@ -97,6 +99,9 @@ struct drm_mode_modeinfo {
 
 	__u32 flags;
 	__u32 type;
+#if defined(CONFIG_DRM_I915)
+	__u32 picture_aspect_ratio;
+#endif
 	char name[DRM_DISPLAY_MODE_LEN];
 };
 

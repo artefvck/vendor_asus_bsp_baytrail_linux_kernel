@@ -35,13 +35,32 @@ static bool dwc_otg_get_usbspecoverride(void)
 	return usb_spec_override;
 }
 
+/* Read SCCB_USB_CFG.bit14 to get the current phy select setting */
+static enum usb_phy_intf get_usb2_phy_type(void)
+{
+	void __iomem *addr;
+	u32 val;
+
+	addr = ioremap_nocache(SCCB_USB_CFG, 4);
+	val = readl(addr) & SCCB_USB_CFG_SELECT_ULPI;
+	iounmap(addr);
+
+	if (val)
+		return USB2_PHY_ULPI;
+	else
+		return USB2_PHY_UTMI;
+}
+
 static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 {
 	switch (pdev->device) {
 	case PCI_DEVICE_ID_INTEL_MRFL_DWC3_OTG:
-		if (INTEL_MID_BOARD(1, PHONE, MOOR)) {
+		if (INTEL_MID_BOARD(1, PHONE, MOFD)) {
 			dwc_otg_pdata.pmic_type = SHADY_COVE;
 			dwc_otg_pdata.charger_detect_enable = 0;
+			dwc_otg_pdata.usb2_phy_type = get_usb2_phy_type();
+			if (dwc_otg_pdata.usb2_phy_type == USB2_PHY_ULPI)
+				dwc_otg_pdata.charger_detect_enable = 1;
 
 		} else if (INTEL_MID_BOARD(1, PHONE, MRFL)) {
 			dwc_otg_pdata.pmic_type = BASIN_COVE;
@@ -49,12 +68,14 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 
 			dwc_otg_pdata.charging_compliance =
 				dwc_otg_get_usbspecoverride();
+			dwc_otg_pdata.usb2_phy_type = USB2_PHY_ULPI;
 
 		} else if (intel_mid_identify_sim() ==
 				INTEL_MID_CPU_SIMULATION_HVP) {
 			dwc_otg_pdata.pmic_type = NO_PMIC;
 			dwc_otg_pdata.is_hvp = 1;
 			dwc_otg_pdata.charger_detect_enable = 0;
+			dwc_otg_pdata.usb2_phy_type = USB2_PHY_ULPI;
 		}
 		return &dwc_otg_pdata;
 	case PCI_DEVICE_ID_INTEL_BYT_OTG:
@@ -74,6 +95,13 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 			dwc_otg_pdata.gpio_cs = 54;
 			dwc_otg_pdata.gpio_reset = 144;
 			dwc_otg_pdata.ti_phy_vs1 = 0x7f;
+		} else if (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, CRV2) ||
+			INTEL_MID_BOARD(3, TABLET, BYT, BLK, ENG, CRV2)) {
+			dwc_otg_pdata.gpio_cs = 54;
+			dwc_otg_pdata.gpio_reset = 144;
+			dwc_otg_pdata.ti_phy_vs1 = 0x7f;
+			dwc_otg_pdata.gpio_id = 156;
+			dwc_otg_pdata.sdp_charging = 1;
 		}
 		return &dwc_otg_pdata;
 	default:

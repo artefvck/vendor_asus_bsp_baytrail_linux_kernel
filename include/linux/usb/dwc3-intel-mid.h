@@ -34,9 +34,13 @@ struct intel_dwc_otg_pdata {
 	int charger_detect_enable;
 	int gpio_cs;
 	int gpio_reset;
+	int gpio_id;
+	int id;
 	int charging_compliance;
 	struct delayed_work suspend_discon_work;
 	u8 ti_phy_vs1;
+	int sdp_charging;
+	enum usb_phy_intf usb2_phy_type;
 };
 
 /* timeout for disconnect from a suspended host */
@@ -199,5 +203,9 @@ struct intel_dwc_otg_pdata {
 #define PMIC_USBIDRSLTH_USBID_H_MASK	(0x0F)
 #define PMIC_USBIDRSLTH_USBID_CURSRC_MASK	(0xF0)
 #define PMIC_SCHGRIRQ1_SUSBIDDET(v)	((v & 0x3) << 3)
+
+/* SCCB registers */
+#define SCCB_USB_CFG	0xff03a018
+#define SCCB_USB_CFG_SELECT_ULPI	(1 << 14)
 
 #endif /* __DWC3_INTEL_H */

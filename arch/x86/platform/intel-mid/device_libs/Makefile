@@ -2,8 +2,10 @@
 obj-y += platform_sst_audio.o
 obj-y += platform_clv_regulator.o
 obj-y += platform_mrfl_regulator.o
+obj-y += platform_byt_regulator.o
 obj-y += platform_soc_thermal.o
 obj-$(subst m,y,$(CONFIG_SND_BYT_MACHINE)) += platform_byt_audio.o
+obj-$(subst m,y,$(CONFIG_SND_CHT_MACHINE)) += platform_byt_audio.o
 obj-$(subst m,y,$(CONFIG_SND_MRFLD_MACHINE)) += platform_mrfld_audio.o
 obj-$(subst m,y,$(CONFIG_SND_CTP_MACHINE)) += platform_ctp_audio.o
 obj-y += platform_ipc.o
@@ -54,6 +56,7 @@ obj-$(subst m,y,$(CONFIG_SENSORS_LSM303_MAG)) += platform_lsm303.o
 obj-$(subst m,y,$(CONFIG_SENSORS_APDS990X_FORK)) += platform_apds990x.o
 obj-$(subst m,y,$(CONFIG_A1026)) += platform_a1026.o
 obj-$(subst m,y,$(CONFIG_EXTCON_FSA9285)) += platform_fsa9285.o
+obj-$(subst m,y,$(CONFIG_EXTCON_SMSC375X))	+= platform_smsc375x.o
 obj-$(subst m,y,$(CONFIG_SND_SOC_WM5102)) += platform_wm5102.o
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_GT9271)) += platform_gt9271.o
 
@@ -100,6 +103,7 @@ obj-$(subst m,y,$(CONFIG_VIDEO_OV9724))					+= platform_ov9724.o
 obj-$(subst m,y,$(CONFIG_VIDEO_OV2722))					+= platform_ov2722.o
 obj-$(subst m,y,$(CONFIG_VIDEO_LM3554))					+= platform_lm3554.o
 obj-$(subst m,y,$(CONFIG_VIDEO_LM3559))					+= platform_lm3559.o
+obj-$(subst m,y,$(CONFIG_VIDEO_AP1302))					+= platform_ap1302.o
 endif
 
 ifdef CONFIG_BATTERY_MAX17042
@@ -114,6 +118,7 @@ obj-$(subst m,y,$(CONFIG_DRM_MRFLD)) += platform_panel.o
 obj-$(subst m,y,$(CONFIG_INTEL_MID_GPS)) += platform_gps.o
 # WIFI devices
 obj-$(subst m,y,$(CONFIG_WIFI_PLATFORM_DATA)) += platform_wifi.o
+obj-$(subst m,y,$(CONFIG_MMC_SDHCI_ACPI)) += platform_sdio_regulator.o
 # SCU log
 obj-$(subst m,y,$(CONFIG_SCU_LOGGING)) += platform_scu_log.o
 # Display Control Device

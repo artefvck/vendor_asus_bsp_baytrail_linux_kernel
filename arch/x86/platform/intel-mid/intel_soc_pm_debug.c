@@ -231,35 +231,31 @@ void s0ix_lat_stat_init(void)
 	if (!platform_is(INTEL_ATOM_CLV))
 		return;
 
-	lat_stat = kzalloc(sizeof(struct latency_stat), GFP_KERNEL);
+	lat_stat = devm_kzalloc(&mid_pmu_cxt->pmu_dev->dev,
+			sizeof(struct latency_stat), GFP_KERNEL);
 	if (unlikely(!lat_stat)) {
 		pr_err("Failed to allocate memory for s0ix latency!\n");
-		goto out_err0;
+		goto out_err;
 	}
 
 	lat_stat->scu_s0ix_lat_addr =
-		ioremap_nocache(S0IX_LAT_SRAM_ADDR_CLVP,
-					S0IX_LAT_SRAM_SIZE_CLVP);
+		devm_ioremap_nocache(&mid_pmu_cxt->pmu_dev->dev,
+			S0IX_LAT_SRAM_ADDR_CLVP, S0IX_LAT_SRAM_SIZE_CLVP);
 	if (unlikely(!lat_stat->scu_s0ix_lat_addr)) {
 		pr_err("Failed to map SCU_S0IX_LAT_ADDR!\n");
-		goto out_err1;
+		goto out_err;
 	}
 
 	lat_stat->dentry = debugfs_create_file("s0ix_latency",
 			S_IFREG | S_IRUGO, NULL, NULL, &s0ix_latency_ops);
 	if (unlikely(!lat_stat->dentry)) {
 		pr_err("Failed to create debugfs for s0ix latency!\n");
-		goto out_err2;
+		goto out_err;
 	}
 
 	return;
 
-out_err2:
-	iounmap(lat_stat->scu_s0ix_lat_addr);
-out_err1:
-	kfree(lat_stat);
-	lat_stat = NULL;
-out_err0:
+out_err:
 	pr_err("%s: Initialization failed\n", __func__);
 }
 
@@ -271,14 +267,8 @@ void s0ix_lat_stat_finish(void)
 	if (unlikely(!lat_stat))
 		return;
 
-	if (likely(lat_stat->scu_s0ix_lat_addr))
-		iounmap(lat_stat->scu_s0ix_lat_addr);
-
 	if (likely(lat_stat->dentry))
 		debugfs_remove(lat_stat->dentry);
-
-	kfree(lat_stat);
-	lat_stat = NULL;
 }
 
 void time_stamp_in_suspend_flow(int mark, bool start)
@@ -820,8 +810,7 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	pmu_stat_seq_printf(s, SYS_STATE_S0I3, "s0i3");
 	pmu_stat_seq_printf(s, SYS_STATE_S3, "s3");
 
-	while ((pdev = pci_get_device(PCI_ID_ANY, PCI_ID_ANY, pdev)) != NULL) {
-
+	for_each_pci_dev(pdev) {
 		/* find the base class info */
 		base_class = pdev->class >> 16;
 
@@ -993,8 +982,7 @@ static int show_pmu_dev_stats(struct seq_file *s, void *unused)
 	seq_printf(s,
 	"==================================================================\n");
 
-	while ((pdev = pci_get_device(PCI_ID_ANY, PCI_ID_ANY, pdev)) != NULL) {
-
+	for_each_pci_dev(pdev) {
 		/* find the base class info */
 		base_class = pdev->class >> 16;
 
@@ -1509,7 +1497,7 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 
 	seq_printf(s, "\nSOUTH COMPLEX DEVICES :\n\n");
 
-	while ((pdev = pci_get_device(PCI_ID_ANY, PCI_ID_ANY, pdev)) != NULL) {
+	for_each_pci_dev(pdev) {
 		/* find the base class info */
 		base_class = pdev->class >> 16;
 
@@ -2294,7 +2282,7 @@ unsigned int pmu_get_new_cstate(unsigned int cstate, int *index)
 	u32 local_cstate_allowed = ~mid_pmu_cxt->cstate_ignore;
 	u32 cstate_mask, cstate_no_s0ix_mask = (u32)((1 << 6) - 1);
 
-	if (platform_is(INTEL_ATOM_MRFLD)) {
+	if (platform_is(INTEL_ATOM_MRFLD) || platform_is(INTEL_ATOM_MOORFLD)) {
 		/* cstate is also 7 for C9 so correct */
 		if ((local_cstate == 7) && (*index == 4))
 			local_cstate = 9;
@@ -2447,7 +2435,7 @@ void pmu_stats_init(void)
 	(void) debugfs_create_file("c_states_stat", S_IFREG | S_IRUGO,
 				NULL, NULL, &c_states_stat_ops);
 #ifdef CONFIG_PM_DEBUG
-	if (platform_is(INTEL_ATOM_MRFLD)) {
+	if (platform_is(INTEL_ATOM_MRFLD) || platform_is(INTEL_ATOM_MOORFLD)) {
 		/* If s0ix is disabled then restrict to C6 */
 		if (!enable_s0ix) {
 			mid_pmu_cxt->cstate_ignore =

@@ -43,7 +43,6 @@
 #include <linux/iio/consumer.h>
 
 #define DRIVER_NAME "bcove_thrm"
-#define DEVICE_NAME "mrfl_pmic_thermal"
 
 /* Number of Thermal sensors on the PMIC */
 #define PMIC_THERMAL_SENSORS	4
@@ -369,7 +368,7 @@ exit_err:
 	return ret;
 }
 
-static ssize_t store_trip_hyst(struct thermal_zone_device *tzd,
+static int store_trip_hyst(struct thermal_zone_device *tzd,
 				int trip, long hyst)
 {
 	int ret;
@@ -397,7 +396,7 @@ ipc_fail:
 	return ret;
 }
 
-static ssize_t show_trip_hyst(struct thermal_zone_device *tzd,
+static int show_trip_hyst(struct thermal_zone_device *tzd,
 				int trip, long *hyst)
 {
 	int ret;
@@ -416,7 +415,7 @@ static ssize_t show_trip_hyst(struct thermal_zone_device *tzd,
 	return ret;
 }
 
-static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
+static int store_trip_temp(struct thermal_zone_device *tzd,
 				int trip, long trip_temp)
 {
 	int ret, adc_val;
@@ -443,7 +442,7 @@ exit:
 	return ret;
 }
 
-static ssize_t show_trip_temp(struct thermal_zone_device *tzd,
+static int show_trip_temp(struct thermal_zone_device *tzd,
 				int trip, long *trip_temp)
 {
 	int ret, adc_val;
@@ -470,7 +469,7 @@ exit:
 	return ret;
 }
 
-static ssize_t show_trip_type(struct thermal_zone_device *tzd,
+static int show_trip_type(struct thermal_zone_device *tzd,
 			int trip, enum thermal_trip_type *trip_type)
 {
 	/* All are passive trip points */
@@ -479,7 +478,7 @@ static ssize_t show_trip_type(struct thermal_zone_device *tzd,
 	return 0;
 }
 
-static ssize_t show_temp(struct thermal_zone_device *tzd, long *temp)
+static int show_temp(struct thermal_zone_device *tzd, long *temp)
 {
 	int ret;
 	struct thermal_device_info *td_info = tzd->devdata;
@@ -674,7 +673,6 @@ static irqreturn_t mrfl_thermal_intrpt_handler(int irq, void* dev_data)
 
 static int mrfl_thermal_probe(struct platform_device *pdev)
 {
-	struct device *dev = &pdev->dev;
 	int ret, i;
 	struct intel_mid_thermal_platform_data *pdata;
 

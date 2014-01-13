@@ -185,7 +185,12 @@ void mei_reset(struct mei_device *dev, int interrupts_enabled)
 
 	dev->dev_state = MEI_DEV_INIT_CLIENTS;
 
-	mei_hbm_start_req(dev);
+	ret = mei_hbm_start_req(dev);
+	if (ret) {
+		dev_err(&dev->pdev->dev, "hbm_start failed disabling the device\n");
+		dev->dev_state = MEI_DEV_DISABLED;
+		return;
+	}
 }
 EXPORT_SYMBOL_GPL(mei_reset);
 
@@ -272,5 +277,15 @@ void mei_device_init(struct mei_device *dev)
 	mei_io_list_init(&dev->amthif_cmd_list);
 	mei_io_list_init(&dev->amthif_rd_complete_list);
 
+	bitmap_zero(dev->host_clients_map, MEI_CLIENTS_MAX);
+	dev->open_handle_count = 0;
+
+	/*
+	 * Reserving the first client ID
+	 * 0: Reserved for MEI Bus Message communications
+	 */
+	bitmap_set(dev->host_clients_map, 0, 1);
+
+	dev->pg_event = MEI_PG_EVENT_IDLE;
 }
 EXPORT_SYMBOL_GPL(mei_device_init);

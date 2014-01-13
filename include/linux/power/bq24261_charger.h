@@ -29,7 +29,7 @@ struct bq24261_plat_data {
 	int (*set_cc) (int val);
 	int (*set_cv) (int val);
 	int (*set_iterm) (int val);
-	int (*enable_vbus) (int val);
+	int (*enable_vbus) (bool val);
 	/* WA for ShadyCove VBUS removal detect issue */
 	int (*handle_low_supply) (void);
 	void (*dump_master_regs) (void);
@@ -37,6 +37,7 @@ struct bq24261_plat_data {
 
 extern void bq24261_cv_to_reg(int, u8*);
 extern void bq24261_cc_to_reg(int, u8*);
+extern void bq24261_inlmt_to_reg(int, u8*);
 
 #ifdef CONFIG_BQ24261_CHARGER
 extern int bq24261_get_bat_health(void);

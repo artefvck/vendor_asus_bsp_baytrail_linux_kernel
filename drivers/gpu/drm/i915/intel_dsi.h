@@ -173,6 +173,7 @@ struct intel_dsi {
 
 	bool send_shutdown;
 	u8 shutdown_pkt_delay; /*in ms*/
+	enum panel_fitter pfit;
 };
 
 static inline struct intel_dsi *enc_to_intel_dsi(struct drm_encoder *encoder)
