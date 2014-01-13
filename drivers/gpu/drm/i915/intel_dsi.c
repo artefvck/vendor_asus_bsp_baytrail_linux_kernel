@@ -522,7 +522,7 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 	int pipe = intel_crtc->pipe;
 	unsigned int bpp = intel_crtc->config.pipe_bpp;
 	struct drm_display_mode *adjusted_mode;
-	u32 val;
+	u32 val=0;
 
 	if (BYT_CR_CONFIG)
 		adjusted_mode =	intel_dsi->attached_connector->panel.fixed_mode;

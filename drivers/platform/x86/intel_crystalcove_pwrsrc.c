@@ -179,14 +179,12 @@ static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 
 	if (pwrsrcirq & PWRSRC_VBUS_DET) {
 		if (spwrsrc & PWRSRC_VBUS_DET) {
-			VbusDetach = 0;
 			dev_dbg(&info->pdev->dev, "VBUS attach event\n");
 			mask = 1;
 			if (info->edev)
 				extcon_set_cable_state(info->edev,
 						PWRSRC_EXTCON_CABLE_USB, true);
 		} else {
-			VbusDetach = 1;
 			dev_dbg(&info->pdev->dev, "VBUS detach event\n");
 			mask = 0;
 			if (info->edev)
