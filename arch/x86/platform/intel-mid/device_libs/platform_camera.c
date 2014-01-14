@@ -355,6 +355,7 @@ struct i2c_client *i2c_find_client_by_name(char *name)
 static void atomisp_unregister_acpi_devices(struct atomisp_platform_data *pdata)
 {
 	const char *subdev_name[] = {
+#if 0
 		"3-0053",	/* FFRD8 lm3554 */
 		"4-0036",	/* ov2722 */
 		"4-0010",	/* imx1xx Sensor*/
@@ -364,11 +365,13 @@ static void atomisp_unregister_acpi_devices(struct atomisp_platform_data *pdata)
 		"2-0053",	/* byt-crv2 lm3554*/
 		"2-0010",	/* imx1xx driver*/
 		"2-0036",	/* ov2722 driver*/
-#if 0
 		"INTCF0B:00",	/* From ACPI ov2722 */
 		"INTCF1A:00",	/* From ACPI imx175 */
 		"INTCF1C:00",	/* From ACPI lm3554 */
 #endif
+		"4-0036",	/* ar0543 driver */
+		"4-0021",	/* gc0339 driver */
+		"4-0024",	/* hm2056 driver */
 	};
 	struct device *dev;
 	struct i2c_client *client;
