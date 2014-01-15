@@ -42,6 +42,20 @@
 #include "byt_bl_rt5642.h"
 #include "../ssp/mid_ssp.h"
 
+//terry_tao@asus.com++ audio debug mode
+#ifdef CONFIG_PROC_FS
+#include <linux/proc_fs.h>
+#include <linux/mm.h>
+#include <linux/kernel.h>
+#include <linux/syscalls.h>
+#include <linux/fs.h>
+#include <linux/file.h>
+#include <linux/string.h>
+#include <asm/unistd.h>
+#include <asm/uaccess.h>
+#endif
+//terry_tao@asus.com-- audio debug mode
+
 #define BYT_PLAT_CLK_3_HZ	25000000
 
 #define BYT_INTR_DEBOUNCE               0
@@ -129,6 +143,12 @@ static struct snd_soc_jack_gpio hs_gpio = {
 		.jack_status_check	= byt_hs_detection,
 };
 
+#ifdef CONFIG_PROC_FS
+static int debug_gpio;
+int g_bDebugMode = 0;
+EXPORT_SYMBOL(g_bDebugMode);
+#endif
+
 static inline void byt_force_enable_pin(struct snd_soc_codec *codec,
 			 const char *bias_widget, bool enable)
 {
@@ -199,6 +219,10 @@ static int byt_hs_detection(void)
 	int status, jack_type = 0;
 	int ret;
 	struct byt_mc_private *ctx = container_of(jack, struct byt_mc_private, jack);
+
+#ifdef CONFIG_PROC_FS
+	if(g_bDebugMode) return jack_type;
+#endif
 
 	mutex_lock(&ctx->jack_mlock);
 	/* Initialize jack status with previous status. The delayed work will confirm
@@ -1010,12 +1034,97 @@ static struct snd_soc_card snd_soc_card_byt = {
 	.num_dapm_routes = ARRAY_SIZE(byt_audio_map),
 };
 
+//terry_tao@asus.com++ Audio debug mode
+#ifdef CONFIG_PROC_FS
+#define Audio_debug_PROC_FILE  "driver/audio_debug"
+static struct proc_dir_entry *audio_debug_proc_file;
+
+static mm_segment_t oldfs;
+static void initKernelEnv(void)
+{
+    oldfs = get_fs();
+    set_fs(KERNEL_DS);
+}
+
+static void deinitKernelEnv(void)
+{
+    set_fs(oldfs);
+}
+
+static ssize_t audio_debug_proc_write(struct file *filp, const char *buff, size_t len, loff_t *off)
+{
+    char messages[256];
+    struct snd_soc_jack_gpio *gpio = &hs_gpio;
+	struct snd_soc_jack *jack = gpio->jack;
+	//struct snd_soc_codec *codec = jack->codec;
+	struct byt_mc_private *ctx = container_of(jack, struct byt_mc_private, jack);
+	int jack_type = 0;
+    memset(messages, 0, sizeof(messages));
+
+    printk("[Audio Debug] audio_debug_proc_write\n");
+    if (len > 256)
+    {
+        len = 256;
+    }
+    if (copy_from_user(messages, buff, len))
+    {
+        return -EFAULT;
+    }
+    
+    initKernelEnv();
+
+    if(strncmp(messages, "1", 1) == 0)
+    {
+        cancel_delayed_work_sync(&ctx->hs_insert_work);
+        cancel_delayed_work_sync(&ctx->hs_button_en_work);
+        cancel_delayed_work_sync(&ctx->hs_button_work);
+        cancel_delayed_work_sync(&ctx->hs_remove_work);
+        snd_soc_jack_report(jack, jack_type, gpio->report);
+        
+        gpio_set_value(debug_gpio,0);
+        g_bDebugMode = 1;
+        printk("%d Audio Debug Mode!!!\n",debug_gpio);
+    }
+    else if(strncmp(messages, "0", 1) == 0)
+    {
+        gpio_set_value(debug_gpio,1);
+        g_bDebugMode = 0;
+        printk("%d Audio Headset Normal Mode!!!\n",debug_gpio);
+        byt_hs_detection();
+    }
+
+    deinitKernelEnv(); 
+    return len;
+}
+
+static struct file_operations audio_debug_proc_ops = {
+    //.read = audio_debug_proc_read,
+    .write = audio_debug_proc_write,
+};
+
+static void create_audio_debug_proc_file(void)
+{
+    printk("[Audio] create_audio_debug_proc_file\n");
+    audio_debug_proc_file = proc_create(Audio_debug_PROC_FILE, 0666,NULL, &audio_debug_proc_ops);
+}
+
+static void remove_audio_debug_proc_file(void)
+{
+    extern struct proc_dir_entry proc_root;
+    printk("[Audio] remove_audio_debug_proc_file\n");   
+    remove_proc_entry(Audio_debug_PROC_FILE, &proc_root);
+}
+#endif //#ifdef CONFIG_PROC_FS
+//terry_tao@asus.com-- Audio debug mode
+
 static int snd_byt_mc_probe(struct platform_device *pdev)
 {
 	int ret_val = 0;
 	struct byt_mc_private *drv;
 	int codec_gpio;
-
+#ifdef CONFIG_PROC_FS
+	int debug_gpio_ret;
+#endif
 	pr_debug("Entry %s\n", __func__);
 	drv = devm_kzalloc(&pdev->dev, sizeof(*drv), GFP_ATOMIC);
 	if (!drv) {
@@ -1065,6 +1174,17 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 		return ret_val;
 	}
 	platform_set_drvdata(pdev, &snd_soc_card_byt);
+
+#ifdef CONFIG_PROC_FS
+	debug_gpio = acpi_get_gpio("\\_SB.GPO2", 8);
+	pr_info("debug_gpio = %d\n",debug_gpio);
+	debug_gpio_ret = gpio_request(debug_gpio,"debug_gpio");
+	if(debug_gpio_ret)pr_info("debug gpio request fail\n");
+	debug_gpio_ret = gpio_direction_output(debug_gpio,0);
+	if(debug_gpio_ret)pr_info("gpio_direction_output fail\n");
+	create_audio_debug_proc_file();
+#endif	
+
 	pr_info("%s successful\n", __func__);
 	return ret_val;
 }
@@ -1091,6 +1211,9 @@ static int snd_byt_mc_remove(struct platform_device *pdev)
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
 	platform_set_drvdata(pdev, NULL);
+#ifdef CONFIG_PROC_FS
+	remove_audio_debug_proc_file();
+#endif
 	return 0;
 }
 
