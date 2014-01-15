@@ -168,7 +168,7 @@ int crystal_cove_vbus_on_status(void)
 	return 0;
 }
 EXPORT_SYMBOL(crystal_cove_vbus_on_status);
-
+extern unsigned char VbusDetach ; 
 static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 {
 	int spwrsrc, mask;
@@ -181,12 +181,14 @@ static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 		if (spwrsrc & PWRSRC_VBUS_DET) {
 			dev_dbg(&info->pdev->dev, "VBUS attach event\n");
 			mask = 1;
+			VbusDetach =0;
 			if (info->edev)
 				extcon_set_cable_state(info->edev,
 						PWRSRC_EXTCON_CABLE_USB, true);
 		} else {
 			dev_dbg(&info->pdev->dev, "VBUS detach event\n");
 			mask = 0;
+			VbusDetach =1;
 			if (info->edev)
 				extcon_set_cable_state(info->edev,
 						PWRSRC_EXTCON_CABLE_USB, false);
