@@ -44,6 +44,7 @@ config INPUT_SENSOR_KXTJ2_POLLED_MODE
 config INPUT_SENSOR_HALLSENSOR
         bool "Hall sensor support"
         default n
-
+	help
+	This is the hall sensor driver for android system.
 endif
 
