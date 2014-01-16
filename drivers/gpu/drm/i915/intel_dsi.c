@@ -37,6 +37,12 @@
 #include "intel_dsi_cmd.h"
 #include "intel_dsi_pll.h"
 
+#include <linux/lnw_gpio.h>
+#include <linux/acpi_gpio.h>	
+#include <linux/acpi.h>			
+#include <linux/gpio.h>	
+
+
 /* the sub-encoders aka panel drivers */
 static const struct intel_dsi_device intel_dsi_devices[] = {
 	{
@@ -74,7 +80,19 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.type = INTEL_DSI_VIDEO_MODE,
 		.name = "nov-m176-dsi-vid-mode-display",
 		.dev_ops = &nov_m176_dsi_display_ops,
-	},	
+	},
+	{
+		.panel_id = MIPI_DSI_AUO_M181_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "auo-m181-dsi-vid-mode-display",
+		.dev_ops = &auo_m181_dsi_display_ops,
+	},
+	{
+		.panel_id = MIPI_DSI_INNOLUX_M181_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "innolux-m181-dsi-vid-mode-display",
+		.dev_ops = &innolux_m181_dsi_display_ops,
+	},		
 };
 
 static struct intel_dsi *intel_attached_dsi(struct drm_connector *connector)
@@ -790,6 +808,12 @@ bool intel_dsi_init(struct drm_device *dev)
 	struct drm_display_mode *fixed_mode = NULL;
 	const struct intel_dsi_device *dsi;
 	unsigned int i;
+	
+	//sean ++
+	//int err = 0;
+	//int lcm_id = 1;
+	//int fact_panel_id = 6;
+	//sean --
 
 	DRM_DEBUG_KMS("\n");
 
@@ -837,8 +861,51 @@ bool intel_dsi_init(struct drm_device *dev)
 			dev_priv->mipi_panel_id = MIPI_DSI_PANASONIC_VXX09F006A00_PANEL_ID;
 		} else
 			dev_priv->mipi_panel_id = dev_priv->vbt.dsi.panel_id;
-	} else
-		dev_priv->mipi_panel_id = i915_mipi_panel_id;
+	} 
+	else
+	{
+#ifdef CONFIG_PRO_ME176_PANEL
+		dev_priv->mipi_panel_id = MIPI_DSI_NOV_M176_PANEL_ID;
+		printk("----sean test----select 176 panel id:%d----\n",dev_priv->mipi_panel_id);
+#endif
+
+#ifdef CONFIG_PRO_ME181_PANEL
+
+		//sean ++
+		int err = 0;
+		int lcm_id = 1;
+		int fact_panel_id = 6;
+		//sean --
+		//sean_lu ++++
+		printk("----sean test----m181_init i915_init----\n");
+		err = gpio_request(68, "LCM_ID");
+		if (err){
+			printk("----sean test----m181_panel_selected----\n");
+		}
+		
+		gpio_direction_input(68);
+		
+		lcm_id = gpio_get_value(68);
+		
+		printk("----sean test----m181_lcm_id:%d----\n",lcm_id);
+		
+		if(lcm_id)
+		{
+			fact_panel_id = MIPI_DSI_AUO_M181_PANEL_ID;
+		}
+		else
+		{
+			fact_panel_id = MIPI_DSI_INNOLUX_M181_PANEL_ID;
+		}
+		
+		printk("----sean test----m181_lcm_id:%d----\n",fact_panel_id);
+		dev_priv->mipi_panel_id = fact_panel_id;
+		//sean_lu ----
+		//dev_priv->mipi_panel_id = i915_mipi_panel_id; //sean --
+#endif
+	}
+	
+	
 //	dev_priv->mipi_panel_id = 6; //pbtest
 //	dev_priv->mipi_panel_id = MIPI_DSI_GENERIC_PANEL_ID;
 	printk("---mipi_panel_id=%d---\n",dev_priv->mipi_panel_id);

@@ -40,6 +40,7 @@
 /*Added for HDMI Audio */
 #include "hdmi_audio_if.h"
 
+
 int i915_rotation __read_mostly;
 module_param_named(i915_rotation, i915_rotation, int, 0600);
 MODULE_PARM_DESC(i915_rotation,
@@ -110,7 +111,9 @@ MODULE_PARM_DESC(vbt_sdvo_panel_type,
 		"Override/Ignore selection of SDVO panel mode in the VBT "
 		"(-2=ignore, -1=auto [default], index in VBT BIOS table)");
 
-int i915_mipi_panel_id __read_mostly = 6;
+int i915_mipi_panel_id __read_mostly = 6; //m176 panel 
+//int i915_mipi_panel_id __read_mostly = 7;	//m181_auo_panel
+//int i915_mipi_panel_id __read_mostly = 8;	//m181_innolux_panel
 //module_param_named(mipi_panel_id, i915_mipi_panel_id, int, 0600);
 //MODULE_PARM_DESC(mipi_panel_id,
 //		"MIPI Panel selection in case MIPI block is not present in VBT "
@@ -1253,7 +1256,7 @@ static struct pci_driver i915_pci_driver = {
 };
 
 static int __init i915_init(void)
-{
+{	
 	driver.num_ioctls = i915_max_ioctl;
 
 	/*

@@ -186,6 +186,8 @@ extern struct intel_dsi_dev_ops auo_b080xat_dsi_display_ops;
 extern struct intel_dsi_dev_ops jdi_lpm070w425b_dsi_display_ops;
 extern struct intel_dsi_dev_ops nov_m176_dsi_display_ops;
 extern struct intel_dsi_dev_ops vbt_generic_dsi_display_ops;
+extern struct intel_dsi_dev_ops	auo_m181_dsi_display_ops;
+extern struct intel_dsi_dev_ops innolux_m181_dsi_display_ops;
 void intel_dsi_clear_device_ready(struct intel_encoder *encoder);
 
 #define	MIPI_DSI_UNDEFINED_PANEL_ID			0x00
@@ -195,4 +197,6 @@ void intel_dsi_clear_device_ready(struct intel_encoder *encoder);
 #define	MIPI_DSI_AUO_B080XAT_PANEL_ID			0x04
 #define	MIPI_DSI_JDI_LPM070W425B_PANEL_ID		0x05
 #define	MIPI_DSI_NOV_M176_PANEL_ID		0x06
+#define MIPI_DSI_AUO_M181_PANEL_ID		0x07
+#define MIPI_DSI_INNOLUX_M181_PANEL_ID		0x08
 #endif /* _INTEL_DSI_H */
