@@ -195,6 +195,18 @@ config DRM_I915_SYNC
 	  driver. This requires userspace support to actually make use of this
 	  functionality.
 
+config PRO_ME181_PANEL
+	bool "me181 product panel"
+	default n
+	help
+	  me181 product panel
+
+config PRO_ME176_PANEL
+	bool "me176 product panel"
+	default n
+	help
+	  me176 product panel
+
 config DRM_MGA
 	tristate "Matrox g200/g400"
 	depends on DRM && PCI
