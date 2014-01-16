@@ -45,6 +45,8 @@
 #include <linux/pm_qos.h>
 #include "hdmi_audio_if.h"
 #include <linux/mmu_notifier.h>
+#include <asm/spid.h>
+
 /* General customization:
  */
 
@@ -88,6 +90,10 @@ enum port {
 	PORT_E,
 	I915_MAX_PORTS
 };
+
+#define  BYT_CR_CONFIG (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, CRV2) || \
+			INTEL_MID_BOARD(3, TABLET, BYT, BLK, ENG, CRV2))
+
 #define port_name(p) ((p) + 'A')
 
 enum intel_display_power_domain {
@@ -467,7 +473,7 @@ struct intel_device_info {
 #undef DEFINE_FLAG
 #undef SEP_SEMICOLON
 
-enum hdmi_panel_fitter {
+enum panel_fitter {
 	PFIT_OFF,
 	AUTOSCALE,
 	PILLARBOX,
@@ -936,6 +942,10 @@ struct intel_gen6_power_mgmt {
 	 * Must be taken after struct_mutex if nested.
 	 */
 	struct mutex hw_lock;
+
+	/* Delayed work to adjust RC6 promotion timer */
+	struct delayed_work vlv_media_timeout_work;
+
 };
 
 /* RC6 related */
@@ -1478,6 +1488,9 @@ typedef struct drm_i915_private {
 	/* list of fbdev register on this device */
 	struct intel_fbdev *fbdev;
 
+#ifdef CONFIG_DEBUG_FS
+	atomic_t wfifo_count;
+#endif
 	/*
 	 * The console may be contended at resume, but we don't
 	 * want it to block on it.
@@ -2187,6 +2200,7 @@ int __must_check i915_gem_object_put_fence(struct drm_i915_gem_object *obj);
 
 int __must_check i915_gem_next_request_seqno(struct intel_ring_buffer *ring,
 					     u32 *seqno);
+int i915_gem_check_olr(struct intel_ring_buffer *ring, u32 seqno);
 
 static inline bool
 i915_gem_object_pin_fence(struct drm_i915_gem_object *obj)
