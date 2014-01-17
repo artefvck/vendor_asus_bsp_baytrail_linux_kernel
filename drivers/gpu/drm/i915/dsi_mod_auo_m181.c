@@ -73,15 +73,15 @@ bool auo_m181_init(struct intel_dsi_device *dsi)
 //	intel_dsi->eot_disable = 1;
 	intel_dsi->eotp_pkt = 0;
 	intel_dsi->port_bits = 0;
-//	intel_dsi->dsi_clock_freq = 513;
-	intel_dsi->video_mode_type = DSI_VIDEO_NBURST_SEVENT;
+	//intel_dsi->dsi_clock_freq = 500;
+	intel_dsi->video_mode_type = DSI_VIDEO_BURST;
 	intel_dsi->pixel_format = VID_MODE_FORMAT_RGB888;
 //	intel_dsi->escape_clk_div = ESCAPE_CLOCK_DIVIDER_1;
 //	intel_dsi->lp_rx_timeout = 0xffff;
 	intel_dsi->turn_arnd_val = 0x14;
 	intel_dsi->rst_timer_val = 0xff;
 //	intel_dsi->init_count = 0x7d0;
-	intel_dsi->hs_to_lp_count = 0x22; //sean test
+	intel_dsi->hs_to_lp_count = 0x46; //sean test
 	intel_dsi->lp_byte_clk = 0x3; //sean test
 	intel_dsi->bw_timer = 0x0;
 	intel_dsi->clk_lp_to_hs_count = 0x22; //sean test
@@ -101,24 +101,24 @@ void auo_m181_create_resources(struct intel_dsi_device *dsi) { }
 
 void auo_m181_dpms(struct intel_dsi_device *dsi, bool enable)
 {
+	/*
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	DRM_DEBUG_KMS("\n");
 	printk("----sean test----m181_auo_dpms----\n");
 	if (enable) {
 		
-		//dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_EXIT_SLEEP_MODE);
-
-		//dsi_vc_dcs_write_1(intel_dsi, 0, MIPI_DCS_SET_TEAR_ON, 0x00);
-
-		//dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_ON);
-		//dsi_vc_dcs_write_1(intel_dsi, 0, 0x14, 0x55);
+		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_EXIT_SLEEP_MODE);
+		dsi_vc_dcs_write_1(intel_dsi, 0, MIPI_DCS_SET_TEAR_ON, 0x00);
+		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_ON);
+		dsi_vc_dcs_write_1(intel_dsi, 0, 0x14, 0x55);
 		
 
 	} else {
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_OFF);
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_ENTER_SLEEP_MODE);
 	}
+	*/ 	 	 
 }
 
 int auo_m181_mode_valid(struct intel_dsi_device *dsi,
@@ -135,6 +135,7 @@ bool auo_m181_mode_fixup(struct intel_dsi_device *dsi,
 
 void auo_m181_panel_reset(struct intel_dsi_device *dsi)
 {
+	/*
 	int err;
 	printk("----sean test_reset----\n");
 
@@ -150,7 +151,7 @@ void auo_m181_panel_reset(struct intel_dsi_device *dsi)
 	gpio_set_value(69, 1);
 
     msleep(300);
-
+*/
 }
 
 void auo_m181_disable_panel_power(struct intel_dsi_device *dsi)
@@ -158,7 +159,7 @@ void auo_m181_disable_panel_power(struct intel_dsi_device *dsi)
     printk("----sean test----m181_auo_panel_disable_power----\n");
     intel_mid_pmic_setb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 
     intel_mid_pmic_writeb(0x52,0);//PANEL_EN
-    //msleep(500);
+    msleep(500);
 }
 
 void auo_m181_send_otp_cmds(struct intel_dsi_device *dsi)
@@ -194,11 +195,13 @@ void auo_m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);	//sean test /password
 	}
 
-	//dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);			//sean test /sleep out
+	msleep(5);	
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);			//sean test /sleep out
 	//msleep(120);
-	//dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);			//sean test /display on
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);			//sean test /display on
 	//msleep(120);
-	
+	msleep(10);
+
 	{
 		unsigned char data[] = {0xC3, 0x40, 0x00,0x28};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 4);	//sean test /enable power IC
@@ -209,6 +212,7 @@ void auo_m181_send_otp_cmds(struct intel_dsi_device *dsi)
 
 void auo_m181_enable(struct intel_dsi_device *dsi)
 {
+/*
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	//DRM_DEBUG_KMS("\n");
@@ -217,11 +221,12 @@ void auo_m181_enable(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);			//sean test /sleep out
 	//msleep(120);
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);			//sean test /display on
+*/
 }
 
 void auo_m181_disable(struct intel_dsi_device *dsi)
 {
-	
+	/*
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	DRM_DEBUG_KMS("\n");
@@ -238,8 +243,8 @@ void auo_m181_disable(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x10);			//sean test /sleep in
 	msleep(80);
 	//================= END ==================
-	
-	printk("----sean test----m181_auo_panel_disable----\n");
+	* */
+	printk("----zzsimon test----m181_auo_panel_disable----\n");
 }
 
 enum drm_connector_status auo_m181_detect(struct intel_dsi_device *dsi)
