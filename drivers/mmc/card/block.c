@@ -1120,6 +1120,39 @@ out:
 	return err ? 0 : 1;
 }
 
+//+++++++++++++Jevian_Ma@asus.com
+extern char *saved_command_line;
+
+int Nodroidboot()
+{
+	char *p;
+	int res=1;
+	int len;
+	len = strlen("androidboot.mode");
+	p = saved_command_line;
+	while(*p != '\0')
+	{
+		if(*p == 0x20)
+		{
+			p++;
+			if(strncmp(p,"androidboot.mode",len) == 0)
+			{
+				p=p+len+1;
+				len = strlen("fastboot");
+				if(strncmp(p,"fastboot",len) == 0)
+					res=0;
+				else
+					res=1;
+				break;
+			}
+		}
+		else
+			p++;
+	}
+	return res;
+}
+//-----------------------
+
 static int mmc_blk_issue_secdiscard_rq(struct mmc_queue *mq,
 				       struct request *req)
 {
@@ -1188,7 +1221,7 @@ retry:
 			goto out;
 	}
 
-	if (mmc_can_sanitize(card)) {
+	if (Nodroidboot() && mmc_can_sanitize(card)) {//change by jevian_ma
 		trace_mmc_blk_erase_start(EXT_CSD_SANITIZE_START, 0, 0);
 		err = __mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_SANITIZE_START, 1, 0, false);
