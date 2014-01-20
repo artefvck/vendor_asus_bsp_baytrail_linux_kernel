@@ -43,7 +43,11 @@
 #define AKM_I2C_ADAPTER			0x05
 #define AKM_I2C_ADDRESS			0x0c
 static struct akm09911_platform_data akm09911_pdata = {
+#ifdef CONFIG_INPUT_SENSOR_ME181
+	.layout = 6,
+#else
 	.layout = 5,
+#endif
         .gpio_RSTN = 0,
 };
 static struct i2c_board_info akm09911_board_info = {

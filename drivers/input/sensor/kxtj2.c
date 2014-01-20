@@ -120,6 +120,15 @@ struct kxtj2_data {
 static struct KXTJ2_platform_data kxtj2_pdata = {
     .min_interval = 10,
     .init_interval = 50,
+#ifdef CONFIG_INPUT_SENSOR_ME181
+    .axis_map_x = 1,
+    .axis_map_y = 0,
+    .axis_map_z = 2,
+
+    .negate_x = 1,
+    .negate_y = 1,
+    .negate_z = 1,
+#else
     .axis_map_x = 0,
     .axis_map_y = 1,
     .axis_map_z = 2,
@@ -127,6 +136,7 @@ static struct KXTJ2_platform_data kxtj2_pdata = {
     .negate_x = 0,
     .negate_y = 1,
     .negate_z = 1,
+#endif
     .res_12bit = RES_12BIT,
     .g_range = KXTJ2_G_2G,
 

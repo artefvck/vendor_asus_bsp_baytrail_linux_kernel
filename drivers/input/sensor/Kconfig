@@ -6,6 +6,13 @@ menuconfig INPUT_SENSOR
 
 if INPUT_SENSOR
 
+config INPUT_SENSOR_ME181
+	bool "Sensor settins for ME181"
+        default n
+	depends on INPUT_SENSOR
+	help
+	  Say Y here if you need sensor settings for ME181.
+
 config INPUT_SENSOR_AK09911
 	tristate "AK09911 compass support"
 	default n
