@@ -300,6 +300,7 @@ static unsigned int is_ush_hsic(struct usb_device *udev)
 
 static void s3_wake_lock(void)
 {
+	printk(KERN_INFO "`````````` %s\n", __func__);
 	mutex_lock(&hsic.wlock_mutex);
 	if (hsic.s3_wlock_state == UNLOCKED) {
 		wake_lock(&hsic.s3_wake_lock);
@@ -310,6 +311,7 @@ static void s3_wake_lock(void)
 
 static void s3_wake_unlock(void)
 {
+	printk(KERN_INFO "`````````` %s\n", __func__);
 	mutex_lock(&hsic.wlock_mutex);
 	if (hsic.s3_wlock_state == LOCKED) {
 		wake_unlock(&hsic.s3_wake_lock);
@@ -1259,7 +1261,7 @@ static int xhci_ush_pci_probe(struct pci_dev *dev,
 	hsic.port_disconnect = 0;
 	hsic_enable = 1;
 	hsic.s3_rt_state = RESUMED;
-	s3_wake_lock();
+	//s3_wake_lock();
 	return 0;
 
 put_usb3_hcd:
