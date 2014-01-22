@@ -42,6 +42,7 @@
 #include <linux/acpi.h>			
 #include <linux/gpio.h>	
 
+#include <linux/proc_fs.h>
 
 /* the sub-encoders aka panel drivers */
 static const struct intel_dsi_device intel_dsi_devices[] = {
@@ -797,6 +798,66 @@ intel_dsi_add_properties(struct intel_dsi *intel_dsi,
 	intel_attach_force_pfit_property(connector);
 }
 
+//sean_lu@asusu.com ++++ for create panel_id_proc_file
+#define PANEL_ID_PROC_FILE  "driver/panel_id"
+static struct proc_dir_entry *panel_id_proc_file;
+
+static ssize_t panel_id_proc_read(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
+{
+	int err = 0;
+	int lcm_id = 1;
+	ssize_t ret = 0;
+	char *buff;
+	int desc = 0;
+	char auo[] = "auo";
+	char inn[] = "inn";
+
+	buff = kmalloc(10,GFP_KERNEL);
+	if(!buff)
+	{
+		return -ENOMEM;
+	}
+
+    printk("[panel] panel_id_proc_read--1--\n");
+
+	err = gpio_request(68, "LCM_ID");
+	if (err){
+		printk("[panel] panel_id_proc_read--2--\n");
+	}
+	gpio_direction_input(68);
+	lcm_id = gpio_get_value(68);
+
+	if(lcm_id)
+	{
+		desc += sprintf(buff + desc,"%s\n",auo);
+		printk("[panel] panel_id_proc_read--3--\n");
+	}
+	else
+	{
+		desc += sprintf(buff + desc,"%s\n",inn);
+		printk("[panel] panel_id_proc_read--4--\n");
+	}
+
+	ret = simple_read_from_buffer(buffer,count,ppos,buff,desc);
+    return ret;
+}
+
+static struct file_operations panel_id_proc_ops = {
+    .read = panel_id_proc_read,
+    //.write = audio_debug_proc_write,
+};
+
+static void create_panel_id_proc_file(void)
+{
+    printk("[panel] create_panelID_proc_file\n");
+    panel_id_proc_file = proc_create(PANEL_ID_PROC_FILE, 0666,NULL, &panel_id_proc_ops);
+    if(!panel_id_proc_file)
+	{
+		printk("create driver/panel_id fail\n");
+	}
+}
+//sean_lu@asusu.com ----
+
 bool intel_dsi_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -808,12 +869,6 @@ bool intel_dsi_init(struct drm_device *dev)
 	struct drm_display_mode *fixed_mode = NULL;
 	const struct intel_dsi_device *dsi;
 	unsigned int i;
-	
-	//sean ++
-	//int err = 0;
-	//int lcm_id = 1;
-	//int fact_panel_id = 6;
-	//sean --
 
 	DRM_DEBUG_KMS("\n");
 
@@ -902,6 +957,8 @@ bool intel_dsi_init(struct drm_device *dev)
 		dev_priv->mipi_panel_id = fact_panel_id;
 		//sean_lu ----
 		//dev_priv->mipi_panel_id = i915_mipi_panel_id; //sean --
+
+		create_panel_id_proc_file();//sean_lu ++++ for panel_id_proc_create
 #endif
 	}
 	
