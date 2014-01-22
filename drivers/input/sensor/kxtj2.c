@@ -109,6 +109,9 @@ struct kxtj2_data {
 	s16 cal_data_x;
 	s16 cal_data_y;
 	s16 cal_data_z;
+	s16 no_cal_data_x;
+	s16 no_cal_data_y;
+	s16 no_cal_data_z;
 	spinlock_t axis_cal_lock;
 	#endif 
 };
@@ -192,13 +195,19 @@ static void kxtj2_report_acceleration_data(struct kxtj2_data *tj2)
 	z = tj2->pdata.negate_z ? -z : z;	
 
 	#ifdef ENABLE_CALIBRATION_INTERFACE
+	spin_lock(&tj2->axis_cal_lock);
+
+	tj2->no_cal_data_x = x;
+	tj2->no_cal_data_y = y;
+	tj2->no_cal_data_z = z;
+			
 	if( atomic_read(&tj2->cal_enable) )	{
-			spin_lock(&tj2->axis_cal_lock);
 			x += tj2->cal_data_x;
 			y += tj2->cal_data_y;
 			z += tj2->cal_data_z;
-			spin_unlock(&tj2->axis_cal_lock);
 	}
+
+	spin_unlock(&tj2->axis_cal_lock);
 	#endif
 
 
@@ -599,6 +608,18 @@ static ssize_t kxtj2_calibration_data_store(struct device *dev, struct device_at
 	printk("kxtj2: set calibration data x=%d, y=%d, z=%d\n", cal_data_x, cal_data_y, cal_data_z);
 	return count;
 }
+
+static ssize_t kxtj2_rawdata_no_cal_show(struct device *dev, struct device_attribute *devattr, char *buf)
+{       
+        struct i2c_clinet * client = to_i2c_client(dev);
+	struct kxtj2_data * tj2 = i2c_get_clientdata(client);
+	int ret = 0;
+
+	spin_lock(&tj2->axis_cal_lock);
+	ret = snprintf(buf, 4096, "%hd %hd %hd\n", tj2->no_cal_data_x, tj2->no_cal_data_y, tj2->no_cal_data_z);
+	spin_unlock(&tj2->axis_cal_lock);
+	return ret;
+}
 #endif 
 
 static DEVICE_ATTR(poll, S_IRUGO|S_IWUSR, kxtj2_get_poll, kxtj2_set_poll);
@@ -609,6 +630,7 @@ static DEVICE_ATTR(rawdata, S_IRUGO, kxtj2_get_rawdata, NULL);
 #ifdef ENABLE_CALIBRATION_INTERFACE
 static DEVICE_ATTR(cal_data, S_IWUGO, NULL, kxtj2_calibration_data_store);
 static DEVICE_ATTR(cal_enable, S_IWUGO, NULL, kxtj2_calibration_enable_store);
+static DEVICE_ATTR(rawdata_no_cal, S_IRUGO, kxtj2_rawdata_no_cal_show, NULL);
 #endif
 
 static struct attribute *kxtj2_attributes[] = {
@@ -623,6 +645,7 @@ static struct attribute *kxtj2_attributes[] = {
 	#ifdef ENABLE_CALIBRATION_INTERFACE
 	&dev_attr_cal_data.attr,
 	&dev_attr_cal_enable.attr,
+	&dev_attr_rawdata_no_cal.attr,
 	#endif
 
 	NULL
@@ -834,6 +857,9 @@ static int kxtj2_probe(struct i2c_client *client,
 	tj2->cal_data_x = 0;
 	tj2->cal_data_y = 0;
 	tj2->cal_data_z = 0;
+	tj2->no_cal_data_x = 0;
+	tj2->no_cal_data_y = 0;
+	tj2->no_cal_data_z = 0;
         spin_lock_init(&tj2->axis_cal_lock);
 	#endif
 
