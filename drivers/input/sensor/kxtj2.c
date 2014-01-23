@@ -558,7 +558,7 @@ static ssize_t kxtj2_enable_store(struct device *dev,
         return count;
 }
 
-static ssize_t kxtj2_get_rawdata(struct device *dev, struct device_attribute *devattr, char *buf)
+static ssize_t kxtj2_rawdata_for_mag_show(struct device *dev, struct device_attribute *devattr, char *buf)
 {       
         struct i2c_clinet * client = to_i2c_client(dev);
         struct kxtj2_data * tj2 = i2c_get_clientdata(client);
@@ -609,7 +609,7 @@ static ssize_t kxtj2_calibration_data_store(struct device *dev, struct device_at
 	return count;
 }
 
-static ssize_t kxtj2_rawdata_no_cal_show(struct device *dev, struct device_attribute *devattr, char *buf)
+static ssize_t kxtj2_rawdata_for_cal_show(struct device *dev, struct device_attribute *devattr, char *buf)
 {       
         struct i2c_clinet * client = to_i2c_client(dev);
 	struct kxtj2_data * tj2 = i2c_get_clientdata(client);
@@ -625,18 +625,18 @@ static ssize_t kxtj2_rawdata_no_cal_show(struct device *dev, struct device_attri
 static DEVICE_ATTR(poll, S_IRUGO|S_IWUSR, kxtj2_get_poll, kxtj2_set_poll);
 static DEVICE_ATTR(delay, S_IRUGO|S_IWUSR, kxtj2_delay_show, kxtj2_delay_store);
 static DEVICE_ATTR(enable, S_IRGRP|S_IWGRP|S_IRUSR|S_IWUSR,kxtj2_enable_show,kxtj2_enable_store);
-static DEVICE_ATTR(rawdata, S_IRUGO, kxtj2_get_rawdata, NULL);
+static DEVICE_ATTR(rawdata_for_mag, S_IRUGO, kxtj2_rawdata_for_mag_show, NULL);
 
 #ifdef ENABLE_CALIBRATION_INTERFACE
 static DEVICE_ATTR(cal_data, S_IWUGO, NULL, kxtj2_calibration_data_store);
 static DEVICE_ATTR(cal_enable, S_IWUGO, NULL, kxtj2_calibration_enable_store);
-static DEVICE_ATTR(rawdata_no_cal, S_IRUGO, kxtj2_rawdata_no_cal_show, NULL);
+static DEVICE_ATTR(rawdata_for_cal, S_IRUGO, kxtj2_rawdata_for_cal_show, NULL);
 #endif
 
 static struct attribute *kxtj2_attributes[] = {
 	&dev_attr_poll.attr,
         &dev_attr_enable.attr,
-        &dev_attr_rawdata.attr,
+        &dev_attr_rawdata_for_mag.attr,
 
 	#if CONFIG_INPUT_SENSOR_KXTJ2_POLLED_MODE
         &dev_attr_delay.attr,
@@ -645,7 +645,7 @@ static struct attribute *kxtj2_attributes[] = {
 	#ifdef ENABLE_CALIBRATION_INTERFACE
 	&dev_attr_cal_data.attr,
 	&dev_attr_cal_enable.attr,
-	&dev_attr_rawdata_no_cal.attr,
+	&dev_attr_rawdata_for_cal.attr,
 	#endif
 
 	NULL
