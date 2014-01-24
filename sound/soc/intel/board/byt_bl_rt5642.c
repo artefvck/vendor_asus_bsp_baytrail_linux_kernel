@@ -1051,6 +1051,31 @@ static void deinitKernelEnv(void)
     set_fs(oldfs);
 }
 
+static ssize_t audio_debug_proc_read(struct file *file, char __user *user_buf,
+				   size_t count, loff_t *ppos)
+{
+	int len = 0;
+	struct snd_soc_jack_gpio *gpio = &hs_gpio;
+	struct snd_soc_jack *jack = gpio->jack;
+	char state_buff[5];
+	if (!jack)
+		return 0;
+	switch(jack->status)
+	{
+		case SND_JACK_HEADSET:
+			len = sprintf(state_buff,"1\n");
+			break;
+		case SND_JACK_HEADPHONE:
+			len = sprintf(state_buff,"2\n");
+			break;
+		default:
+			len = sprintf(state_buff,"0\n");
+			break;
+	}
+	
+	return simple_read_from_buffer(user_buf,count,ppos,state_buff,len);
+}
+
 static ssize_t audio_debug_proc_write(struct file *filp, const char *buff, size_t len, loff_t *off)
 {
     char messages[256];
@@ -1098,7 +1123,7 @@ static ssize_t audio_debug_proc_write(struct file *filp, const char *buff, size_
 }
 
 static struct file_operations audio_debug_proc_ops = {
-    //.read = audio_debug_proc_read,
+    .read = audio_debug_proc_read,
     .write = audio_debug_proc_write,
 };
 
