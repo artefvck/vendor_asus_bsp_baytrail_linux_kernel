@@ -810,8 +810,8 @@ static ssize_t panel_id_proc_read(struct file *filp, char __user *buffer, size_t
 	ssize_t ret = 0;
 	char *buff;
 	int desc = 0;
-	char auo[] = "auo";
-	char inn[] = "inn";
+	char auo[] = "1";
+	char inn[] = "0";
 
 	buff = kmalloc(10,GFP_KERNEL);
 	if(!buff)
