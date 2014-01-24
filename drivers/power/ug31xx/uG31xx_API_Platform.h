@@ -62,6 +62,7 @@ typedef char                _upi_bool_;
       #include <linux/slab.h>
       #include <linux/jiffies.h>
       #include <linux/err.h>
+      #include <linux/kernel.h>
       #include <asm/uaccess.h>
       #include <asm/unaligned.h>
       
@@ -193,11 +194,21 @@ extern _upi_u8_ Ug31DebugEnable;
     #define UG31_LOGD(...)  printf(__VA_ARGS__)
 
   #else   ///< else of uG31xx_BOOT_LOADER
+
+    #ifdef  BUILD_UG31XX_LIB
   
-    #define UG31_LOGE(...)  ug31_printk(LOG_LEVEL_ERROR, "<UG31/E>"  __VA_ARGS__);
-    #define UG31_LOGI(...)  ug31_printk(LOG_LEVEL_INFO, "<UG31/I>"  __VA_ARGS__);
-    #define UG31_LOGN(...)  ug31_printk(LOG_LEVEL_NOTICE, "<UG31/N>"  __VA_ARGS__);
-    #define UG31_LOGD(...)  ug31_printk(LOG_LEVEL_DEBUG, "<UG31/D>"  __VA_ARGS__);
+      #define printk
+  
+    #endif  ///< end of BUILD_UG31XX_LIB
+
+    #define UG31_LOGE(...)  if(Ug31DebugEnable >= LOG_LEVEL_ERROR)\
+                              printk("<UG31/E>" __VA_ARGS__);
+    #define UG31_LOGI(...)  if(Ug31DebugEnable >= LOG_LEVEL_INFO)\
+                              printk("<UG31/I>" __VA_ARGS__);
+    #define UG31_LOGN(...)  if(Ug31DebugEnable >= LOG_LEVEL_NOTICE)\
+                              printk("<UG31/N>" __VA_ARGS__);
+    #define UG31_LOGD(...)  if(Ug31DebugEnable >= LOG_LEVEL_DEBUG)\
+                              printk("<UG31/D>" __VA_ARGS__);
     
     extern int ug31_printk(int level, const char *fmt, ...); 
     extern int ug31_printk_special(int level, const char *fmt, ...); 

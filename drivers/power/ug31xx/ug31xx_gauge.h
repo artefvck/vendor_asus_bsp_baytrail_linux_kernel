@@ -7,8 +7,6 @@
 
 #define UG31XX_DEV_NAME        "ug31xx-gauge"
 
-#define	UPI_DEBUG_STRING	(512)
-
 typedef enum {
  	UG31XX_DRV_NOT_READY = 0,
  	UG31XX_DRV_INIT_OK,
@@ -28,7 +26,8 @@ typedef enum {
   UG31XX_GPIO_STS_UNKNOWN,
 } ug31xx_gpio_status_t;
 
-#if !defined(CONFIG_PF400CG) && !defined(CONFIG_ME175CG)
+//#if !defined(CONFIG_PF400CG) && !defined(CONFIG_ME175CG)
+#if 0
 #define UPI_UG31XX_SHELL_AP         ("/system/bin/upi_gg_ctl")
 #define	UPI_UG31XX_BACKUP_FILE		  ("/sdcard/upi_gg")
 #define UPI_UG31XX_BACKUP_SUSPEND   ("/sdcard/upi_table")
@@ -66,16 +65,20 @@ typedef enum {
 #endif  ///< end of _LKM_OPTIONS_
 
 struct ug31xx_module_interface {
-	int (*initial)(char *ggb);
+	int (*initial)(char *ggb, unsigned char cable);
 	int (*uninitial)(void);
 	int (*suspend)(char dc_in);
-	int (*resume)(void);
+	int (*resume)(char user_space_response);
 	int (*shutdown)(void);
-	int (*update)(void);
+	int (*update)(char user_space_response);
 	int (*reset)(char *ggb);
 
 	int (*shell_update)(void);
-	int (*shell_resume)(void);
+	unsigned char * (*shell_memory)(int *mem_size);
+	int (*shell_backup)(void);
+	unsigned char * (*shell_backup_memory)(int *mem_size);
+	unsigned char * (*shell_table_memory)(int *mem_size);
+	unsigned char * (*shell_table_buf_memory)(int *mem_size);
   
 	int (*get_voltage)(void);
 	int (*get_voltage_now)(void);
@@ -123,6 +126,7 @@ struct ug31xx_module_interface {
 	int (*set_shell_ap)(char *apname, int length);
 	int (*set_backup_daemon_cntl)(unsigned char cntl);
 	int (*set_capacity_suspend_mode)(char in_suspend);
+	int (*set_cable_out)(unsigned char cntl);
 
 	int (*chk_backup_file)(void);
 	int (*enable_save_data)(char enable);
@@ -132,6 +136,8 @@ struct ug31xx_module_interface {
 	int (*reset_cycle_count)(void);
 	int (*adjust_cell_table)(unsigned short design_capacity);
 	int (*calibrate_offset)(unsigned char options);
+	int (*backup_pointer)(void);
+	int (*restore_pointer)(void);
 };
 
 enum {
@@ -150,9 +156,17 @@ enum {
 enum {
   UG31XX_CHARGER_NO_DETECTS_FULL = 0,
   UG31XX_CHARGER_DETECTS_FULL,
+  UG31XX_CHARGER_DETECTS_FULL_STEP,
+  UG31XX_CHARGER_DETECTS_FULL_CHECK,
   UG31XX_TAPER_REACHED,
   UG31XX_BOARD_OFFSET_CALI_STEP,
   UG31XX_BOARD_OFFSET_CALI_FULL,
+  UG31XX_BOARD_OFFSET_CALI_FULL_NO_UPPER,
+  UG31XX_BOARD_OFFSET_CALI_AVG,
+  UG31XX_CABLE_OUT,
+  UG31XX_CABLE_IN,
+  UG31XX_USER_SPACE_RESPONSE,
+  UG31XX_USER_SPACE_NO_RESPONSE,
 };
 
 extern struct ug31xx_module_interface ug31_module;
