@@ -22,7 +22,10 @@ enum BACKUP_FILE_STS {
 
 typedef unsigned char _backup_bool_;
 typedef unsigned char _backup_u8_;
+typedef unsigned short _backup_u16_;
+typedef signed short _backup_s16_;
 typedef unsigned long _backup_u32_;
+typedef signed long _backup_s32_;
 
 #define BACKUP_MAX_LOG_SUSPEND_DATA     (8)
 
@@ -52,6 +55,10 @@ typedef struct BackupDataST {
   _backup_u8_ backupSuspendIdx;
   BackupSuspendDataType backupSuspendData[BACKUP_MAX_LOG_SUSPEND_DATA];
 
+  _backup_u16_ backupVolt1;
+  _backup_u16_ backupVolt2;
+  _backup_s16_ backupDeltaQ;
+  
   #if defined (uG31xx_OS_WINDOWS)
     const wchar_t* backupFileName;
     const wchar_t* suspendFileName;
@@ -140,4 +147,14 @@ extern void UpiWriteSuspendResumeData(BackupDataType *data);
  * @return  memory size
  */
 extern _backup_u32_ UpiGetBackupMemorySize(void);
+
+/**
+ * @brief UpiBackupVoltage
+ *
+ *  Backup voltage points for abnormal battery checking
+ *
+ * @para  data  address of BackupDataType
+ * @return  NULL
+ */
+extern void UpiBackupVoltage(BackupDataType *data);
 

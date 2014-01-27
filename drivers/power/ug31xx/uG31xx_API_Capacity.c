@@ -11,7 +11,7 @@
  *  Capacity algorithm
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 35 $
+ * @revision  $Revision: 29 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,7 +19,7 @@
 
 #ifdef  uG31xx_OS_ANDROID
 
-  #define CAPACITY_VERSION      ("Capacity $Rev: 35 $")
+  #define CAPACITY_VERSION      ("Capacity $Rev: 29 $")
   //#define CAP_LOG_UPDATE_TABLE                              ///< [AT-PM] : Log updated table to a file ; 03/25/2013
 
   #ifdef  CAP_LOG_UPDATE_TABLE
@@ -32,11 +32,11 @@
 
   #if defined(BUILD_UG31XX_LIB)
 
-    #define CAPACITY_VERSION      ("Capacity $Rev: 35 $")
+    #define CAPACITY_VERSION      ("Capacity $Rev: 29 $")
     
   #else   ///< else of defined(BUILD_UG31XX_LIB)
   
-    #define CAPACITY_VERSION      (_T("Capacity $Rev: 35 $"))
+    #define CAPACITY_VERSION      (_T("Capacity $Rev: 29 $"))
     
   #endif  ///< end of defined(BUILD_UG31XX_LIB)
   

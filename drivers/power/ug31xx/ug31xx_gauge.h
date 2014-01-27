@@ -26,8 +26,7 @@ typedef enum {
   UG31XX_GPIO_STS_UNKNOWN,
 } ug31xx_gpio_status_t;
 
-//#if !defined(CONFIG_PF400CG) && !defined(CONFIG_ME175CG)
-#if 0
+#if !defined(CONFIG_PF400CG) && !defined(CONFIG_ME175CG)
 #define UPI_UG31XX_SHELL_AP         ("/system/bin/upi_gg_ctl")
 #define	UPI_UG31XX_BACKUP_FILE		  ("/sdcard/upi_gg")
 #define UPI_UG31XX_BACKUP_SUSPEND   ("/sdcard/upi_table")

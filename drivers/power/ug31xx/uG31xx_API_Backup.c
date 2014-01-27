@@ -50,6 +50,8 @@ void CreateBackupBuffer(BackupDataType *data)
   data->backupBufferSize = data->backupBufferSize + sizeof(data->sysData->ccOffset);
   data->backupBufferSize = data->backupBufferSize + sizeof(data->sysData->predictRsoc);
   data->backupBufferSize = data->backupBufferSize + sizeof(data->sysData->standbyDsgRatio);
+  data->backupBufferSize = data->backupBufferSize + sizeof(data->backupVolt1);
+  data->backupBufferSize = data->backupBufferSize + sizeof(data->backupVolt2);
   data->backupBufferSize = data->backupBufferSize + sizeof(_backup_u32_);     ///< [AT-PM] : Used for driver version ; 11/07/2013
   UG31_LOGN("[%s]: Total %d bytes need to be created for written to file.\n", __func__, data->backupBufferSize);
 
@@ -103,6 +105,10 @@ void PrepareData(BackupDataType *data)
   ptr = ptr + sizeof(data->sysData->predictRsoc)/sizeof(_backup_u8_);
   upi_memcpy(ptr, (_backup_u8_ *)&data->sysData->standbyDsgRatio, sizeof(data->sysData->standbyDsgRatio)/sizeof(_backup_u8_));
   ptr = ptr + sizeof(data->sysData->standbyDsgRatio)/sizeof(_backup_u8_);
+  upi_memcpy(ptr, (_backup_u8_ *)&data->backupVolt1, sizeof(data->backupVolt1)/sizeof(_backup_u8_));
+  ptr = ptr + sizeof(data->backupVolt1)/sizeof(_backup_u8_);
+  upi_memcpy(ptr, (_backup_u8_ *)&data->backupVolt2, sizeof(data->backupVolt2)/sizeof(_backup_u8_));
+  ptr = ptr + sizeof(data->backupVolt2)/sizeof(_backup_u8_);
   upi_memcpy(ptr, (_backup_u8_ *)&driverVer, sizeof(driverVer)/sizeof(_backup_u8_));
 }
 
@@ -144,6 +150,10 @@ _backup_u32_ ConvertData(BackupDataType *data)
   ptr = ptr + sizeof(data->sysData->predictRsoc)/sizeof(_backup_u8_);  
   upi_memcpy((_backup_u8_ *)&data->sysData->standbyDsgRatio, ptr, sizeof(data->sysData->standbyDsgRatio)/sizeof(_backup_u8_));
   ptr = ptr + sizeof(data->sysData->standbyDsgRatio)/sizeof(_backup_u8_);  
+  upi_memcpy((_backup_u8_ *)&data->backupVolt1, ptr, sizeof(data->backupVolt1)/sizeof(_backup_u8_));
+  ptr = ptr + sizeof(data->backupVolt1)/sizeof(_backup_u8_);  
+  upi_memcpy((_backup_u8_ *)&data->backupVolt2, ptr, sizeof(data->backupVolt2)/sizeof(_backup_u8_));
+  ptr = ptr + sizeof(data->backupVolt2)/sizeof(_backup_u8_);  
   upi_memcpy((_backup_u8_ *)&driverVer, ptr, sizeof(driverVer)/sizeof(_backup_u8_));
   UG31_LOGI("[%s]: Read driver version = %d (%d)\n", __func__, (int)driverVer, UG31XX_DRIVER_VERSION);
   return (driverVer);
@@ -172,6 +182,8 @@ _backup_u8_ CheckBackupFile(BackupDataType *data)
   _upi_bool_ rtn;
   _backup_u32_ driverVer;
   _backup_u8_ rtnU8;
+  _backup_u16_ volt1;
+  _backup_u16_ volt2;
 
   /// [AT-PM] : Create buffer ; 02/21/2013
   #ifndef UG31XX_SHELL_ALGORITHM
@@ -183,6 +195,8 @@ _backup_u8_ CheckBackupFile(BackupDataType *data)
   #endif  ///< end of UG31XX_SHELL_ALGORITHM
   upi_memcpy(orgCapData, data->capData, sizeof(CapacityDataType));
   upi_memcpy(orgSysData, data->sysData, sizeof(SystemDataType));
+  volt1 = data->backupVolt1;
+  volt2 = data->backupVolt2;
 
   /// [AT-PM] : Get data from file ; 02/21/2013
   rtn = read_backup_file(data->backupFileName, data->backupBuffer, data->backupBufferSize);
@@ -210,7 +224,9 @@ _backup_u8_ CheckBackupFile(BackupDataType *data)
     rtnU8 = CHECK_BACKUP_FILE_STS_VERSION_MISMATCH;
   }
   else if((upi_memcmp(orgCapData, data->capData, sizeof(CapacityDataType)) != 0) ||
-          (upi_memcmp(orgSysData, data->sysData, sizeof(SystemDataType)) != 0))
+          (upi_memcmp(orgSysData, data->sysData, sizeof(SystemDataType)) != 0) ||
+          (volt1 != data->backupVolt1) ||
+          (volt2 != data->backupVolt2))
   {
     UG31_LOGN("[%s]: Backup file needs to be updated\n", __func__);
     rtnU8 = CHECK_BACKUP_FILE_STS_NEED_UPDATE;
@@ -377,6 +393,9 @@ void UpiBackupData(BackupDataType *data)
   }
 }
 
+#define RESTORE_ABNORMAL_VOLT_RANGE_UPBND (100)
+#define RESTORE_ABNORMAL_VOLT_RANGE_LWBND (-100)
+
 /**
  * @brief UpiRestoreData
  *
@@ -389,6 +408,16 @@ _backup_bool_ UpiRestoreData(BackupDataType *data)
 {
   _backup_bool_ rtn;
   _backup_u32_ driverVer;
+  SystemDataType *orgSysData;
+  _backup_s32_ tmp32;
+
+  /// [AT-PM] : Create buffer ; 02/21/2013
+  #ifndef UG31XX_SHELL_ALGORITHM
+    orgSysData = &CheckBackupFile_orgSysData;
+  #else   ///< else of UG31XX_SHELL_ALGORITHM
+    orgSysData = (SystemDataType *)upi_malloc(sizeof(SystemDataType));
+  #endif  ///< end of UG31XX_SHELL_ALGORITHM
+  upi_memcpy(orgSysData, data->sysData, sizeof(SystemDataType));
 
   /// [AT-PM] : Get data from file ; 02/21/2013
   rtn = read_backup_file(data->backupFileName, data->backupBuffer, data->backupBufferSize);
@@ -399,6 +428,23 @@ _backup_bool_ UpiRestoreData(BackupDataType *data)
   }
   driverVer = ConvertData(data);
   UG31_LOGI("[%s]: Driver version = %d\n", __func__, (int)driverVer);
+
+  /// [AT-PM] : Keep following information ; 01/22/2014
+  data->sysData->timeTagFromIC = orgSysData->timeTagFromIC;
+  data->sysData->tableUpdateIdxFromIC = orgSysData->tableUpdateIdxFromIC;
+
+  /// [AT-PM] : Check abnormal condition ; 01/22/2014
+  if((data->backupVolt1 != 0) && (data->backupVolt2 != 0))
+  {
+    tmp32 = (_backup_s32_)data->backupVolt1;
+    tmp32 = tmp32 - data->backupVolt2;
+    if((tmp32 < RESTORE_ABNORMAL_VOLT_RANGE_UPBND) && (tmp32 > RESTORE_ABNORMAL_VOLT_RANGE_LWBND))
+    {
+      data->sysData->rmFromIC = orgSysData->rmFromIC;
+      data->sysData->fccFromIC = orgSysData->fccFromIC;
+      data->sysData->rsocFromIC = orgSysData->rsocFromIC;
+    }
+  }
   return (BACKUP_BOOL_TRUE);
 }
 
@@ -428,6 +474,11 @@ void UpiInitBackupData(BackupDataType *data)
     UG31_LOGN("[%s]: data->backupSuspendData[%d] = %d\n", __func__, 
               data->backupSuspendIdx, (int)(&data->backupSuspendData[data->backupSuspendIdx]));
   }
+
+  /// [AT-PM] : Initialize backup voltage variables ; 01/24/2014
+  data->backupVolt1 = 0;
+  data->backupVolt2 = 0;
+  data->backupDeltaQ = 0;
 }
 
 /**
@@ -577,6 +628,65 @@ _backup_u32_ UpiGetBackupMemorySize(void)
   #endif  ///< end of UG31XX_SHELL_ALGORITHM
 
   return (totalSize);
+}
+
+#define BACKUP_VOLTAGE_DELTA_Q_THRESHOLD  (10)
+
+/**
+ * @brief UpiBackupVoltage
+ *
+ *  Backup voltage points for abnormal battery checking
+ *
+ * @para  data  address of BackupDataType
+ * @return  NULL
+ */
+void UpiBackupVoltage(BackupDataType *data)
+{
+  _backup_s32_ tmp32;
+
+  /// [AT-PM] : Cumulate delta Q ; 01/22/2014
+  tmp32 = (_backup_s32_)data->measData->stepCap;
+  tmp32 = tmp32*data->measData->curr;
+  if(tmp32 < 0)
+  {
+    tmp32 = 0;
+  }
+  else
+  {
+    tmp32 = (_backup_s32_)data->measData->stepCap;
+  }
+  tmp32 = tmp32 + data->backupDeltaQ;
+  data->backupDeltaQ = (_backup_u16_)tmp32;
+
+  /// [AT-PM] : Update voltage point 1 ; 01/22/2014
+  data->backupVolt1 = (_backup_u16_)data->measData->bat1Voltage;
+  UG31_LOGN("[%s]: Update backup voltage point 1 = %d (%d)\n", __func__, data->backupVolt1, data->backupDeltaQ);
+  
+  /// [AT-PM] : Check delta Q ; 01/22/2014
+  tmp32 = data->sysData->ggbParameter->ILMD;
+  tmp32 = tmp32*BACKUP_VOLTAGE_DELTA_Q_THRESHOLD/CONST_PERCENTAGE;
+  if(data->backupDeltaQ < 0)
+  {
+    tmp32 = tmp32*(-1);
+    if(data->backupDeltaQ > tmp32)
+    {
+      UG31_LOGN("[%s]: data->backupDeltaQ not reach threshold %d\n", __func__, tmp32);
+      return;
+    }
+  }
+  else
+  {
+    if(data->backupDeltaQ < tmp32)
+    {
+      UG31_LOGN("[%s]: data->backupDeltaQ not reach threshold %d\n", __func__, tmp32);
+      return;
+    }
+  }
+
+  /// [AT-PM] : Update voltage point 2 ; 01/22/2014
+  data->backupVolt2 = data->backupVolt1;
+  data->backupDeltaQ = 0;
+  UG31_LOGI("[%s]: Update backup voltage point 2 = %d (%d)\n", __func__, data->backupVolt1, data->backupDeltaQ);
 }
 
 

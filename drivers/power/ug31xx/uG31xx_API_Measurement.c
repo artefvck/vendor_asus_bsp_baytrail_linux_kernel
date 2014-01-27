@@ -11,7 +11,7 @@
  *  guG31xx measurement API
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 415 $
+ * @revision  $Revision: 441 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,11 +19,11 @@
 
 #ifdef  uG31xx_OS_WINDOWS
 
-  #define MEASUREMENT_VERSION      (_T("Measurement $Rev: 415 $"))
+  #define MEASUREMENT_VERSION      (_T("Measurement $Rev: 441 $"))
 
 #else   ///< else of uG31xx_OS_WINDOWS
 
-  #define MEASUREMENT_VERSION      ("Measurement $Rev: 415 $")
+  #define MEASUREMENT_VERSION      ("Measurement $Rev: 441 $")
 
 #endif  ///< end of uG31xx_OS_WINDOWS
 
@@ -1775,6 +1775,9 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
 
   /// [AT-PM] : Get ADC code ; 06/04/2013
   rtn = FetchAdcCode(obj);
+  UG31_LOGI("[%s]: (%d-%d) V=%d, I=%d, IT=%d, ET=%d, CH=%d, CT=%d\n", __func__, 
+            select, obj->info->fetchRetryCnt, obj->codeBat1, obj->codeCurrent, 
+            obj->codeIntTemperature, obj->codeExtTemperature, obj->codeCharge, obj->codeCounter);
   if(rtn != MEAS_RTN_PASS)
   {
     #ifdef  UG31XX_SHELL_ALGORITHM
@@ -1898,7 +1901,7 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
       obj->info->lastCounter = obj->codeCounter;    
     }
   }
-  
+
   UG31_LOGI("[%s]: %d mV / %d mA / %d 0.1oC / %d 0.1oC / %d mAh\n", __func__,
             data->bat1Voltage, data->curr, data->intTemperature, data->extTemperature, data->deltaCap);
   #ifdef  UG31XX_SHELL_ALGORITHM

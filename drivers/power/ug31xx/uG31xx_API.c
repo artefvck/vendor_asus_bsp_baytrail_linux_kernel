@@ -25,11 +25,11 @@ _upi_bool_ MPK_active = _UPI_FALSE_;
 
 #if defined (uG31xx_OS_WINDOWS)
 
-  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 435 $"))
+  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 440 $"))
 
 #else
 
-  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 435 $")
+  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 440 $")
 
 #endif
 
@@ -2962,8 +2962,7 @@ void upiGG_InternalSuspendMode(char *pObj, _upi_bool_ inSuspend)
     return (UG_NOT_DEF);
   }
 
-  // [FC] : Load table from IC ; 05/30/2013
-  
+  // [FC] : Load table from IC ; 05/30/2013  
   pUg31xx->capData.ggbTable = &pUg31xx->cellTable;
   pUg31xx->capData.ggbParameter = &pUg31xx->cellParameter;
   pUg31xx->capData.measurement = &pUg31xx->measData;
@@ -4943,10 +4942,33 @@ int lkm_set_charger_full(char is_full)
   if((is_full == UG31XX_CHARGER_DETECTS_FULL_STEP) &&
      (ug31xx->capData.predictRsoc < LKM_SET_CHARGER_FULL_STEP_THRESHOLD))
   {
-    UG31_LOGE("[%s]: (%d) %d < %d -> No full status and keep %d (T:%d)\n", __func__, 
-              is_full, ug31xx->capData.predictRsoc, LKM_SET_CHARGER_FULL_STEP_THRESHOLD,
-              ug31xx->batteryInfo.RSOC, ug31xx->measData.extTemperature);
-    return (0);
+    if(ug31xx->cellParameter.alarmEnable & CELL_PARAMETER_ALARM_EN_UET)
+    {
+      if(ug31xx->measData.extTemperature <= ug31xx->cellParameter.uetAlarm)
+      {
+        UG31_LOGE("[%s]: (%d) %d < %d -> No full status with UET and keep %d (T:%d)\n", __func__, 
+                  is_full, ug31xx->capData.predictRsoc, LKM_SET_CHARGER_FULL_STEP_THRESHOLD,
+                  ug31xx->batteryInfo.RSOC, ug31xx->measData.extTemperature);
+        return (0);
+      }
+    }
+    else if(ug31xx->cellParameter.alarmEnable & CELL_PARAMETER_ALARM_EN_OET)
+    {
+      if(ug31xx->measData.extTemperature >= ug31xx->cellParameter.oetAlarm)
+      {
+        UG31_LOGE("[%s]: (%d) %d < %d -> No full status with OET and keep %d (T:%d)\n", __func__, 
+                  is_full, ug31xx->capData.predictRsoc, LKM_SET_CHARGER_FULL_STEP_THRESHOLD,
+                  ug31xx->batteryInfo.RSOC, ug31xx->measData.extTemperature);
+        return (0);
+      }
+    }
+    else
+    {
+      UG31_LOGE("[%s]: (%d) %d < %d -> No full status and keep %d (T:%d)\n", __func__, 
+                is_full, ug31xx->capData.predictRsoc, LKM_SET_CHARGER_FULL_STEP_THRESHOLD,
+                ug31xx->batteryInfo.RSOC, ug31xx->measData.extTemperature);
+      return (0);
+    }
   }
 
   if((is_full == UG31XX_CHARGER_DETECTS_FULL_CHECK) &&
@@ -5992,7 +6014,6 @@ int lkm_backup_pointer(void)
   backup_measData = ug31xx->backupData.measData;
   UG31_LOGN("[%s]: cap_ggbParameter, cap_ggbTable, cap_measurement = %d, %d, %d\n", __func__, 
             cap_ggbParameter, cap_ggbTable, cap_measurement);
-  return 0;
 }
 
 /**
@@ -6021,7 +6042,6 @@ int lkm_restore_pointer(void)
   ug31xx->backupData.measData = backup_measData;
   UG31_LOGN("[%s]: cap_ggbParameter, cap_ggbTable, cap_measurement = %d, %d, %d\n", __func__, 
             ug31xx->capData.ggbParameter, ug31xx->capData.ggbTable, ug31xx->capData.measurement);
-  return 0;
 }
 
 struct ug31xx_module_interface ug31_module = {
