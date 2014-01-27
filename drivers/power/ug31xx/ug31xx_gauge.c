@@ -197,14 +197,16 @@ extern char FactoryGGBXFile[];
 /* Global Variables */
 static struct ug31xx_gauge *ug31 = NULL;
 unsigned char cur_cable_status = UG31XX_NO_CABLE;
+unsigned char old_cable_status = UG31XX_NO_CABLE;
 ug31xx_drv_status_t ug31xx_drv_status = UG31XX_DRV_NOT_READY;
 static bool charger_detect_full = false;
+static bool curr_charger_full_status = false;
 static int charge_termination_current = 0;          ///< [AT-PM] : Set charging termination current (0 = from GGB settings) ; 09/05/2013
 static int cable_status_changed = 0;
 static bool force_power_supply_change = true;
 static bool charger_full_status = false;
 static bool charger_dc_in_before_suspend = false;
-static unsigned char op_options = LKM_OPTIONS_DEBUG_DEBUG;
+static unsigned char op_options = LKM_OPTIONS_DEBUG_ERROR;
 static int rsense_value = 0;                        ///< [AT-PM] : Set R-Sense value (0 = from GGB settings) ; 09/05/2013
 static int ug31xx_backup_file_status = 0;
 static unsigned short design_capacity = 0;
@@ -252,12 +254,12 @@ static bool is_charging(void)
   if ((charger_status == POWER_SUPPLY_STATUS_FULL) ||
       (charger_status == POWER_SUPPLY_STATUS_CHARGING))
   {
-    GAUGE_info("[%s] charging\n", __func__);
+    //GAUGE_info("[%s] charging\n", __func__);
     return (true);
   }
   else
   {
-    GAUGE_info("[%s] isn't charging\n", __func__);
+    //GAUGE_info("[%s] isn't charging\n", __func__);
     return (false);
   }
 }
@@ -926,11 +928,6 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 	}
 	if(psp == POWER_SUPPLY_PROP_CAPACITY)
 	{
-		if (ug31->batt_status == POWER_SUPPLY_STATUS_FULL)
-		{
-			ug31->batt_capacity = 100;
-		}
-		val->intval = ug31->batt_capacity;
 		val->intval = ug31->batt_capacity_shifted;
 		if (ug31->batt_ntc_sts != UPI_UG31XX_NTC_NORMAL)
 			val->intval = -99;
@@ -963,30 +960,25 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 	}
 	if(psp == POWER_SUPPLY_PROP_STATUS)
 	{
-		if(cur_cable_status) 
-		{
-			if (ug31->batt_capacity_shifted == 100)
-			{
+		if (ug31->batt_capacity_shifted == 100) {
+			if (cur_cable_status)
 				ug31->batt_status = POWER_SUPPLY_STATUS_FULL;
+			else
+				ug31->batt_status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+		}
+		else {
+			if (cur_cable_status) {
+				if (cur_cable_status != UG31XX_PAD_POWER)
+					ug31->batt_status = POWER_SUPPLY_STATUS_CHARGING;
+				else if (is_charging())
+					ug31->batt_status = POWER_SUPPLY_STATUS_CHARGING;
+				else
+					ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
 			}
 			else
-			{
-				//tan ug31->batt_status = smb345_get_charging_status();
-				ug31->batt_status = bq24192_is_charging();
-				if (ug31->batt_status < 0)
-					ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
-				else
-					ug31->batt_status = POWER_SUPPLY_STATUS_CHARGING;
-			}
-			#if defined(ME372CG_ENG_BUILD)
-			if (!get_sw_charging_toggle())
 				ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
-			#endif
 		}
-		else
-		{
-			ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
-		}
+
 		val->intval = ug31->batt_status;
 		if (ug31->batt_ntc_sts != UPI_UG31XX_NTC_NORMAL)
 			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
@@ -1077,24 +1069,19 @@ EXPORT_SYMBOL(ug31xx_cable_callback);
 
 static void ug31xx_battery_external_power_changed(struct power_supply *psy)
 {
-  /*tan
-	int old_cable_status = cur_cable_status;
+
     if (power_supply_am_i_supplied(psy)) {
-        switch (get_charger_type()) {
-        case USB_IN:
-            cur_cable_status = UG31XX_USB_PC_CABLE;
+        switch (cur_cable_status) {
+        case UG31XX_USB_PC_CABLE:
             GAUGE_err("[%s] UG31XX_USB_PC_CABLE\n", __func__);
             break;
-        case AC_IN:
-            cur_cable_status = UG31XX_AC_ADAPTER_CABLE;
+        case UG31XX_AC_ADAPTER_CABLE:
             GAUGE_err("[%s] UG31XX_AC_ADAPTER_CABLE\n", __func__);
             break;
-        case CABLE_OUT:
-            cur_cable_status = UG31XX_NO_CABLE;
+        case UG31XX_NO_CABLE:
             GAUGE_err("[%s] UG31XX_NO_CABLE\n", __func__);
             break;
-        case PAD_SUPPLY:
-            cur_cable_status = UG31XX_PAD_POWER;
+        case UG31XX_PAD_POWER:
             GAUGE_err("[%s] UG31XX_PAD_POWER\n", __func__);
             break;
         }
@@ -1113,7 +1100,8 @@ static void ug31xx_battery_external_power_changed(struct power_supply *psy)
 	if(old_cable_status != cur_cable_status)
 	{
 		cable_status_changed = CABLE_STATUS_CHANGE_RELEASE_COUNT;
-	}*/
+	}
+	old_cable_status = cur_cable_status;
 }
 
 #endif	///< end of UG31XX_REGISTER_POWERSUPPLY
@@ -1214,6 +1202,22 @@ static void asus_print_all(void)
                     -ug31->batt_temp : ug31->batt_temp;
         if (ug31->batt_temp >= 0)
             negative_sign = "";
+    }
+
+    if (ug31->batt_capacity_shifted == 100) {
+        ug31->batt_status = POWER_SUPPLY_STATUS_FULL;
+    }
+    else {
+        if (cur_cable_status) {
+            if (cur_cable_status != UG31XX_PAD_POWER)
+                ug31->batt_status = POWER_SUPPLY_STATUS_CHARGING;
+            else if (is_charging())
+                ug31->batt_status = POWER_SUPPLY_STATUS_CHARGING;
+            else
+                ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
+        }
+        else
+            ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
     }
 
     GAUGE_notice("P:%d(%d-%d)%%, V:%dmV, C:%dmA, T:%s%d.%dC(%d), "
@@ -1443,7 +1447,6 @@ static void batt_info_update_work_func(struct work_struct *work)
 	int curr_direction_changed;
 	int prev_fc_sts;
 	int now_fc_sts;
-	bool curr_charger_full_status;
 
 	ug31_dev = container_of(work, struct ug31xx_gauge, batt_info_update_work.work);
 
@@ -1911,10 +1914,15 @@ static void ug31xx_config_earlysuspend(struct ug31xx_gauge *chip) { return; }
  */
 static void board_offset_cali_work_func(struct work_struct *work)
 {
-	mutex_lock(&ug31->info_update_lock);
-	ug31_module.calibrate_offset(UG31XX_BOARD_OFFSET_CALI_AVG);
-	mutex_unlock(&ug31->info_update_lock);
-  
+	if(is_charging() == false &&
+		cur_cable_status == UG31XX_AC_ADAPTER_CABLE)
+	{
+		mutex_lock(&ug31->info_update_lock);
+		ug31_module.calibrate_offset(UG31XX_BOARD_OFFSET_CALI_AVG);
+		mutex_unlock(&ug31->info_update_lock);
+	}
+	else
+		GAUGE_err("[%s] * cancel Board offset calibration *\n", __func__);
 	start_charging();
 	GAUGE_info("[%s] Board offset calibration done\n", __func__);
 }
@@ -1957,6 +1965,11 @@ static void shell_algorithm_work_func(struct work_struct *work)
 		if((is_charging() == true) && (user_space_algorithm_now_fc_sts == -1))
 		{
 			ug31_module.set_charger_full(UG31XX_TAPER_REACHED);
+		}
+
+		if(curr_charger_full_status == true)
+		{
+			ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_STEP);
 		}
 
 	#endif  ///< end of UG31XX_WAIT_CHARGER_FC
@@ -2127,14 +2140,16 @@ static void batt_probe_work_func(struct work_struct *work)
 	/* register switch device for battery information versions report */
 	batt_dev.name = "battery";
 	batt_dev.print_name = batt_switch_name;
-	/* tan
+	/// tan
+	/*
 	if (switch_dev_register(&batt_dev) < 0) {
 		GAUGE_err("%s: fail to register battery switch\n", __func__);
 		goto pwr_supply_fail;
 	}*/
 	ug31xx_config_earlysuspend(ug31);
 
-	if(is_charging() == true)
+	if(is_charging() == false &&
+		cur_cable_status == UG31XX_AC_ADAPTER_CABLE)
 	{
 		ug31_module.calibrate_offset(UG31XX_BOARD_OFFSET_CALI_AVG);
 	}
