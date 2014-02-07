@@ -1349,6 +1349,34 @@ static s8 gtp_request_input_dev(struct goodix_ts_data *ts)
     return 0;
 }
 
+//add by red_zhang@asus.com
+//======================================================
+static	ssize_t gt_hw_version_show ( struct device *dev,struct device_attribute *attr, char *buf)
+{
+    u16 version_info;
+    s32 ret = -1;
+    struct goodix_ts_data *ts = dev_get_drvdata(dev);					
+    ret = gtp_read_version(ts->client, &version_info);
+    if (ret < 0)
+    {
+	GTP_ERROR("Read version failed.");
+	return	ret;
+    }
+    return scnprintf (buf, PAGE_SIZE,  "%d\n", version_info ) ; 
+}																  
+																  
+static	DEVICE_ATTR (red_hw_version, S_IRUGO, gt_hw_version_show, NULL) ;
+
+static struct attribute *gt_attrs[] = {
+    &dev_attr_red_hw_version.attr,
+    NULL
+};
+
+static const struct attribute_group gt_attr_group = {
+    .attrs = gt_attrs,
+};
+//======================================================
+
 /*******************************************************
 Function:
     I2c probe.
@@ -1452,6 +1480,13 @@ static int goodix_ts_probe(struct i2c_client *client, const struct i2c_device_id
     if (ts->use_irq)
     {
         gtp_irq_enable(ts);
+    }
+        
+    //add by red_zhang@asus.com
+    printk("<Red_debug> : kobj's name = %s\n", client->dev.kobj.name);
+    ret = sysfs_create_group(&client->dev.kobj, &gt_attr_group);
+    if ( ret )	{
+	GTP_ERROR("Failure %d creating sysfs group\n", ret);
     }
     
 #if GTP_CREATE_WR_NODE
