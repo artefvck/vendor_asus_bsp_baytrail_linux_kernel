@@ -582,7 +582,9 @@ void intel_panel_disable_backlight(struct drm_device *dev)
 		} else {
 			intel_mid_pmic_writeb(0x51, 0x00);
 			intel_mid_pmic_writeb(0x52, 0x00);
-			intel_mid_pmic_writeb(0x4B, 0x7F);
+			//intel_mid_pmic_writeb(0x4B, 0x7F);
+			//pbtest set pwm0clk 23.437kHz 20140207
+			intel_mid_pmic_writeb(0x4B, 0x00);
 		}
 #else
 		DRM_ERROR("Backlight not supported yet\n");
@@ -642,7 +644,9 @@ void intel_panel_enable_backlight(struct drm_device *dev,
 			vlv_gpio_nc_write(dev_priv, 0x40E8, 0x00000005);
 			udelay(500);
 		} else {
-			intel_mid_pmic_writeb(0x4B, 0xFF);
+			//intel_mid_pmic_writeb(0x4B, 0xFF);
+			//pbtest set pwm0clk 23.437kHz 20140207
+			intel_mid_pmic_writeb(0x4B, 0x80);
 			intel_mid_pmic_writeb(0x4E, 0xFF);
 			intel_mid_pmic_writeb(0x51, 0x01);
 			intel_mid_pmic_writeb(0x52, 0x01);
