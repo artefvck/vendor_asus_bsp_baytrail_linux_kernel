@@ -42,6 +42,12 @@
 #define USE_ONEBIT_DEPOP 0	/* for one bit depop */
 #define HEADSET_DET_DELAY    20 /* Delay(ms) before reading over current
 				    status for headset detection */
+#ifdef CONFIG_PROC_FS
+#ifdef CONFIG_FACTORY_ITEMS
+#include <linux/proc_fs.h>
+#endif
+#endif
+
 #ifdef CONFIG_ME176C_CODEC_PARAMETER				   
 #define USE_EQ
 #endif
@@ -3289,6 +3295,13 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 			"Failed to create codex_reg sysfs files: %d\n", ret);
 		return ret;
 	}
+#ifdef CONFIG_PROC_FS
+#ifdef CONFIG_FACTORY_ITEMS
+	static struct proc_dir_entry *test_entry;
+	static const struct file_operations test_ops;
+	test_entry = proc_create("codec_driver",0666,NULL,&test_ops);
+#endif
+#endif
 
 	return 0;
 }
