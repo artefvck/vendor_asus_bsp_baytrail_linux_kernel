@@ -7,5 +7,11 @@ mainmenu "Linux/$ARCH $KERNELVERSION Kernel Configuration"
 config SRCARCH
 	string
 	option env="SRCARCH"
-
+#jevian ma add for FACTORY ITEMS +
+config FACTORY_ITEMS
+	bool "Add for factory test"
+	default n
+	help
+	This adds an option to enable factory test
+#jevian ma add for FACTORY ITEMS -	
 source "arch/$SRCARCH/Kconfig"
