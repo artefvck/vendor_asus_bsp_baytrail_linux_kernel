@@ -235,6 +235,12 @@ config SND_SOC_RT5672
 config SND_SOC_CS42L73
 	tristate
 
+config ME176C_CODEC_PARAMETER
+	bool "me176 product codec parameter"
+	default n
+	help
+	  me176 product codec parameter
+
 # Cirrus Logic CS4270 Codec
 config SND_SOC_CS4270
 	tristate

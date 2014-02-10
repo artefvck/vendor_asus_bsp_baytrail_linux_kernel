@@ -42,7 +42,9 @@
 #define USE_ONEBIT_DEPOP 0	/* for one bit depop */
 #define HEADSET_DET_DELAY    20 /* Delay(ms) before reading over current
 				    status for headset detection */
-/*#define USE_EQ*/
+#ifdef CONFIG_ME176C_CODEC_PARAMETER				   
+#define USE_EQ
+#endif
 #define USE_ASRC
 #define VERSION "0.8.4 alsa 1.0.25"
 
@@ -92,7 +94,11 @@ static struct rt5640_init_reg init_list[] = {
 	{RT5640_SPK_L_MIXER, 0x0036},	/*DACL1 -> SPKMIXL */
 	{RT5640_SPK_R_MIXER, 0x0036},	/*DACR1 -> SPKMIXR */
 	{RT5640_SPK_VOL, 0x8b8b},	/*SPKMIX -> SPKVOL */
+	#ifdef CONFIG_ME176C_CODEC_PARAMETER
+	{RT5640_SPO_CLSD_RATIO, 0x0002},
+	#else
 	{RT5640_SPO_CLSD_RATIO, 0x0001},
+	#endif
 	{RT5640_SPO_L_MIXER, 0xe800},	/*SPKVOLL -> SPOLMIX */
 	{RT5640_SPO_R_MIXER, 0x2800},	/*SPKVOLR -> SPORMIX */
 /*	{RT5640_SPO_L_MIXER	, 0xb800},//DAC -> SPOLMIX*/
