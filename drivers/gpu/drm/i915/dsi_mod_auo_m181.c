@@ -74,7 +74,7 @@ bool auo_m181_init(struct intel_dsi_device *dsi)
 	intel_dsi->eotp_pkt = 0;
 	intel_dsi->port_bits = 0;
 	//intel_dsi->dsi_clock_freq = 500;
-	intel_dsi->video_mode_type = DSI_VIDEO_BURST;
+	intel_dsi->video_mode_type = DSI_VIDEO_NBURST_SEVENT;
 	intel_dsi->pixel_format = VID_MODE_FORMAT_RGB888;
 //	intel_dsi->escape_clk_div = ESCAPE_CLOCK_DIVIDER_1;
 //	intel_dsi->lp_rx_timeout = 0xffff;
