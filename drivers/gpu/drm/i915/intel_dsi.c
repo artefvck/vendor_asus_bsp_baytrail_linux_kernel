@@ -799,6 +799,7 @@ intel_dsi_add_properties(struct intel_dsi *intel_dsi,
 }
 
 //sean_lu@asusu.com ++++ for create panel_id_proc_file
+#if IS_ENABLED(CONFIG_FACTORY_ITEMS) //only factory version, create it
 #ifdef CONFIG_PRO_ME181_PANEL
 #define PANEL_ID_PROC_FILE  "driver/panel_id"
 static struct proc_dir_entry *panel_id_proc_file;
@@ -857,6 +858,7 @@ static void create_panel_id_proc_file(void)
 		printk("create driver/panel_id fail\n");
 	}
 }
+#endif
 #endif
 //sean_lu@asusu.com ----
 
@@ -960,7 +962,10 @@ bool intel_dsi_init(struct drm_device *dev)
 		//sean_lu ----
 		//dev_priv->mipi_panel_id = i915_mipi_panel_id; //sean --
 
+#if IS_ENABLED(CONFIG_FACTORY_ITEMS) //only factory version, create it
 		create_panel_id_proc_file();//sean_lu ++++ for panel_id_proc_create
+#endif
+
 #endif
 	}
 	
