@@ -1318,8 +1318,6 @@ static void intel_disable_plane_unpin_work_fn(struct work_struct *__work)
 static int
 intel_disable_plane(struct drm_plane *plane)
 {
-	struct drm_device *dev = plane->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_plane *intel_plane = to_intel_plane(plane);
 	struct intel_plane *intel_plane_wq;
 	int ret = 0;
@@ -1337,10 +1335,6 @@ intel_disable_plane(struct drm_plane *plane)
 	/* To support deffered plane disable */
 	INIT_WORK(&intel_plane_wq->work, intel_disable_plane_unpin_work_fn);
 
-	/* If MAX FIFO enabled disable */
-	if (I915_READ(FW_BLC_SELF_VLV) & FW_CSPWRDWNEN)
-		I915_WRITE(FW_BLC_SELF_VLV,
-			   I915_READ(FW_BLC_SELF_VLV) & ~FW_CSPWRDWNEN);
 
 	intel_enable_primary(plane->crtc);
 	intel_plane->disable_plane(plane, plane->crtc);
