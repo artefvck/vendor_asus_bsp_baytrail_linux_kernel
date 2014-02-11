@@ -21,7 +21,12 @@
 #include <linux/string.h>
 #include <linux/sysfs.h>
 
-#include "ug31xx_ggb_data.h"
+#ifdef CONFIG_PRO_K011_GAUGE   
+#include "ug31xx_ggb_data_k011.h"
+#else
+#include "ug31xx_ggb_data_k013.h"
+#endif
+
 #include "uG31xx_Platform.h"
 #include "ug31xx_gauge.h"
 #include "uG31xx_API_Platform.h"
@@ -2174,7 +2179,7 @@ static int ug31xx_i2c_probe(struct i2c_client *client,
 				      const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
-
+    printk("FactoryGGBXFile[4]:%x\n",FactoryGGBXFile[4]);
 	pr_info("<BATT> ++++++++++++++++ %s ++++++++++++++++\n", __func__);
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE))
 	{

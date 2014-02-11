@@ -409,3 +409,5 @@ config UPI_BATTERY
         depends on I2C
         help
           say Y to enable suspport for the ug31	
+
+source "drivers/power/ug31xx/Kconfig"
