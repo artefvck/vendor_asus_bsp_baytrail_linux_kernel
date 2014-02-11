@@ -15,7 +15,12 @@ ug31xx_battery-objs	+= uG31xx_API_Otp.o
 ug31xx_battery-objs	+= uG31xx_API_System.o
 
 ug31xx_battery-objs	+= uG31xx_API_Platform.o
-ug31xx_battery-objs	+= ug31xx_gauge.o
+
+ifeq ($(FACTORY),1)
+	ug31xx_battery-objs	+= ug31xx_gauge_fac.o
+else
+	ug31xx_battery-objs	+= ug31xx_gauge.o
+endif
 
 obj-$(CONFIG_UPI_BATTERY)	+= ug31xx_battery.o
 
