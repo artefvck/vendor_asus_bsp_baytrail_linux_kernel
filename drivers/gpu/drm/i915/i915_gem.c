@@ -148,6 +148,38 @@ int i915_mutex_lock_interruptible(struct drm_device *dev)
 	return 0;
 }
 
+void*
+i915_gem_object_vmap(struct drm_i915_gem_object *obj)
+{
+	int i;
+	void *addr = NULL;
+	struct sg_page_iter sg_iter;
+	struct page **pages;
+
+	pages = drm_malloc_ab(obj->base.size >> PAGE_SHIFT, sizeof(*pages));
+	if (pages == NULL) {
+		DRM_ERROR("Failed to get space for pages\n");
+		goto finish;
+	}
+
+	i = 0;
+	for_each_sg_page(obj->pages->sgl, &sg_iter, obj->pages->nents, 0) {
+		pages[i] = sg_page_iter_page(&sg_iter);
+		i++;
+	}
+
+	addr = vmap(pages, i, VM_MAP, pgprot_writecombine(PAGE_KERNEL));
+	if (addr == NULL) {
+		DRM_ERROR("Failed to vmap pages\n");
+		goto finish;
+	}
+
+finish:
+	if (pages)
+		drm_free_large(pages);
+	return addr;
+}
+
 static inline bool
 i915_gem_object_is_inactive(struct drm_i915_gem_object *obj)
 {
@@ -1360,11 +1392,36 @@ int i915_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	unsigned long pfn;
 	int ret = 0, err = 0;
 	bool write = !!(vmf->flags & FAULT_FLAG_WRITE);
+	struct intel_ring_buffer *ring = NULL;
+	unsigned int reset_counter;
+	u32 seqno;
 
 	i915_rpm_get_callback(dev);
 	/* We don't use vmf->pgoff since that has the fake offset */
 	page_offset = ((unsigned long)vmf->virtual_address - vma->vm_start) >>
 		PAGE_SHIFT;
+
+	ret = i915_mutex_lock_interruptible(dev);
+	if (ret)
+		goto out;
+
+	ring = obj->ring;
+	seqno = !write ? obj->last_write_seqno : obj->last_read_seqno;
+	reset_counter = atomic_read(&dev_priv->gpu_error.reset_counter);
+
+	mutex_unlock(&dev->struct_mutex);
+
+	/* wait for GPU to finish first without acquiring struct_mutex.
+	   This will offload the mutex contention as subsequent wait for GPU
+	   while holding mutex in this routine will be as good as NOOP
+	*/
+	if (seqno != 0) {
+		ret = __wait_seqno(ring, seqno,
+				reset_counter, true, NULL);
+
+		if (ret)
+			goto out;
+	}
 
 	ret = i915_mutex_lock_interruptible(dev);
 	if (ret)
@@ -2177,6 +2234,7 @@ int __i915_add_request(struct intel_ring_buffer *ring,
 	request->tail = request_ring_position;
 	request->ctx = ring->last_context;
 	request->batch_obj = obj;
+	request->krn_batch_obj = NULL;
 
 	/* Whilst this request exists, batch_obj will be on the
 	 * active_list, and so will hold the active reference. Only when this
@@ -2351,11 +2409,21 @@ void i915_set_reset_status(struct intel_ring_buffer *ring,
 
 static void i915_gem_free_request(struct drm_i915_gem_request *request)
 {
+	struct drm_i915_private *dev_priv;
+
+	dev_priv = request->ring->dev->dev_private;
+
 	list_del(&request->list);
 	i915_gem_request_remove_from_client(request);
 
 	if (request->ctx)
 		i915_gem_context_unreference(request->ctx);
+
+	if (request->krn_batch_obj) {
+		list_move_tail(&request->krn_batch_obj->ring_batch_pool_list,
+			&dev_priv->batch_pool[request->ring->id].inactive_list);
+		i915_gem_object_unpin(request->krn_batch_obj);
+	}
 
 	kfree(request);
 }
@@ -2795,6 +2863,7 @@ i915_gem_object_ggtt_unbind(struct drm_i915_gem_object *obj)
 {
 	struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
 	struct i915_address_space *ggtt = &dev_priv->gtt.base;
+	struct i915_vma *vma_tmp;
 
 	if (!i915_gem_obj_ggtt_bound(obj))
 		return 0;
@@ -2804,7 +2873,18 @@ i915_gem_object_ggtt_unbind(struct drm_i915_gem_object *obj)
 
 	BUG_ON(obj->pages == NULL);
 
-	return i915_vma_unbind(i915_gem_obj_to_vma(obj, ggtt));
+	vma_tmp = i915_gem_obj_to_vma(obj, ggtt);
+	/*
+	 * Added this NULL check on the returned vma pointer
+	 * to avoid klocwork warning, otherwise it is not
+	 * really needed, as we already have an indirect check
+	 * for it through the i915_gem_obj_bound function
+	 */
+	WARN_ON(vma_tmp == NULL);
+	if (vma_tmp == NULL)
+		return 0;
+
+	return i915_vma_unbind(vma_tmp);
 }
 
 int i915_gpu_idle(struct drm_device *dev)
@@ -4118,6 +4198,7 @@ void i915_gem_object_init(struct drm_i915_gem_object *obj,
 	INIT_LIST_HEAD(&obj->exec_list);
 	INIT_LIST_HEAD(&obj->obj_exec_link);
 	INIT_LIST_HEAD(&obj->vma_list);
+	INIT_LIST_HEAD(&obj->ring_batch_pool_list);
 
 	obj->ops = ops;
 

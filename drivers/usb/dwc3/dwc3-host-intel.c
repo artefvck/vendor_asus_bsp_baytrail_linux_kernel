@@ -39,25 +39,6 @@ static int dwc3_start_host(struct usb_hcd *hcd);
 static int dwc3_stop_host(struct usb_hcd *hcd);
 static struct platform_driver dwc3_xhci_driver;
 
-static void xhci_dwc3_quirks(struct device *dev, struct xhci_hcd *xhci)
-{
-	/*
-	 * As of now platform drivers don't provide MSI support so we ensure
-	 * here that the generic code does not try to make a pci_dev from our
-	 * dev struct in order to setup MSI
-	 *
-	 * Synopsys DWC3 controller will generate PLC when link transfer to
-	 * compliance/loopback mode.
-	 */
-	xhci->quirks |= XHCI_PLAT | XHCI_COMP_PLC_QUIRK;
-}
-
-/* called during probe() after chip reset completes */
-static int xhci_dwc3_setup(struct usb_hcd *hcd)
-{
-	return xhci_gen_setup(hcd, xhci_dwc3_quirks);
-}
-
 static int xhci_dwc_bus_resume(struct usb_hcd *hcd)
 {
 	int ret;
@@ -83,7 +64,7 @@ static const struct hc_driver xhci_dwc_hc_driver = {
 	/*
 	 * basic lifecycle operations
 	 */
-	.reset =		xhci_dwc3_setup,
+	.reset =		xhci_plat_setup,
 	.start =		xhci_run,
 	.stop =			xhci_stop,
 	.shutdown =		xhci_shutdown,
@@ -366,6 +347,7 @@ dealloc_usb2_hcd:
 static int dwc3_stop_host(struct usb_hcd *hcd)
 {
 	int count = 0;
+	u32 data;
 	struct xhci_hcd *xhci;
 	struct usb_hcd *xhci_shared_hcd;
 
@@ -375,6 +357,11 @@ static int dwc3_stop_host(struct usb_hcd *hcd)
 	xhci = hcd_to_xhci(hcd);
 
 	pm_runtime_get_sync(hcd->self.controller);
+
+	/* Disable hibernation mode for D0i3cold. */
+	data = readl(hcd->regs + GCTL);
+	data &= ~GCTL_GBL_HIBERNATION_EN;
+	writel(data, hcd->regs + GCTL);
 
 	/* When plug out micro A cable, there will be two flows be executed.
 	 * The first one is xHCI controller get disconnect event. The

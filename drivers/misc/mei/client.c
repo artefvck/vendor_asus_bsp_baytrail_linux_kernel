@@ -155,7 +155,7 @@ int mei_io_cb_alloc_req_buf(struct mei_cl_cb *cb, size_t length)
 	return 0;
 }
 /**
- * mei_io_cb_alloc_resp_buf - allocate respose buffer
+ * mei_io_cb_alloc_resp_buf - allocate response buffer
  *
  * @cb: io callback structure
  * @length: size of the buffer
@@ -208,7 +208,7 @@ int mei_cl_flush_queues(struct mei_cl *cl)
 
 
 /**
- * mei_cl_init - initializes intialize cl.
+ * mei_cl_init - initializes cl.
  *
  * @cl: host client to be initialized
  * @dev: mei device
@@ -264,10 +264,10 @@ struct mei_cl_cb *mei_cl_find_read_cb(struct mei_cl *cl)
 	return NULL;
 }
 
-/** mei_cl_link: allocte host id in the host map
+/** mei_cl_link: allocate host id in the host map
  *
  * @cl - host client
- * @id - fixed host id or -1 for genereting one
+ * @id - fixed host id or -1 for generic one
  *
  * returns 0 on success
  *	-EINVAL on incorrect values
@@ -283,19 +283,19 @@ int mei_cl_link(struct mei_cl *cl, int id)
 
 	dev = cl->dev;
 
-	/* If Id is not asigned get one*/
+	/* If Id is not assigned get one*/
 	if (id == MEI_HOST_CLIENT_ID_ANY)
 		id = find_first_zero_bit(dev->host_clients_map,
 					MEI_CLIENTS_MAX);
 
 	if (id >= MEI_CLIENTS_MAX) {
-		dev_err(&dev->pdev->dev, "id exceded %d", MEI_CLIENTS_MAX) ;
+		dev_err(&dev->pdev->dev, "id exceeded %d", MEI_CLIENTS_MAX);
 		return -EMFILE;
 	}
 
 	open_handle_count = dev->open_handle_count + dev->iamthif_open_count;
 	if (open_handle_count >= MEI_MAX_OPEN_HANDLE_COUNT) {
-		dev_err(&dev->pdev->dev, "open_handle_count exceded %d",
+		dev_err(&dev->pdev->dev, "open_handle_count exceeded %d",
 			MEI_MAX_OPEN_HANDLE_COUNT);
 		return -EMFILE;
 	}
@@ -371,6 +371,7 @@ void mei_host_client_init(struct work_struct *work)
 	}
 
 	dev->dev_state = MEI_DEV_ENABLED;
+	dev->reset_count = 0;
 
 	mutex_unlock(&dev->device_lock);
 
@@ -398,7 +399,7 @@ bool mei_hbuf_acquire(struct mei_device *dev)
 }
 
 /**
- * mei_cl_disconnect - disconnect host clinet form the me one
+ * mei_cl_disconnect - disconnect host client from the me one
  *
  * @cl: host client
  *
@@ -422,18 +423,20 @@ int mei_cl_disconnect(struct mei_cl *cl)
 	if (cl->state != MEI_FILE_DISCONNECTING)
 		return 0;
 
-	cb = mei_io_cb_init(cl, NULL);
-	if (!cb)
-		return -ENOMEM;
-
-	cb->fop_type = MEI_FOP_CLOSE;
-
 	rets = pm_runtime_get(&dev->pdev->dev);
-	if (IS_ERR_VALUE(rets) && rets != -EINPROGRESS) {
+	if (rets < 0 && rets != -EINPROGRESS) {
 		pm_runtime_put_noidle(&dev->pdev->dev);
 		cl_err(dev, cl, "rpm: get failed %d\n", rets);
 		return rets;
 	}
+
+	cb = mei_io_cb_init(cl, NULL);
+	if (!cb) {
+		rets = -ENOMEM;
+		goto free;
+	}
+
+	cb->fop_type = MEI_FOP_CLOSE;
 
 	if (mei_hbuf_acquire(dev)) {
 		if (mei_hbm_cl_disconnect_req(dev, cl)) {
@@ -489,7 +492,7 @@ free:
  *
  * @cl: private data of the file object
  *
- * returns ture if other client is connected, 0 - otherwise.
+ * returns true if other client is connected, false - otherwise.
  */
 bool mei_cl_is_other_connecting(struct mei_cl *cl)
 {
@@ -513,7 +516,7 @@ bool mei_cl_is_other_connecting(struct mei_cl *cl)
 }
 
 /**
- * mei_cl_connect - connect host clinet to the me one
+ * mei_cl_connect - connect host client to the me one
  *
  * @cl: host client
  *
@@ -532,6 +535,13 @@ int mei_cl_connect(struct mei_cl *cl, struct file *file)
 
 	dev = cl->dev;
 
+	rets = pm_runtime_get(&dev->pdev->dev);
+	if (rets < 0 && rets != -EINPROGRESS) {
+		pm_runtime_put_noidle(&dev->pdev->dev);
+		cl_err(dev, cl, "rpm: get failed %d\n", rets);
+		return rets;
+	}
+
 	cb = mei_io_cb_init(cl, file);
 	if (!cb) {
 		rets = -ENOMEM;
@@ -539,13 +549,6 @@ int mei_cl_connect(struct mei_cl *cl, struct file *file)
 	}
 
 	cb->fop_type = MEI_FOP_IOCTL;
-
-	rets = pm_runtime_get(&dev->pdev->dev);
-	if (IS_ERR_VALUE(rets) && rets != -EINPROGRESS) {
-		pm_runtime_put_noidle(&dev->pdev->dev);
-		cl_err(dev, cl, "rpm: get failed %d\n", rets);
-		return rets;
-	}
 
 	if (!mei_cl_is_other_connecting(cl) && mei_hbuf_acquire(dev)) {
 		if (mei_hbm_cl_connect_req(dev, cl)) {
@@ -697,7 +700,7 @@ int mei_cl_read_start(struct mei_cl *cl, size_t length)
 	}
 
 	rets = pm_runtime_get(&dev->pdev->dev);
-	if (IS_ERR_VALUE(rets) && rets != -EINPROGRESS) {
+	if (rets < 0 && rets != -EINPROGRESS) {
 		pm_runtime_put_noidle(&dev->pdev->dev);
 		cl_err(dev, cl, "rpm: get failed %d\n", rets);
 		return rets;
@@ -788,7 +791,7 @@ int mei_cl_irq_write_complete(struct mei_cl *cl, struct mei_cl_cb *cb,
 	}
 
 	if (!mei_hbuf_acquire(dev)) {
-		cl_dbg(dev, cl, "Cannot aquire the host buffer: not sending.\n");
+		cl_dbg(dev, cl, "Cannot acquire the host buffer: not sending.\n");
 		return 0;
 	}
 
@@ -845,7 +848,7 @@ int mei_cl_irq_write_complete(struct mei_cl *cl, struct mei_cl_cb *cb,
  * @cl: host client
  * @cl: write callback with filled data
  *
- * returns numbe of bytes sent on success, <0 on failure.
+ * returns number of bytes sent on success, <0 on failure.
  */
 int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 {
@@ -869,7 +872,7 @@ int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 	cl_dbg(dev, cl, "size=%d\n", buf->size);
 
 	rets = pm_runtime_get(&dev->pdev->dev);
-	if (IS_ERR_VALUE(rets) && rets != -EINPROGRESS) {
+	if (rets < 0 && rets != -EINPROGRESS) {
 		pm_runtime_put_noidle(&dev->pdev->dev);
 		cl_err(dev, cl, "rpm: get failed %d\n", rets);
 		return rets;
@@ -901,7 +904,7 @@ int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 	}
 
 	if (!mei_hbuf_acquire(dev)) {
-		cl_dbg(dev, cl, "Cannot aquire the host buffer: not sending.\n");
+		cl_dbg(dev, cl, "Cannot acquire the host buffer: not sending.\n");
 		rets = buf->size;
 		goto out;
 	}
@@ -1001,7 +1004,6 @@ void mei_cl_all_disconnect(struct mei_device *dev)
 	list_for_each_entry_safe(cl, next, &dev->file_list, link) {
 		cl->state = MEI_FILE_DISCONNECTED;
 		cl->mei_flow_ctrl_creds = 0;
-		cl->read_cb = NULL;
 		cl->timer_count = 0;
 	}
 }
@@ -1036,6 +1038,11 @@ void mei_cl_all_write_clear(struct mei_device *dev)
 	struct mei_cl_cb *cb, *next;
 
 	list_for_each_entry_safe(cb, next, &dev->write_list.list, list) {
+		list_del(&cb->list);
+		mei_io_cb_free(cb);
+	}
+
+	list_for_each_entry_safe(cb, next, &dev->write_waiting_list.list, list) {
 		list_del(&cb->list);
 		mei_io_cb_free(cb);
 	}

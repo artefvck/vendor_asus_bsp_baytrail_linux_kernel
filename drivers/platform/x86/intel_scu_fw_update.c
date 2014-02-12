@@ -33,6 +33,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel-mid.h>
+#include <asm/msr.h>
 
 /* Medfield & Cloverview firmware update.
  * The flow and communication between IA and SCU has changed for
@@ -863,6 +864,8 @@ static ssize_t fw_version_show(struct kobject *kobj,
 #define INTE_SCU_IPC_PUNIT_FW_REVISION_MIN_REG     4
 #define INTE_SCU_IPC_IA32_FW_REVISION_MAJ_REG      7
 #define INTE_SCU_IPC_IA32_FW_REVISION_MIN_REG      6
+#define INTE_SCU_IPC_SUPP_IA32_FW_REVISION_MAJ_REG 9
+#define INTE_SCU_IPC_SUPP_IA32_FW_REVISION_MIN_REG 8
 #define INTE_SCU_IPC_VALHOOKS_FW_REVISION_MAJ_REG  11
 #define INTE_SCU_IPC_VALHOOKS_FW_REVISION_MIN_REG  10
 
@@ -881,6 +884,8 @@ static ssize_t fw_version_show(struct kobject *kobj,
 #define INTE_SCU_IPC_CHAABI_FW_REVISION_EXT_MAJ_REG    6
 #define INTE_SCU_IPC_MIA_FW_REVISION_EXT_MIN_REG       8
 #define INTE_SCU_IPC_MIA_FW_REVISION_EXT_MAJ_REG       10
+#define INTE_PUNIT_FW_REVISION_EXT_MIN_REG             12
+#define INTE_PUNIT_FW_REVISION_EXT_MAJ_REG             14
 
 #define INTE_SCU_FW_OFFS	0
 #define INTE_SCU_FW_EXT_OFFS	1
@@ -891,6 +896,7 @@ struct scu_ipc_version {
 	char            scu_bs[FW_VERSION_SIZE];
 	char            scu_rt[FW_VERSION_SIZE];
 	char            ia32fw[FW_VERSION_SIZE];
+	char            supp_ia32fw[FW_VERSION_SIZE];
 	char            valhooks[FW_VERSION_SIZE];
 	char            ifwi[FW_VERSION_SIZE];
 	char            chaabi[FW_VERSION_SIZE];
@@ -972,6 +978,11 @@ static void read_ifwi_version(void)
 				INTE_SCU_IPC_MIA_FW_REVISION_EXT_MAJ_REG,
 				INTE_SCU_IPC_MIA_FW_REVISION_EXT_MIN_REG);
 		pr_info("mIA Version: %s\n", version.mia);
+
+		format_rev_4_digit(version, INTE_SCU_FW_EXT_OFFS, version.punit,
+				INTE_PUNIT_FW_REVISION_EXT_MAJ_REG,
+				INTE_PUNIT_FW_REVISION_EXT_MIN_REG);
+		pr_info("PUnit Version: %s\n", version.punit);
 	} else {
 		format_rev_2_digit(version, version.ifwi,
 				INTE_SCU_IPC_FW_REVISION_MAJ_REG,
@@ -993,6 +1004,11 @@ static void read_ifwi_version(void)
 				INTE_SCU_IPC_IA32_FW_REVISION_MIN_REG);
 		pr_info("IA32FW Version: %s\n", version.ia32fw);
 
+		format_rev_2_digit(version, version.supp_ia32fw,
+				INTE_SCU_IPC_SUPP_IA32_FW_REVISION_MAJ_REG,
+				INTE_SCU_IPC_SUPP_IA32_FW_REVISION_MIN_REG);
+		pr_info("SUPP IA32FW Version: %s\n", version.supp_ia32fw);
+
 		format_rev_2_digit(version, version.valhooks,
 				INTE_SCU_IPC_VALHOOKS_FW_REVISION_MAJ_REG,
 				INTE_SCU_IPC_VALHOOKS_FW_REVISION_MIN_REG);
@@ -1001,9 +1017,12 @@ static void read_ifwi_version(void)
 	return;
 }
 
+#define MSR_PUNIT_VERSION_ADDR 0x667
+
 static int fw_version_info(void)
 {
 	int ret;
+	u32 low, high;
 
 	memset(fw_version_raw_data, 0, FW_VERSION_MAX_SIZE);
 
@@ -1022,6 +1041,11 @@ static int fw_version_info(void)
 			cur_err("Error getting fw version");
 			return -EINVAL;
 		}
+		/* PUnit version is not availabe in SMIP, we get it with a
+		   machine-specific register read */
+		rdmsr(MSR_PUNIT_VERSION_ADDR, low, high);
+		*(u32 *)(fw_version_raw_data + FW_VERSION_SIZE +
+				INTE_PUNIT_FW_REVISION_EXT_MIN_REG) = low;
 	}
 
 	read_ifwi_version();
@@ -1042,9 +1066,13 @@ static ssize_t sys_version_show(struct kobject *kobj,
 		if (strcmp(attr->attr.name, "scu_bs_version") == 0)
 			return snprintf(buf, PAGE_SIZE, "%s\n",
 					version.scu_bs);
-	} else if (strcmp(attr->attr.name, "punit_version") == 0)
-		return snprintf(buf, PAGE_SIZE, "%s\n", version.punit);
+	} else {
+		if (strcmp(attr->attr.name, "supp_ia32fw_version") == 0)
+			return snprintf(buf, PAGE_SIZE, "%s\n", version.supp_ia32fw);
+	}
 
+	if (strcmp(attr->attr.name, "punit_version") == 0)
+		return snprintf(buf, PAGE_SIZE, "%s\n", version.punit);
 	if (strcmp(attr->attr.name, "ifwi_version") == 0)
 		return snprintf(buf, PAGE_SIZE, "%s\n", version.ifwi);
 	if (strcmp(attr->attr.name, "scu_version") == 0)
@@ -1110,6 +1138,7 @@ static KOBJ_FW_UPDATE_ATTR(scu_bs_version, S_IRUGO, sys_version_show, NULL);
 static KOBJ_FW_UPDATE_ATTR(scu_version, S_IRUGO, sys_version_show, NULL);
 static KOBJ_FW_UPDATE_ATTR(punit_version, S_IRUGO, sys_version_show, NULL);
 static KOBJ_FW_UPDATE_ATTR(ia32fw_version, S_IRUGO, sys_version_show, NULL);
+static KOBJ_FW_UPDATE_ATTR(supp_ia32fw_version, S_IRUGO, sys_version_show, NULL);
 static KOBJ_FW_UPDATE_ATTR(valhooks_version, S_IRUGO, sys_version_show, NULL);
 
 static KOBJ_FW_UPDATE_ATTR(last_error, S_IRUGO, last_error_show, NULL);
@@ -1126,6 +1155,7 @@ static struct attribute *fw_update_attrs[] = {
 	&scu_version_attr.attr,
 	&punit_version_attr.attr,
 	&ia32fw_version_attr.attr,
+	&supp_ia32fw_version_attr.attr,
 	&valhooks_version_attr.attr,
 	&last_error_attr.attr,
 	NULL,

@@ -40,7 +40,9 @@
 #define MRFL_VOLT_SHUTDOWN_MASK (1 << 1)
 #define MRFL_NFC_RESV_MASK	(1 << 3)
 
-#define BYT_TEMP_HYSTERESIS	3
+#define BYT_TEMP_MIN_LIM	0	/* 0degC */
+#define BYT_TEMP_MAX_LIM	55	/* 55degC */
+#define BYT_BATT_MIN_VOLT	3400	/* 3400mV */
 
 void max17042_i2c_reset_workaround(void)
 {
@@ -304,12 +306,11 @@ static int byt_get_vsys_min(void)
 	return DEFAULT_VMIN;
 }
 
-#define BYT_BATT_MAX_VOLT	4350000		/* 4350mV */
+#define BYT_BATT_MAX_VOLT	4350	/* 4350mV */
 static int byt_get_vbatt_max(void)
 {
-	return BYT_BATT_MAX_VOLT;
+	return BYT_BATT_MAX_VOLT * 1000;
 }
-
 
 static bool is_mapped;
 static void __iomem *smip;
@@ -409,18 +410,12 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 	} else if (INTEL_MID_BOARD(1, TABLET, BYT)) {
 		pdata->get_vmin_threshold = byt_get_vsys_min;
 		pdata->get_vmax_threshold = byt_get_vbatt_max;
-		pdata->is_volt_shutdown = 1;
+		pdata->is_volt_shutdown = true;
 		pdata->reset_chip = true;
-		if (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, 8PR1) ||
-			INTEL_MID_BOARD(3, TABLET, BYT, BLK, ENG, 8PR1)) {
-			pdata->temp_min_lim = 0 + BYT_TEMP_HYSTERESIS;
-			pdata->temp_max_lim = 55 - BYT_TEMP_HYSTERESIS;
-		} else {
-			pdata->temp_min_lim = 0;
-			pdata->temp_max_lim = 55;
-		}
-		pdata->volt_min_lim = 3400;
-		pdata->volt_max_lim = 4400;
+		pdata->temp_min_lim = BYT_TEMP_MIN_LIM;
+		pdata->temp_max_lim = BYT_TEMP_MAX_LIM;
+		pdata->volt_min_lim = BYT_BATT_MIN_VOLT;
+		pdata->volt_max_lim = BYT_BATT_MAX_VOLT;
 	}
 
 	pdata->reset_i2c_lines = max17042_i2c_reset_workaround;
@@ -430,7 +425,9 @@ static bool max17042_is_valid_batid(void)
 {
 	bool ret = true;
 #ifdef CONFIG_CHARGER_SMB347
-	ret = smb347_is_valid_batid();
+	 if (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, 8PR1) ||
+		INTEL_MID_BOARD(3, TABLET, BYT, BLK, ENG, 8PR1))
+		ret = smb347_is_valid_batid();
 #endif
 	return ret;
 }
@@ -507,6 +504,7 @@ static void init_platform_params(struct max17042_platform_data *pdata)
 			pdata->enable_current_sense = false;
 			pdata->valid_battery = false;
 		}
+		pdata->en_vmax_intr = true;
 		pdata->file_sys_storage_enabled = 1;
 		pdata->soc_intr_mode_enabled = true;
 		snprintf(pdata->model_name, (MODEL_NAME_LEN + 1),

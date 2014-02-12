@@ -67,6 +67,8 @@ static struct {
 		"current_standby_pullmode"},
 	{NORMAL_FOPS, TYPE_SBY_OD_DIS, "available_standby_opendrain",
 		"current_standby_opendrain"},
+	{NORMAL_FOPS, TYPE_IRQ_LINE, "available_irq_line",
+		"current_irq_line"},
 
 };
 
@@ -254,7 +256,8 @@ static ssize_t gpio_conf_write(struct file *filp, const char __user *ubuf,
 	for (i = cnt - 1; i > 0 && isspace(buf[i]); i--)
 		buf[i] = 0;
 
-	kstrtoul(start, 16, &value);
+	if (kstrtouint(start, 16, &value))
+		return -EINVAL;
 
 	if (debug->ops->set_conf_reg)
 		debug->ops->set_conf_reg(debug, gpio, value);

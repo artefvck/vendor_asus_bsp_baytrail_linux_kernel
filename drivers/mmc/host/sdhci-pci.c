@@ -604,7 +604,8 @@ static const struct sdhci_pci_fixes sdhci_intel_mfd_sd = {
 
 static const struct sdhci_pci_fixes sdhci_intel_mfd_sdio = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
-	.quirks2	= SDHCI_QUIRK2_HOST_OFF_CARD_ON,
+	.quirks2	= SDHCI_QUIRK2_HOST_OFF_CARD_ON |
+		SDHCI_QUIRK2_FAKE_VDD,
 	.allow_runtime_pm = true,
 	.probe_slot	= mfd_sdio_probe_slot,
 };
@@ -779,8 +780,7 @@ static const struct sdhci_pci_fixes sdhci_intel_byt_emmc = {
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sdio = {
 	.quirks2	= SDHCI_QUIRK2_HOST_OFF_CARD_ON |
-		SDHCI_QUIRK2_CAN_VDD_300 | SDHCI_QUIRK2_CAN_VDD_330 |
-		SDHCI_QUIRK2_PRESET_VALUE_BROKEN,
+		SDHCI_QUIRK2_PRESET_VALUE_BROKEN | SDHCI_QUIRK2_FAKE_VDD,
 	.allow_runtime_pm = true,
 	.probe_slot	= byt_sdio_probe_slot,
 	.remove_slot	= byt_sdio_remove_slot,
@@ -822,10 +822,10 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 					MMC_CAP_NONREMOVABLE |
 					MMC_CAP_1_8V_DDR;
 		slot->host->mmc->caps2 |= MMC_CAP2_POLL_R1B_BUSY |
-					MMC_CAP2_INIT_CARD_SYNC |
-					MMC_CAP2_CACHE_CTRL;
+					MMC_CAP2_INIT_CARD_SYNC;
 		if (slot->chip->pdev->revision == 0x1) { /* B0 stepping */
-			slot->host->mmc->caps2 |= MMC_CAP2_HS200_1_8V_SDR;
+			slot->host->mmc->caps2 |= MMC_CAP2_HS200_1_8V_SDR |
+						MMC_CAP2_HS200_DIS;
 			/* WA for async abort silicon issue */
 			slot->host->quirks2 |= SDHCI_QUIRK2_CARD_CD_DELAY |
 					SDHCI_QUIRK2_WAIT_FOR_IDLE |
@@ -839,6 +839,7 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 		break;
 	case INTEL_MRFL_SDIO:
 		slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;
+		slot->host->quirks2 |= SDHCI_QUIRK2_FAKE_VDD;
 		break;
 	}
 
@@ -888,7 +889,8 @@ static int intel_moor_emmc_probe_slot(struct sdhci_pci_slot *slot)
 				MMC_CAP2_INIT_CARD_SYNC;
 
 	/* Enable HS200 and HS400 */
-	slot->host->mmc->caps2 |= MMC_CAP2_HS200_1_8V_SDR;
+	slot->host->mmc->caps2 |= MMC_CAP2_HS200_1_8V_SDR |
+				MMC_CAP2_HS200_DIS;
 
 	if (slot->chip->pdev->revision == 0x1) { /* B0 stepping */
 		slot->host->mmc->caps2 |= MMC_CAP2_HS400_1_8V_DDR;
@@ -969,7 +971,8 @@ static const struct sdhci_pci_fixes sdhci_intel_moor_sd = {
 static const struct sdhci_pci_fixes sdhci_intel_moor_sdio = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
 	.quirks2	= SDHCI_QUIRK2_BROKEN_AUTO_CMD23 |
-				SDHCI_QUIRK2_HIGH_SPEED_SET_LATE,
+				SDHCI_QUIRK2_HIGH_SPEED_SET_LATE |
+				SDHCI_QUIRK2_FAKE_VDD,
 	.allow_runtime_pm = true,
 	.probe_slot	= intel_moor_sdio_probe_slot,
 	.remove_slot	= intel_moor_sdio_remove_slot,

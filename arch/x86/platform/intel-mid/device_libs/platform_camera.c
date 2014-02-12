@@ -21,6 +21,7 @@
 #include "platform_imx175.h"
 #include "platform_imx134.h"
 #include "platform_ov2722.h"
+#include "platform_ov5693.h"
 #include "platform_lm3554.h"
 #include "platform_hm2056.h"
 #include "platform_gc0339.h"
@@ -37,8 +38,27 @@ const struct intel_v4l2_subdev_id v4l2_ids[] = {
 	{"ar0543", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"gc0339", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"hm2056", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"mt9e013", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"ov8830", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"imx175", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"imx135", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"imx135fuji", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"imx134", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"imx132", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"ov9724", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"ov2722", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"ov5693", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"mt9d113", SOC_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"mt9m114", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"mt9v113", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"s5k8aay", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"ap1302", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"lm3554", LED_FLASH, -1},
 	{"lm3559", LED_FLASH, -1},
+	{"lm3560", LED_FLASH, -1},
+	{"xactor_a", SOC_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"xactor_b", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"xactor_c", SOC_CAMERA, ATOMISP_CAMERA_PORT_TERTIARY},
 	{},
 };
 
@@ -129,7 +149,7 @@ static struct camera_device_table cht_rvp_cam_table[] = {
 			&intel_register_i2c_camera_device}
 	}, {
 		{SFI_DEV_TYPE_I2C, 4, 0x3C, 0x0, 0x0, "ap1302"},
-		{"ov2722", SFI_DEV_TYPE_I2C, 0, &ap1302_platform_data,
+		{"ap1302", SFI_DEV_TYPE_I2C, 0, &ap1302_platform_data,
 			&intel_register_i2c_camera_device}
 	}, {
 		{SFI_DEV_TYPE_I2C, 1, 0x53, 0x0, 0x0, "lm3554"},
@@ -365,6 +385,9 @@ static void atomisp_unregister_acpi_devices(struct atomisp_platform_data *pdata)
 		"2-0053",	/* byt-crv2 lm3554*/
 		"2-0010",	/* imx1xx driver*/
 		"2-0036",	/* ov2722 driver*/
+		"2-0010",	/* CHT OV5693 */
+		"4-003c",	/* CHT AP1302 */
+		"1-0053",	/* CHT lm3554 */
 		"INTCF0B:00",	/* From ACPI ov2722 */
 		"INTCF1A:00",	/* From ACPI imx175 */
 		"INTCF1C:00",	/* From ACPI lm3554 */
@@ -483,30 +506,20 @@ int camera_set_pmic_power(enum camera_pmic_pin pin, bool flag)
 {
 	u8 reg_addr[CAMERA_POWER_NUM] = {VPROG_1P8V, VPROG_2P8V};
 	u8 reg_value[2] = {VPROG_DISABLE, VPROG_ENABLE};
-	static struct vprog_status status[CAMERA_POWER_NUM];
+	int val;
 	static DEFINE_MUTEX(mutex_power);
 	int ret = 0;
 
+	if (pin >= CAMERA_POWER_NUM)
+		return -EINVAL;
+
 	mutex_lock(&mutex_power);
-	/*
-	 * only set power at:
-	 * first to power on
-	 * last to power off
-	 */
-	if ((flag && status[pin].user == 0)
-	    || (!flag && status[pin].user == 1))
+	val = intel_mid_pmic_readb(reg_addr[pin]) & 0x3;
+
+	if ((flag && (val == VPROG_DISABLE)) ||
+		(!flag && (val == VPROG_ENABLE)))
 		ret = intel_mid_pmic_writeb(reg_addr[pin], reg_value[flag]);
 
-	/* no update counter if config failed */
-	if (ret)
-		goto done;
-
-	if (flag)
-		status[pin].user++;
-	else
-		if (status[pin].user)
-			status[pin].user--;
-done:
 	mutex_unlock(&mutex_power);
 	return ret;
 }

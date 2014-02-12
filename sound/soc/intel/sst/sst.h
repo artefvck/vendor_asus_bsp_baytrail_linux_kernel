@@ -30,21 +30,20 @@
 
 #include <linux/dmaengine.h>
 #include <linux/pm_runtime.h>
+#include <linux/firmware.h>
 #include <linux/intel_mid_dma.h>
 #include <linux/lnw_gpio.h>
 #include <asm/platform_sst.h>
 
 #define SST_DRIVER_VERSION "3.0.8"
-#define SST_VERSION_NUM 0x2004
 
 /* driver names */
 #define SST_DRV_NAME "intel_sst_driver"
-#define SST_MRST_PCI_ID	0x080A
 #define SST_CLV_PCI_ID	0x08E7
 #define SST_MRFLD_PCI_ID 0x119A
 #define SST_BYT_PCI_ID  0x0F28
+#define SST_CHT_PCI_ID 0x22A8
 
-#define PCI_ID_LENGTH 4
 #define SST_SUSPEND_DELAY 2000
 #define FW_CONTEXT_MEM (64*1024)
 #define SST_ICCM_BOUNDARY 4
@@ -67,12 +66,11 @@ enum sst_states {
 	SST_ERROR,
 	SST_SUSPENDED,
 	SST_FW_CTXT_RESTORE,
-	SST_SHUTDOWN
+	SST_SHUTDOWN,
+	SST_FW_LIB_LOAD,
 };
 
 #define SST_BLOCK_TIMEOUT	1000
-#define BLOCK_UNINIT		-1
-#define RX_TIMESLOT_UNINIT	-1
 
 /* SST register map */
 #define SST_CSR			0x00
@@ -96,9 +94,7 @@ enum sst_states {
 #define SST_SHIM_BEGIN		SST_CSR
 #define SST_SHIM_END		SST_CSR2
 #define SST_SHIM_SIZE		0x88
-#define SST_PWMCTRL             0x1000
 
-#define SPI_MODE_ENABLE_BASE_ADDR 0xffae4000
 #define FW_SIGNATURE_SIZE	4
 
 /* stream states */
@@ -114,7 +110,6 @@ enum sst_ram_type {
 	SST_IRAM	= 1,
 	SST_DRAM	= 2,
 };
-
 
 /* SST shim registers to structure mapping  */
 union config_status_reg {
@@ -245,7 +240,6 @@ struct sst_block {
  * @str_type : stream type
  * @src : stream source
  * @device : output device type (medfield only)
- * @pcm_slot : pcm slot value
  */
 struct stream_info {
 	unsigned int		status;
@@ -309,7 +303,6 @@ struct sst_ipc_msg_wq {
 	union ipc_header header;
 };
 
-
 struct sst_dma {
 	struct dma_chan *ch;
 	struct intel_mid_dma_slave slave;
@@ -342,6 +335,8 @@ struct sst_debugfs {
 	int			runtime_pm_status;
 	void __iomem            *ssp[SST_MAX_SSP_PORTS];
 	void __iomem            *dma_reg[SST_MAX_DMA];
+	unsigned char get_params_data[1024];
+	ssize_t get_params_len;
 };
 
 struct lpe_log_buf_hdr {
@@ -363,12 +358,6 @@ struct snd_sst_probe_bytes {
 
 #define PCI_DMAC_CLV_ID 0x08F0
 #define PCI_DMAC_MRFLD_ID 0x119B
-
-struct sst_fw_context {
-	void *iram;
-	void *dram;
-	unsigned int saved;
-};
 
 struct sst_ram_buf {
 	u32 size;
@@ -474,9 +463,11 @@ struct sst_vtsv_cache {
  * @cp_streams : total active cp streams
  * @audio_start : audio status
  * @qos		: PM Qos struct
+ * firmware_name : Firmware / Library name
  */
 struct intel_sst_drv {
 	int			sst_state;
+	int			irq_num;
 	unsigned int		pci_id;
 	bool			use_32bit_ops;
 	void __iomem		*ddr;
@@ -539,7 +530,6 @@ struct intel_sst_drv {
 	struct list_head	memcpy_list;
 	/* list used during LIB download in memcpy mode */
 	struct list_head	libmemcpy_list;
-	struct sst_fw_context	context;
 	/* holds the stucts of iram/dram local buffers for dump*/
 	struct sst_dump_buf	dump_buf;
 	/* Lock for CSR register change */
@@ -558,11 +548,16 @@ struct intel_sst_drv {
 	 * different
 	 */
 	const char *hid;
+	/* Holder for firmware name. Due to async call it needs to be
+	 * persistent till worker thread gets called
+	 */
+	char firmware_name[20];
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
-extern struct sst_platform_info byt_ffrd10_platform_data;
+extern struct sst_platform_info byt_rvp_platform_data;
 extern struct sst_platform_info byt_ffrd8_platform_data;
+extern struct sst_platform_info cht_platform_data;
 
 /* misc definitions */
 #define FW_DWNL_ID 0xFF
@@ -590,10 +585,10 @@ struct intel_sst_ops {
 	void (*restore_dsp_context) (void);
 	int (*alloc_stream) (char *params, struct sst_block *block);
 	void (*post_download)(struct intel_sst_drv *sst);
+	void (*do_recovery)(struct intel_sst_drv *sst);
 };
 
 int sst_alloc_stream(char *params, struct sst_block *block);
-int sst_stalled(void);
 int sst_pause_stream(int id);
 int sst_resume_stream(int id);
 int sst_drop_stream(int id);
@@ -617,20 +612,16 @@ void sst_process_reply_mfld(struct ipc_post *msg);
 int sst_start_mfld(void);
 int intel_sst_reset_dsp_mfld(void);
 void intel_sst_clear_intr_mfld(void);
-void intel_sst_clear_intr_mrfld32(void);
 void intel_sst_set_bypass_mfld(bool set);
 
 int sst_sync_post_message_mrfld(struct ipc_post *msg);
 void sst_post_message_mrfld(struct work_struct *work);
 void sst_process_message_mrfld(struct ipc_post *msg);
-int sst_sync_post_message_mrfld32(struct ipc_post *msg);
-void sst_post_message_mrfld32(struct work_struct *work);
 void sst_process_reply_mrfld(struct ipc_post *msg);
 int sst_start_mrfld(void);
 int intel_sst_reset_dsp_mrfld(void);
 void intel_sst_clear_intr_mrfld(void);
 void sst_process_mad_ops(struct work_struct *work);
-void sst_process_mad_jack_detection(struct work_struct *work);
 
 long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd,
 			unsigned long arg);
@@ -660,11 +651,8 @@ void sst_clean_stream(struct stream_info *stream);
 int intel_sst_register_compress(struct intel_sst_drv *sst);
 int intel_sst_remove_compress(struct intel_sst_drv *sst);
 void sst_cdev_fragment_elapsed(int str_id);
-int vibra_pwm_configure(unsigned int enable);
 int sst_send_sync_msg(int ipc, int str_id);
-int sst_send_ipc_msg_nowait(struct ipc_post **msg);
 int sst_get_num_channel(struct snd_sst_params *str_param);
-int sst_get_wdsize(struct snd_sst_params *str_param);
 int sst_get_sfreq(struct snd_sst_params *str_param);
 int intel_sst_check_device(void);
 int sst_alloc_stream_ctp(char *params, struct sst_block *block);
@@ -678,18 +666,21 @@ int sst_create_block_and_ipc_msg(struct ipc_post **arg, bool large,
 int sst_free_block(struct intel_sst_drv *ctx, struct sst_block *freed);
 int sst_wake_up_block(struct intel_sst_drv *ctx, int result,
 		u32 drv_id, u32 ipc, void *data, u32 size);
-void dump_bytes(const void *data, size_t sz, char *dest,
-		unsigned char word_sz, unsigned char words_in_line);
-void print_bytes(const void *data, size_t sz, unsigned char word_sz,
-		 unsigned char words_in_line);
 int sst_alloc_drv_context(struct device *dev);
+int sst_request_firmware_async(struct intel_sst_drv *ctx);
 int sst_driver_ops(struct intel_sst_drv *sst);
 struct sst_platform_info *sst_get_acpi_driver_data(const char *hid);
 int sst_acpi_probe(struct platform_device *pdev);
 int sst_acpi_remove(struct platform_device *pdev);
 void sst_save_shim64(struct intel_sst_drv *ctx, void __iomem *shim,
 		     struct sst_shim_regs64 *shim_regs);
+void sst_firmware_load_cb(const struct firmware *fw, void *context);
 int sst_send_vtsv_data_to_fw(struct intel_sst_drv *ctx);
+
+void sst_do_recovery_mrfld(struct intel_sst_drv *sst);
+void sst_do_recovery(struct intel_sst_drv *sst);
+
+void sst_dump_to_buffer(const void *from, size_t from_len, char *buf);
 
 static inline int sst_pm_runtime_put(struct intel_sst_drv *sst_drv)
 {
@@ -736,20 +727,6 @@ static inline void sst_fill_header_mrfld(union ipc_header_mrfld *header,
 	header->p.header_high.part.done = 0;
 	header->p.header_high.part.busy = 1;
 	header->p.header_high.part.res_rqd = 1;
-}
-
-static inline void sst_fill_header_mrfld_32(u32 *h, u8 task, u8 msg, u8 drv_id,
-		u8 block, u8 large)
-{
-	union ipc_header_high header;
-	header.part.msg_id = msg;
-	header.part.task_id = task;
-	header.part.drv_id = drv_id;
-	header.part.res_rqd = block;
-	header.part.large = large;
-	header.part.done = 0;
-	header.part.busy = 1;
-	*h = header.full;
 }
 
 static inline void sst_fill_header_dsp(struct ipc_dsp_hdr *dsp, int msg,
@@ -829,9 +806,6 @@ static inline int sst_validate_strid(int str_id)
 
 static inline int sst_shim_write(void __iomem *addr, int offset, int value)
 {
-
-	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
-		writel(value, addr + SST_ISRD);	/*dummy*/
 	writel(value, addr + offset);
 	return 0;
 }
@@ -928,5 +902,15 @@ static inline u32 relocate_imr_addr_mrfld(u32 base_addr)
 	/* relocate the base */
 	base_addr = MRFLD_FW_VIRTUAL_BASE + (base_addr % (512 * 1024 * 1024));
 	return base_addr;
+}
+
+static inline void sst_add_to_dispatch_list_and_post(struct intel_sst_drv *sst,
+						struct ipc_post *msg)
+{
+	unsigned long irq_flags;
+	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node, &sst->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
+	sst->ops->post_message(&sst->ipc_post_msg_wq);
 }
 #endif

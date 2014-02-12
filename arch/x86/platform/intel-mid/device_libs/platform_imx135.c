@@ -51,6 +51,11 @@ static int is_victoriabay(void)
 		       || SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR20)));
 }
 
+static int is_moorefield(void)
+{
+	return INTEL_MID_BOARD(1, PHONE, MOFD);
+}
+
 /*
  * MRFLD VV primary camera sensor - IMX135 platform data
  */
@@ -94,6 +99,25 @@ static int imx135_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret = 0;
+
+	if (is_moorefield()) {
+#ifdef CONFIG_INTEL_SCU_IPC_UTIL
+		ret = intel_scu_ipc_msic_vprog1(flag);
+		if (ret) {
+			pr_err("imx135 power failed\n");
+			return ret;
+		}
+		ret = intel_scu_ipc_msic_vprog3(flag);
+#else
+		ret = -ENODEV;
+#endif
+		if (ret)
+			pr_err("imx135 power failed\n");
+		if (flag)
+			usleep_range(1000, 1200);
+
+		return ret;
+	}
 
 	if (flag) {
 		if (is_ctp()) {
@@ -185,7 +209,7 @@ static int imx135_platform_init(struct i2c_client *client)
 			return PTR_ERR(vemmc1_reg);
 		}
 	}
-	if (!is_victoriabay()) {
+	if (!is_victoriabay() && !is_moorefield()) {
 		vprog1_reg = regulator_get(&client->dev, "vprog1");
 		if (IS_ERR(vprog1_reg)) {
 			dev_err(&client->dev, "regulator_get failed\n");
@@ -203,7 +227,8 @@ static int imx135_platform_init(struct i2c_client *client)
 
 static int imx135_platform_deinit(void)
 {
-	regulator_put(vprog1_reg);
+	if (!is_victoriabay() && !is_moorefield())
+		regulator_put(vprog1_reg);
 
 	if (is_ctp())
 		regulator_put(vemmc1_reg);
@@ -218,11 +243,29 @@ static int imx135_csi_configure(struct v4l2_subdev *sd, int flag)
 		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_rggb, flag);
 }
 
+static char *imx135_msr_file_name(void)
+{
+	/*
+	 * drvb contains the SPID in the file name as:
+	 * sensor_name-vendorIdValue-platformFamilyIdValue-productLineIdValue.drvb
+	 */
+	if (spid.vendor_id == 0 && spid.platform_family_id == 0x4 &&
+	    spid.product_line_id == 0) {
+		return "00imx135-0-0x4-0.drvb";
+	} else {
+		pr_warn("drvb file name does not exists");
+	}
+
+	return 0;
+}
+
+
 static struct camera_sensor_platform_data imx135_sensor_platform_data = {
 	.gpio_ctrl      = imx135_gpio_ctrl,
 	.flisclk_ctrl   = imx135_flisclk_ctrl,
 	.power_ctrl     = imx135_power_ctrl,
 	.csi_cfg        = imx135_csi_configure,
+	.msr_file_name  = imx135_msr_file_name,
 	.platform_init = imx135_platform_init,
 	.platform_deinit = imx135_platform_deinit,
 };

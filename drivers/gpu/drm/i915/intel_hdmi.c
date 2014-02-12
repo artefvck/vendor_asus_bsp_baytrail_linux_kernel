@@ -752,9 +752,10 @@ static void intel_hdmi_mode_set(struct intel_encoder *encoder)
 			val =  PFIT_ENABLE | (crtc->pipe <<
 				PFIT_PIPE_SHIFT) | PFIT_SCALING_LETTER;
 		DRM_DEBUG_DRIVER("pfit val = %x", val);
-
 		I915_WRITE(PFIT_CONTROL, val);
-	}
+		crtc->base.panning_en = true;
+	} else
+		crtc->base.panning_en = false;
 
 	I915_WRITE(intel_hdmi->hdmi_reg, hdmi_val);
 	POSTING_READ(intel_hdmi->hdmi_reg);
@@ -836,22 +837,6 @@ static void intel_enable_hdmi(struct intel_encoder *encoder)
 
 	I915_WRITE(intel_hdmi->hdmi_reg, temp);
 	POSTING_READ(intel_hdmi->hdmi_reg);
-
-	if (intel_hdmi->pfit) {
-		u32 val = 0;
-		if (intel_hdmi->pfit == AUTOSCALE)
-			val =  PFIT_ENABLE | (intel_crtc->pipe <<
-				PFIT_PIPE_SHIFT) | PFIT_SCALING_AUTO;
-		if (intel_hdmi->pfit == PILLARBOX)
-			val =  PFIT_ENABLE | (intel_crtc->pipe <<
-				PFIT_PIPE_SHIFT) | PFIT_SCALING_PILLAR;
-		else if (intel_hdmi->pfit == LETTERBOX)
-			val =  PFIT_ENABLE | (intel_crtc->pipe <<
-				PFIT_PIPE_SHIFT) | PFIT_SCALING_LETTER;
-		DRM_DEBUG_DRIVER("pfit val = %x", val);
-
-		I915_WRITE(PFIT_CONTROL, val);
-	}
 
 	/* HW workaround, need to write this twice for issue that may result
 	 * in first write getting masked.
@@ -1376,10 +1361,6 @@ static void intel_hdmi_pre_pll_enable(struct intel_encoder *encoder)
 	vlv_dpio_write(dev_priv, DPIO_TX_CTL(port), 0x00001500);
 	vlv_dpio_write(dev_priv, DPIO_TX_LANE(port), 0x40400000);
 
-	vlv_dpio_write(dev_priv, DPIO_PCS_CTL_OVER1(port),
-			 0x00002000);
-	vlv_dpio_write(dev_priv, DPIO_TX_OCALINIT(port),
-			 DPIO_TX_OCALINIT_EN);
 	mutex_unlock(&dev_priv->dpio_lock);
 }
 

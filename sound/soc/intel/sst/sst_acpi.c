@@ -35,6 +35,7 @@
 #include <asm/platform_byt_audio.h>
 #include <asm/platform_sst.h>
 #include <acpi/acpi_bus.h>
+#include <asm/spid.h>
 #include <sound/intel_sst_ioctl.h>
 #include "../sst_platform.h"
 #include "../platform_ipc_v2.h"
@@ -49,7 +50,7 @@ static const struct sst_platform_config_data sst_byt_pdata = {
 };
 
 /* use array[0] for ssp_platform_data even though SSP2 is used */
-static const struct sst_board_config_data sst_byt_ffrd10_bdata = {
+static const struct sst_board_config_data sst_byt_rvp_bdata = {
 	.active_ssp_ports = 1,
 	.platform_id = 3,
 	.board_id = 1,
@@ -107,6 +108,35 @@ static const struct sst_board_config_data sst_byt_ffrd8_bdata = {
 	},
 };
 
+static const struct sst_board_config_data sst_byt_crv2_bdata = {
+	.active_ssp_ports = 1,
+	.platform_id = 3,
+	.board_id = 1,
+	.ihf_num_chan = 1,
+	.osc_clk_freq = 25000000,
+	.ssp_platform_data = {
+		[0] = {
+			.ssp_cfg_sst = 1,
+			.port_number = 0,
+			.is_master = 1,
+			.pack_mode = 1,
+			.num_slots_per_frame = 2,
+			.num_bits_per_slot = 24,
+			.active_tx_map = 3,
+			.active_rx_map = 3,
+			.ssp_frame_format = 3,
+			.frame_polarity = 1,
+			.serial_bitrate_clk_mode = 0,
+			.frame_sync_width = 24,
+			.dma_handshake_interface_tx = 1,
+			.dma_handshake_interface_rx = 0,
+			.network_mode = 0,
+			.start_delay = 1,
+			.ssp_base_add = SST_BYT_SSP0_PHY_ADDR,
+		},
+	},
+};
+
 static const struct sst_info byt_fwparse_info = {
 	.use_elf	= true,
 	.max_streams	= 4,
@@ -120,8 +150,28 @@ static const struct sst_info byt_fwparse_info = {
 	.imr_start	= SST_BYT_IMR_VIRT_START,
 	.imr_end	= SST_BYT_IMR_VIRT_END,
 	.imr_use	= true,
+	.mailbox_start	= SST_BYT_MBOX_PHY_ADDR,
 	.num_probes	= 0,
-	.dma_addr_ia_viewpt = false,
+	.lpe_viewpt_rqd  = true,
+};
+
+
+static const struct sst_info cht_fwparse_info = {
+	.use_elf	= true,
+	.max_streams	= MAX_NUM_STREAMS_MRFLD,
+	.dma_max_len	= SST_MAX_DMA_LEN_MRFLD,
+	.iram_start	= SST_BYT_IRAM_PHY_START,
+	.iram_end	= SST_BYT_IRAM_PHY_END,
+	.iram_use	= true,
+	.dram_start	= SST_BYT_DRAM_PHY_START,
+	.dram_end	= SST_BYT_DRAM_PHY_END,
+	.dram_use	= true,
+	.imr_start	= SST_BYT_IMR_VIRT_START,
+	.imr_end	= SST_BYT_IMR_VIRT_END,
+	.imr_use	= true,
+	.mailbox_start	= SST_BYT_MBOX_PHY_ADDR,
+	.num_probes	= 0,
+	.lpe_viewpt_rqd = true,
 };
 
 static const struct sst_ipc_info byt_ipc_info = {
@@ -138,13 +188,28 @@ static const struct sst_lib_dnld_info  byt_lib_dnld_info = {
 	.mod_ddr_dnld       = true,
 };
 
-struct sst_platform_info byt_ffrd10_platform_data = {
+static const struct sst_ipc_info cht_ipc_info = {
+	.use_32bit_ops = false,
+	.ipc_offset = 0,
+	.mbox_recv_off = 0x400,
+};
+
+struct sst_platform_info cht_platform_data = {
+	.probe_data = &cht_fwparse_info,
+	.ssp_data = NULL,
+	.bdata = NULL,
+	.pdata = NULL,
+	.ipc_info = &cht_ipc_info,
+	.lib_info = NULL,
+};
+
+struct sst_platform_info byt_rvp_platform_data = {
 	.probe_data = &byt_fwparse_info,
 	.ssp_data = NULL,
-	.bdata = &sst_byt_ffrd10_bdata,
+	.bdata = &sst_byt_rvp_bdata,
 	.pdata = &sst_byt_pdata,
 	.ipc_info = &byt_ipc_info,
-	.lib_info = NULL,
+	.lib_info = &byt_lib_dnld_info,
 };
 
 struct sst_platform_info byt_ffrd8_platform_data = {
@@ -207,7 +272,6 @@ static int sst_platform_get_resources_fdk(struct intel_sst_drv *ctx,
 				      struct platform_device *pdev)
 {
 	struct resource *rsrc;
-	int irq, ret;
 
 	pr_debug("%s", __func__);
 
@@ -260,7 +324,7 @@ static int sst_platform_get_resources_fdk(struct intel_sst_drv *ctx,
 		return -EIO;
 	}
 	/* reassign physical address to LPE viewpoint address */
-	ctx->mailbox_add = SST_BYT_MBOX_PHY_ADDR;
+	ctx->mailbox_add = sst_drv_ctx->info.mailbox_start;
 
 	/* Get iram/iccm addr from platform resource table */
 	rsrc = platform_get_resource(pdev, IORESOURCE_MEM, 3);
@@ -295,14 +359,8 @@ static int sst_platform_get_resources_fdk(struct intel_sst_drv *ctx,
 	}
 
 	/* Register the ISR */
-	irq = platform_get_irq(pdev, 0);
-	pr_debug("irq from pdev is:%d", irq);
-	ret = devm_request_threaded_irq(ctx->dev, irq, ctx->ops->interrupt,
-					ctx->ops->irq_thread, 0, SST_DRV_NAME,
-					ctx);
-	if (ret)
-		return ret;
-	pr_debug("Registered IRQ %#x\n", irq);
+	ctx->irq_num = platform_get_irq(pdev, 0);
+	pr_debug("irq from pdev is:%d", ctx->irq_num);
 	return 0;
 }
 
@@ -319,27 +377,10 @@ static int sst_platform_get_resources_edk(struct intel_sst_drv *ctx,
 				      struct platform_device *pdev)
 {
 	struct resource *rsrc;
-	int irq, ret;
 
 	pr_debug("%s", __func__);
 
 	/* All ACPI resource request here */
-	/* Get DDR addr from platform resource table */
-	rsrc = platform_get_resource(pdev, IORESOURCE_MEM, 2);
-	if (!rsrc) {
-		pr_err("Invalid DDR base from IFWI");
-		return -EIO;
-	}
-	ctx->ddr_base = rsrc->start;
-	ctx->ddr_end = rsrc->end;
-	pr_debug("DDR base: %#x", ctx->ddr_base);
-	ctx->ddr = devm_ioremap_nocache(ctx->dev, ctx->ddr_base,
-					resource_size(rsrc));
-	if (!ctx->ddr) {
-		pr_err("unable to map DDR");
-		return -EIO;
-	}
-
 	/* Get Shim addr */
 	rsrc = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!rsrc) {
@@ -348,6 +389,25 @@ static int sst_platform_get_resources_edk(struct intel_sst_drv *ctx,
 	}
 	pr_debug("LPE base: %#x size:%#x", (unsigned int) rsrc->start,
 					(unsigned int)resource_size(rsrc));
+	ctx->iram_base = rsrc->start + LPE_IRAM_OFFSET;
+	ctx->iram_end =  ctx->iram_base + LPE_IRAM_SIZE - 1;
+	pr_debug("IRAM base: %#x", ctx->iram_base);
+	ctx->iram = devm_ioremap_nocache(ctx->dev, ctx->iram_base,
+					 LPE_IRAM_SIZE);
+	if (!ctx->iram) {
+		pr_err("unable to map IRAM");
+		return -EIO;
+	}
+
+	ctx->dram_base = rsrc->start + LPE_DRAM_OFFSET;
+	ctx->dram_end = ctx->dram_base + LPE_DRAM_SIZE - 1;
+	pr_debug("DRAM base: %#x", ctx->dram_base);
+	ctx->dram = devm_ioremap_nocache(ctx->dev, ctx->dram_base,
+					 LPE_DRAM_SIZE);
+	if (!ctx->dram) {
+		pr_err("unable to map DRAM");
+		return -EIO;
+	}
 
 	ctx->shim_phy_add = rsrc->start + LPE_SHIM_OFFSET;
 	pr_debug("SHIM base: %#x", ctx->shim_phy_add);
@@ -369,54 +429,59 @@ static int sst_platform_get_resources_edk(struct intel_sst_drv *ctx,
 		pr_err("unable to map mailbox");
 		return -EIO;
 	}
+
 	/* reassign physical address to LPE viewpoint address */
-	ctx->mailbox_add = SST_BYT_MBOX_PHY_ADDR;
+	ctx->mailbox_add = sst_drv_ctx->info.mailbox_start;
 
-	/* Get iram/iccm addr */
-	ctx->iram_base = rsrc->start + LPE_IRAM_OFFSET;
-	ctx->iram_end =  ctx->iram_base + LPE_IRAM_SIZE;
-	pr_debug("IRAM base: %#x", ctx->iram_base);
-	ctx->iram = devm_ioremap_nocache(ctx->dev, ctx->iram_base,
-					 LPE_IRAM_SIZE);
-	if (!ctx->iram) {
-		pr_err("unable to map IRAM");
+	rsrc = platform_get_resource(pdev, IORESOURCE_MEM, 2);
+	if (!rsrc) {
+		pr_err("Invalid DDR base from IFWI");
 		return -EIO;
 	}
-
-	/* Get dram/dccm addr from platform resource table */
-	ctx->dram_base = rsrc->start + LPE_DRAM_OFFSET;
-	ctx->dram_end = rsrc->start + LPE_DRAM_SIZE;
-	pr_debug("DRAM base: %#x", ctx->dram_base);
-	ctx->dram = devm_ioremap_nocache(ctx->dev, ctx->dram_base,
-					 LPE_DRAM_SIZE);
-	if (!ctx->dram) {
-		pr_err("unable to map DRAM");
+	ctx->ddr_base = rsrc->start;
+	ctx->ddr_end = rsrc->end;
+	pr_debug("DDR base: %#x", ctx->ddr_base);
+	ctx->ddr = devm_ioremap_nocache(ctx->dev, ctx->ddr_base,
+					resource_size(rsrc));
+	if (!ctx->ddr) {
+		pr_err("unable to map DDR");
 		return -EIO;
 	}
-
 	/* Register the ISR */
-	irq = platform_get_irq(pdev, 0);
-	pr_debug("irq from pdev is:%d", irq);
-	ret = devm_request_threaded_irq(ctx->dev, irq, ctx->ops->interrupt,
-					ctx->ops->irq_thread, 0, SST_DRV_NAME,
-					ctx);
-	if (ret)
-		return ret;
-	pr_debug("Registered IRQ %#x\n", irq);
+	if (!strncmp(ctx->hid, "80860F28", 8))
+		ctx->irq_num = platform_get_irq(pdev, 0);
+	else if (!strncmp(ctx->hid, "808622A8", 8)) {
+		/* FIXME: IRQ number will be moved to 0 once the BIOS fix is done */
+		ctx->irq_num = platform_get_irq(pdev, 5);
+	} else
+		return -EINVAL;
 	return 0;
 }
 
 static int sst_platform_get_resources(const char *hid,
 		struct intel_sst_drv *ctx, struct platform_device *pdev)
 {
-	if (!strncmp(hid, "LPE0F281", 8))
+
+	pr_debug("%s", __func__);
+
+	if (!strncmp(hid, "LPE0F281", 8)) {
+		ctx->pci_id = SST_BYT_PCI_ID;
 		return sst_platform_get_resources_fdk(ctx, pdev);
-	if (!strncmp(hid, "80860F28", 8))
+	}
+	if (!strncmp(hid, "808622A8", 8)) {
+		ctx->pci_id = SST_CHT_PCI_ID;
 		return sst_platform_get_resources_edk(ctx, pdev);
-	else if (!strncmp(hid, "LPE0F28", 7))
+	}
+	if (!strncmp(hid, "80860F28", 8)) {
+		ctx->pci_id = SST_BYT_PCI_ID;
+		return sst_platform_get_resources_edk(ctx, pdev);
+	} else if (!strncmp(hid, "LPE0F28", 7)) {
+		ctx->pci_id = SST_BYT_PCI_ID;
 		return sst_platform_get_resources_fdk(ctx, pdev);
-	else
+	} else {
+		pr_err("Invalid device\n");
 		return -EINVAL;
+	}
 }
 
 int sst_acpi_probe(struct platform_device *pdev)
@@ -447,8 +512,10 @@ int sst_acpi_probe(struct platform_device *pdev)
 	ctx = sst_drv_ctx;
 	ctx->dev = dev;
 	ctx->hid = hid;
-	ctx->pci_id = SST_BYT_PCI_ID;
 
+	ret = sst_platform_get_resources(hid, ctx, pdev);
+	if (ret)
+		return ret;
 	/* need to save shim registers in BYT */
 	ctx->shim_regs64 = devm_kzalloc(dev, sizeof(*ctx->shim_regs64),
 					GFP_KERNEL);
@@ -472,6 +539,15 @@ int sst_acpi_probe(struct platform_device *pdev)
 	ctx->pdata = sst_get_acpi_driver_data(hid);
 	if (!ctx->pdata)
 		return -EINVAL;
+	if (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, CRV2)) {
+		/* BYT-CR V2 has only mono speaker, while
+		 * byt has stereo speaker, for both
+		 * HID is same, so platform data also is
+		 * same, hence overriding bdata based on spid
+		 */
+		ctx->pdata->bdata = &sst_byt_crv2_bdata;
+		pr_info("Overriding bdata for byt-crv2\n");
+	}
 
 	ctx->use_32bit_ops = ctx->pdata->ipc_info->use_32bit_ops;
 	ctx->mailbox_recv_offset = ctx->pdata->ipc_info->mbox_recv_off;
@@ -487,10 +563,18 @@ int sst_acpi_probe(struct platform_device *pdev)
 		struct stream_info *stream = &ctx->streams[i];
 		mutex_init(&stream->lock);
 	}
-
-	ret = sst_platform_get_resources(hid, ctx, pdev);
-	if (ret)
+	ret = sst_request_firmware_async(ctx);
+	if (ret) {
+		pr_err("Firmware download failed:%d\n", ret);
 		goto do_free_wq;
+	}
+
+	ret = devm_request_threaded_irq(ctx->dev, ctx->irq_num, ctx->ops->interrupt,
+					ctx->ops->irq_thread, 0, SST_DRV_NAME,
+					ctx);
+	if (ret)
+		return ret;
+	pr_debug("Registered IRQ %#x\n", ctx->irq_num);
 
 	/*Register LPE Control as misc driver*/
 	ret = misc_register(&lpe_ctrl);
@@ -514,6 +598,7 @@ int sst_acpi_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, ctx);
+	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
 	register_sst(dev);
 	sst_debugfs_init(ctx);

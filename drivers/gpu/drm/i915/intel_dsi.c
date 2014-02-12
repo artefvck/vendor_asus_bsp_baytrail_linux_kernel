@@ -141,7 +141,12 @@ static bool intel_dsi_compute_config(struct intel_encoder *encoder,
 
 static void intel_dsi_pre_pll_enable(struct intel_encoder *encoder)
 {
+	//struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	struct drm_device *dev = encoder->base.dev;
+
 	DRM_DEBUG_KMS("\n");
+	if (dev->is_booting)
+		return;
 
 	/* nothing to do here as we do necessary stuff in pre_enable
 	 * to comply to the hw team recommended DSI sequence */
@@ -222,8 +227,11 @@ void intel_dsi_device_ready(struct intel_encoder *encoder)
 
 static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 {
+	struct drm_device *dev = encoder->base.dev;
 	DRM_DEBUG_KMS("\n");
 
+	if (dev->is_booting)
+		return;
 	/* put device in ready state */
 	intel_dsi_device_ready(encoder);
 }
@@ -238,6 +246,8 @@ static void intel_dsi_enable(struct intel_encoder *encoder)
 	u32 temp;
 
 	DRM_DEBUG_KMS("\n");
+	if (dev->is_booting)
+		return;
 
 	if (is_cmd_mode(intel_dsi)) {
 		/* XXX: Implement me */
@@ -285,6 +295,8 @@ static void intel_dsi_disable(struct intel_encoder *encoder)
 	else
 		usleep_range(intel_dsi->backlight_off_delay * 1000,
 			(intel_dsi->backlight_off_delay * 1000) + 500);
+	if (dev->is_booting)
+		return;
 
 	if (is_cmd_mode(intel_dsi)) {
 		/* XXX Impementation TBD */
@@ -376,7 +388,11 @@ void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
 
 static void intel_dsi_post_disable(struct intel_encoder *encoder)
 {
+	struct drm_device *dev = encoder->base.dev;
+
 	DRM_DEBUG_KMS("\n");
+	if (dev->is_booting)
+		return;
 
 	intel_dsi_clear_device_ready(encoder);
 }
@@ -545,6 +561,9 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 	struct drm_display_mode *adjusted_mode;
 	u32 val;
 
+	if (dev->is_booting)
+		return;
+
 	if (BYT_CR_CONFIG)
 		adjusted_mode =	intel_dsi->attached_connector->panel.fixed_mode;
 	else
@@ -663,7 +682,9 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 					PFIT_PIPE_SHIFT) | PFIT_SCALING_LETTER;
 			DRM_DEBUG_DRIVER("pfit val = %x", val);
 			I915_WRITE(PFIT_CONTROL, val);
-		}
+			intel_crtc->base.panning_en = true;
+		} else
+			intel_crtc->base.panning_en = false;
 	}
 }
 

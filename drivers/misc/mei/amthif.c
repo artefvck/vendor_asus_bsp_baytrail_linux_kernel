@@ -35,7 +35,6 @@
 
 #include "mei_dev.h"
 #include "hbm.h"
-#include "hw-me.h"
 #include "client.h"
 
 const uuid_le mei_amthif_guid  = UUID_LE(0x12f80028, 0xb4b7, 0x4b2d,
@@ -174,7 +173,7 @@ int mei_amthif_read(struct mei_device *dev, struct file *file,
 	unsigned long timeout;
 	int i;
 
-	/* Only Posible if we are in timeout */
+	/* Only possible if we are in timeout */
 	if (!cl || cl != &dev->iamthif_cl) {
 		dev_dbg(&dev->pdev->dev, "bad file ext.\n");
 		return -ETIMEDOUT;
@@ -246,15 +245,14 @@ int mei_amthif_read(struct mei_device *dev, struct file *file,
 	    cb->response_buffer.size);
 	dev_dbg(&dev->pdev->dev, "amthif cb->buf_idx - %lu\n", cb->buf_idx);
 
-	/* length is being turncated to PAGE_SIZE, however,
+	/* length is being truncated to PAGE_SIZE, however,
 	 * the buf_idx may point beyond */
 	length = min_t(size_t, length, (cb->buf_idx - *offset));
 
 	if (copy_to_user(ubuf, cb->response_buffer.data + *offset, length)) {
 		dev_err(&dev->pdev->dev, "failed to copy data to userland\n");
 		rets = -EFAULT;
-	}
-	else {
+	} else {
 		rets = length;
 		if ((*offset + length) < cb->buf_idx) {
 			*offset += length;
@@ -471,7 +469,7 @@ int mei_amthif_irq_write_complete(struct mei_cl *cl, struct mei_cl_cb *cb,
 	}
 
 	if (!mei_hbuf_acquire(dev)) {
-		cl_dbg(dev, cl, "Cannot aquire the host buffer: not sending.\n");
+		cl_dbg(dev, cl, "Cannot acquire the host buffer: not sending.\n");
 		return 0;
 	}
 

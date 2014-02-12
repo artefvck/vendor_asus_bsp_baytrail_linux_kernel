@@ -25,6 +25,7 @@
 
 #include <linux/leds.h>
 
+#include <linux/mmc/core.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/card.h>
@@ -1675,7 +1676,8 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		 */
 		if ((host->flags & SDHCI_NEEDS_RETUNING) &&
 		    !(present_state & (SDHCI_DOING_WRITE | SDHCI_DOING_READ)) &&
-			mrq->cmd->opcode != MMC_SEND_STATUS) {
+		    (mmc_cmd_type(mrq->cmd) == MMC_CMD_ADTC) &&
+		    (mrq->cmd->opcode != MMC_SEND_STATUS)) {
 			if (mmc->card) {
 				if ((mmc->card->ext_csd.part_config & 0x07) ==
 					EXT_CSD_PART_CONFIG_ACC_RPMB)
@@ -1731,7 +1733,7 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 
 	spin_lock_irqsave(&host->lock, flags);
 
-	if (host->quirks2 & SDHCI_QUIRK2_ADVERTISE_2V0_FORCE_1V8)
+	if (host->quirks2 & SDHCI_QUIRK2_FAKE_VDD)
 		ios->vdd = 7;
 
 	if (host->flags & SDHCI_DEVICE_DEAD) {
@@ -2102,6 +2104,11 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 		}
 		/* Wait for 5ms */
 		usleep_range(5000, 5500);
+		if (host->ops->set_io_voltage) {
+			ret = host->ops->set_io_voltage(host, false);
+			if (ret)
+				return ret;
+		}
 
 		/* 3.3V regulator output should be stable within 5 ms */
 		ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
@@ -2135,6 +2142,11 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 
 		/* Wait for 5ms */
 		usleep_range(5000, 5500);
+		if (host->ops->set_io_voltage) {
+			ret = host->ops->set_io_voltage(host, true);
+			if (ret)
+				return ret;
+		}
 
 		/* 1.8V regulator output should be stable within 5 ms */
 		ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
@@ -2201,7 +2213,7 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	host = mmc_priv(mmc);
 
 	sdhci_runtime_pm_get(host);
-	disable_irq(host->irq);
+	disable_irq_lockdep(host->irq);
 	spin_lock(&host->lock);
 
 	ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
@@ -2226,7 +2238,7 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		ctrl |= SDHCI_CTRL_EXEC_TUNING;
 	else {
 		spin_unlock(&host->lock);
-		enable_irq(host->irq);
+		enable_irq_lockdep(host->irq);
 		sdhci_runtime_pm_put(host);
 		return 0;
 	}
@@ -2329,7 +2341,7 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 					SDHCI_INT_STATUS);
 			}
 			spin_unlock(&host->lock);
-			enable_irq(host->irq);
+			enable_irq_lockdep(host->irq);
 
 			if (!host->tuning_done)
 				/* Wait for Buffer Read Ready interrupt */
@@ -2337,7 +2349,7 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 						host->buf_ready_int,
 						(host->tuning_done == 1),
 						msecs_to_jiffies(50));
-			disable_irq(host->irq);
+			disable_irq_lockdep(host->irq);
 			spin_lock(&host->lock);
 
 			intmask = sdhci_readl(host, SDHCI_INT_STATUS);
@@ -2426,7 +2438,7 @@ out:
 
 	sdhci_clear_set_irqs(host, SDHCI_INT_DATA_AVAIL, ier);
 	spin_unlock(&host->lock);
-	enable_irq(host->irq);
+	enable_irq_lockdep(host->irq);
 	sdhci_runtime_pm_put(host);
 
 	return err;
@@ -4106,11 +4118,6 @@ int sdhci_add_host(struct sdhci_host *host)
 		sdhci_readl(host, SDHCI_CAPABILITIES);
 
 
-	if (host->quirks2 & SDHCI_QUIRK2_CAN_VDD_300)
-		caps[0] |= SDHCI_CAN_VDD_300;
-	if (host->quirks2 & SDHCI_QUIRK2_CAN_VDD_330)
-		caps[0] |= SDHCI_CAN_VDD_330;
-
 	if (host->version >= SDHCI_SPEC_300)
 		caps[1] = (host->quirks & SDHCI_QUIRK_MISSING_CAPS) ?
 			host->caps1 :
@@ -4320,7 +4327,8 @@ int sdhci_add_host(struct sdhci_host *host)
 		mmc->caps |= MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25;
 
 	/* SDR104 supports also implies SDR50 support */
-	if (caps[1] & SDHCI_SUPPORT_SDR104)
+	if ((caps[1] & SDHCI_SUPPORT_SDR104) &&
+			!(host->quirks2 & SDHCI_QUIRK2_SDR104_BROKEN))
 		mmc->caps |= MMC_CAP_UHS_SDR104 | MMC_CAP_UHS_SDR50;
 	else if (caps[1] & SDHCI_SUPPORT_SDR50)
 		mmc->caps |= MMC_CAP_UHS_SDR50;
@@ -4409,6 +4417,10 @@ int sdhci_add_host(struct sdhci_host *host)
 		}
 	}
 
+	if (host->quirks2 & SDHCI_QUIRK2_FAKE_VDD)
+		caps[0] |= SDHCI_CAN_VDD_330 | SDHCI_CAN_VDD_300 |
+			SDHCI_CAN_VDD_180;
+
 	if (caps[0] & SDHCI_CAN_VDD_330) {
 		ocr_avail |= MMC_VDD_32_33 | MMC_VDD_33_34;
 
@@ -4433,11 +4445,6 @@ int sdhci_add_host(struct sdhci_host *host)
 				   SDHCI_MAX_CURRENT_180_SHIFT) *
 				   SDHCI_MAX_CURRENT_MULTIPLIER;
 	}
-
-	if (host->quirks2 & SDHCI_QUIRK2_ADVERTISE_2V0_FORCE_1V8)
-		ocr_avail |= MMC_VDD_20_21;
-	if (host->quirks2 & SDHCI_QUIRK2_ADVERTISE_3V0_FORCE_1V8)
-		ocr_avail |= MMC_VDD_32_33;
 
 	mmc->ocr_avail = ocr_avail;
 	mmc->ocr_avail_sdio = ocr_avail;

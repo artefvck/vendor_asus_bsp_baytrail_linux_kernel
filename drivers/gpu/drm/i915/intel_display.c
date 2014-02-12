@@ -1482,17 +1482,6 @@ static void vlv_enable_pll(struct intel_crtc *crtc)
 
 	I915_WRITE(DPLL_MD(crtc->pipe), crtc->config.dpll_hw_state.dpll_md);
 	POSTING_READ(DPLL_MD(crtc->pipe));
-
-	/* We do this three times for luck */
-	I915_WRITE(reg, dpll);
-	POSTING_READ(reg);
-	udelay(150); /* wait for warmup */
-	I915_WRITE(reg, dpll);
-	POSTING_READ(reg);
-	udelay(150); /* wait for warmup */
-	I915_WRITE(reg, dpll);
-	POSTING_READ(reg);
-	udelay(150); /* wait for warmup */
 }
 
 static void i9xx_enable_pll(struct intel_crtc *crtc)
@@ -4006,7 +3995,7 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 
 	WARN_ON(!crtc->enabled);
 
-	if (intel_crtc->active)
+	if (intel_crtc->active || dev->is_booting)
 		return;
 
 	intel_crtc->active = true;
@@ -4123,7 +4112,7 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	int plane = intel_crtc->plane;
 	u32 data = 0;
 
-	if (!intel_crtc->active)
+	if (!intel_crtc->active || dev->is_booting)
 		return;
 
 	if ((pipe == 0) && (dev_priv->is_mipi || dev_priv->is_hdmi)) {
@@ -4859,32 +4848,19 @@ static void vlv_update_pll(struct intel_crtc *crtc)
 	/* Disable fast lock */
 	vlv_dpio_write(dev_priv, DPIO_FASTCLK_DISABLE, 0x610);
 
-	/* Set idtafcrecal before PLL is enabled */
-	mdiv = ((bestm1 << DPIO_M1DIV_SHIFT) | (bestm2 & DPIO_M2DIV_MASK));
-	mdiv |= ((bestp1 << DPIO_P1_SHIFT) | (bestp2 << DPIO_P2_SHIFT));
-	mdiv |= ((bestn << DPIO_N_SHIFT));
-	mdiv |= (1 << DPIO_K_SHIFT);
-
-	/*
-	 * Post divider depends on pixel clock rate, DAC vs digital (and LVDS,
-	 * but we don't support that).
-	 * Note: don't use the DAC post divider as it seems unstable.
-	 */
-	mdiv |= (DPIO_POST_DIV_HDMIDP << DPIO_POST_DIV_SHIFT);
-	vlv_dpio_write(dev_priv, DPIO_DIV(pipe), mdiv);
-
-	mdiv |= DPIO_ENABLE_CALIBRATION;
-	vlv_dpio_write(dev_priv, DPIO_DIV(pipe), mdiv);
-
-	/* Set HBR and RBR LPF coefficients */
-	if (crtc->config.port_clock == 162000 ||
-	    intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_ANALOG) ||
-	    intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_HDMI))
-		vlv_dpio_write(dev_priv, DPIO_LPF_COEFF(pipe),
-				 0x009f0003);
-	else
-		vlv_dpio_write(dev_priv, DPIO_LPF_COEFF(pipe),
-				 0x00d0000f);
+	if (intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_EDP) ||
+	    intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_DISPLAYPORT)) {
+		/* Set HBR and RBR LPF coefficients */
+		if (crtc->config.port_clock == 162000 ||
+		intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_ANALOG) ||
+		intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_HDMI))
+			vlv_dpio_write(dev_priv, DPIO_LPF_COEFF(pipe),
+					0x009f0003);
+		else
+			vlv_dpio_write(dev_priv, DPIO_LPF_COEFF(pipe),
+					0x00d0000f);
+	} else /* HDMI */
+		vlv_dpio_write(dev_priv, DPIO_LPF_COEFF(pipe), 0x005f0021);
 
 	if (intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_EDP) ||
 	    intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_DISPLAYPORT)) {
@@ -4905,11 +4881,24 @@ static void vlv_update_pll(struct intel_crtc *crtc)
 					 0x0df40000);
 	}
 
+	/* Set idtafcrecal before PLL is enabled */
+	mdiv = ((bestm1 << DPIO_M1DIV_SHIFT) | (bestm2 & DPIO_M2DIV_MASK));
+	mdiv |= ((bestp1 << DPIO_P1_SHIFT) | (bestp2 << DPIO_P2_SHIFT));
+	mdiv |= ((bestn << DPIO_N_SHIFT));
+	mdiv |= (1 << DPIO_K_SHIFT);
+
+	/*
+	 * Post divider depends on pixel clock rate, DAC vs digital (and LVDS,
+	 * but we don't support that).
+	 * Note: don't use the DAC post divider as it seems unstable.
+	 */
+	mdiv |= (DPIO_POST_DIV_HDMIDP << DPIO_POST_DIV_SHIFT);
+	vlv_dpio_write(dev_priv, DPIO_DIV(pipe), mdiv);
+	mdiv |= DPIO_ENABLE_CALIBRATION;
+	vlv_dpio_write(dev_priv, DPIO_DIV(pipe), mdiv);
+
 	coreclk = vlv_dpio_read(dev_priv, DPIO_CORE_CLK(pipe));
 	coreclk = (coreclk & 0x0000ff00) | 0x01c00000;
-	if (intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_DISPLAYPORT) ||
-	    intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_EDP))
-		coreclk |= 0x01000000;
 	vlv_dpio_write(dev_priv, DPIO_CORE_CLK(pipe), coreclk);
 
 	vlv_dpio_write(dev_priv, DPIO_PLL_CML(pipe), 0x87871000);
@@ -5484,6 +5473,9 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	struct intel_encoder *encoder;
 	const intel_limit_t *limit;
 	int ret;
+
+	if (dev->is_booting)
+		return 0;
 
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		switch (encoder->type) {
@@ -8262,11 +8254,17 @@ void intel_unpin_work_fn(struct work_struct *__work)
 	struct intel_unpin_work *work =
 		container_of(__work, struct intel_unpin_work, work);
 	struct drm_device *dev = work->crtc->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	mutex_lock(&dev->struct_mutex);
 	intel_unpin_fb_obj(work->old_fb_obj);
 	drm_gem_object_unreference(&work->pending_flip_obj->base);
 	drm_gem_object_unreference(&work->old_fb_obj->base);
+
+	if (dev_priv->fwlogo_size) {
+		clear_reserved_fwlogo_mem(dev_priv);
+		dev_priv->fwlogo_size = 0;
+	}
 
 	intel_update_fbc(dev);
 	mutex_unlock(&dev->struct_mutex);
@@ -8797,7 +8795,7 @@ static int intel_crtc_page_flip(struct drm_crtc *crtc,
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 		kfree(work);
 		drm_vblank_put(dev, intel_crtc->pipe);
-		intel_crtc->unpin_work = NULL;
+
 		DRM_DEBUG_DRIVER("flip queue: crtc already busy\n");
 		return -EBUSY;
 	}
@@ -9724,6 +9722,13 @@ static int __intel_set_mode(struct drm_crtc *crtc,
 			dev_priv->display.crtc_disable(&intel_crtc->base);
 	}
 
+	/* DO it only once */
+	if (IS_VALLEYVIEW(dev))
+		if (dev_priv->pfi_credit) {
+			program_pfi_credits(dev_priv, true);
+			dev_priv->pfi_credit = false;
+		}
+
 	/* crtc->mode is already used by the ->mode_set callbacks, hence we need
 	 * to set it here already despite that we pass it down the callchain.
 	 */
@@ -10347,6 +10352,8 @@ ssize_t display_runtime_suspend(struct drm_device *dev)
 		}
 	}
 
+	program_pfi_credits(dev_priv, false);
+
 	dev_priv->s0ixstat = false;
 	drm_modeset_unlock_all(dev);
 	i915_rpm_put_disp(dev);
@@ -10360,6 +10367,7 @@ ssize_t display_runtime_resume(struct drm_device *dev)
 
 	i915_rpm_get_disp(dev);
 
+
 	/* Re-detect hot pluggable displays */
 	i915_simulate_hpd(dev, true);
 
@@ -10368,6 +10376,7 @@ ssize_t display_runtime_resume(struct drm_device *dev)
 	/* KMS EnterVT equivalent */
 	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
 		drm_modeset_lock_all(dev);
+		program_pfi_credits(dev_priv, true);
 		intel_modeset_setup_hw_state(dev, true);
 		drm_modeset_unlock_all(dev);
 		/*
@@ -10441,6 +10450,8 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 	intel_crtc->primary_alpha = false;
 	intel_crtc->sprite0_alpha = true;
 	intel_crtc->sprite1_alpha = true;
+
+	intel_crtc->base.panning_en = false;
 }
 
 int intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
@@ -10783,7 +10794,6 @@ intel_user_framebuffer_create(struct drm_device *dev,
 			      struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	struct drm_i915_gem_object *obj;
-
 	obj = to_intel_bo(drm_gem_object_lookup(dev, filp,
 						mode_cmd->handles[0]));
 	if (&obj->base == NULL)

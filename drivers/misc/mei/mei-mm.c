@@ -129,7 +129,7 @@ out:
 	return 0;
 }
 /**
- * mei_mm_alloc - destributing memory chunk to Sec Application (shim library)
+ * mei_mm_alloc - distributing memory chunk to Sec Application (shim library)
  *
  * @file: pointer to file structure
  * @cmd: ioctl command
@@ -336,7 +336,7 @@ static ssize_t mei_mm_dbgfs_pool_read(struct file *file,
 static const struct file_operations mei_mm_dbgfs_pool_ops = {
 	.read = mei_mm_dbgfs_pool_read,
 	.open = simple_open,
-	.llseek = generic_file_llseek,                                  \
+	.llseek = generic_file_llseek,
 };
 #endif /* CONFIG_DEBUG_FS */
 
@@ -395,7 +395,7 @@ struct mei_mm_device *mei_mm_init(struct device *dev, void *vaddr,
 	ret = misc_register(&mdev->dev);
 	if (ret) {
 		kzfree(mdev);
-		dev_err(dev, "cant't register misc device.\n") ;
+		dev_err(dev, "can't register misc device.\n");
 		return ERR_PTR(ret);
 	}
 
@@ -437,8 +437,7 @@ void mei_mm_deinit(struct mei_mm_device *mdev)
 		return;
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
-	if (mdev->dbgfs)
-		debugfs_remove_recursive(mdev->dbgfs);
+	debugfs_remove_recursive(mdev->dbgfs);
 	mdev->dbgfs = NULL;
 #endif /* CONFIG_DEBUG_FS */
 

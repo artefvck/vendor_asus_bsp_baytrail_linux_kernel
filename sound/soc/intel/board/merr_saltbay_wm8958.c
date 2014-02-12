@@ -39,6 +39,7 @@
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include <linux/input.h>
+#include <asm/intel-mid.h>
 
 #include <linux/mfd/wm8994/core.h>
 #include <linux/mfd/wm8994/registers.h>
@@ -287,6 +288,12 @@ static int mrfld_8958_set_vflex_vsel(struct snd_soc_dapm_widget *w,
 	pr_debug("pmic_id %#x vflexvsel %#x\n", pmic_id,
 		SND_SOC_DAPM_EVENT_ON(event) ? VFLEXVSEL_5V : vflexvsel);
 
+	/*FIXME: seems to be issue with bypass mode in MOOR, for now
+		force the bias off volate as VFLEXVSEL_5V */
+	if ((INTEL_MID_BOARD(1, PHONE, MOFD)) ||
+			(INTEL_MID_BOARD(1, TABLET, MOFD)))
+		vflexvsel = VFLEXVSEL_5V;
+
 	if (SND_SOC_DAPM_EVENT_ON(event))
 		retval = intel_scu_ipc_iowrite8(VFLEXCNT, VFLEXVSEL_5V);
 	else if (SND_SOC_DAPM_EVENT_OFF(event))
@@ -429,6 +436,7 @@ static void wm8958_custom_mic_id(void *data, u16 status)
 
 		wm8994->mic_detecting = false;
 		wm8994->jack_mic = true;
+		wm8994->headphone_detected = false;
 
 		snd_soc_jack_report(wm8994->micdet[0].jack, SND_JACK_HEADSET,
 				    SND_JACK_HEADSET);
@@ -444,6 +452,9 @@ static void wm8958_custom_mic_id(void *data, u16 status)
 		 * or headset is detected)
 		 * */
 		wm8994->mic_detecting = true;
+
+		wm8994->jack_mic = false;
+		wm8994->headphone_detected = true;
 
 		snd_soc_jack_report(wm8994->micdet[0].jack, SND_JACK_HEADPHONE,
 				    SND_JACK_HEADSET);
@@ -494,6 +505,8 @@ static int mrfld_8958_init(struct snd_soc_pcm_runtime *runtime)
 	snd_soc_dapm_nc_pin(dapm, "IN1RN");
 	snd_soc_dapm_nc_pin(dapm, "IN1RP");
 
+	/* Force enable VMID to avoid cold latency constraints */
+	snd_soc_dapm_force_enable_pin(dapm, "VMID");
 	snd_soc_dapm_sync(dapm);
 
 	ctx->jack_retry = 0;
@@ -650,14 +663,48 @@ struct snd_soc_dai_link mrfld_8958_msic_dailink[] = {
 #ifdef CONFIG_PM_SLEEP
 static int snd_mrfld_8958_prepare(struct device *dev)
 {
-	pr_debug("In %s device name\n", __func__);
+	struct snd_soc_card *card = dev_get_drvdata(dev);
+	struct snd_soc_codec *codec;
+	struct snd_soc_dapm_context *dapm;
+
+	pr_debug("In %s\n", __func__);
+
+	codec = mrfld_8958_get_codec(card);
+	if (!codec) {
+		pr_err("%s: couldn't find the codec pointer!\n", __func__);
+		return -EAGAIN;
+	}
+
+	pr_debug("found codec %s\n", codec->name);
+	dapm = &codec->dapm;
+
+	snd_soc_dapm_disable_pin(dapm, "VMID");
+	snd_soc_dapm_sync(dapm);
+
 	snd_soc_suspend(dev);
 	return 0;
 }
 
 static void snd_mrfld_8958_complete(struct device *dev)
 {
+	struct snd_soc_card *card = dev_get_drvdata(dev);
+	struct snd_soc_codec *codec;
+	struct snd_soc_dapm_context *dapm;
+
 	pr_debug("In %s\n", __func__);
+
+	codec = mrfld_8958_get_codec(card);
+	if (!codec) {
+		pr_err("%s: couldn't find the codec pointer!\n", __func__);
+		return;
+	}
+
+	pr_debug("found codec %s\n", codec->name);
+	dapm = &codec->dapm;
+
+	snd_soc_dapm_force_enable_pin(dapm, "VMID");
+	snd_soc_dapm_sync(dapm);
+
 	snd_soc_resume(dev);
 	return;
 }

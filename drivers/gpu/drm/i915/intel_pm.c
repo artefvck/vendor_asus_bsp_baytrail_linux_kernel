@@ -26,12 +26,15 @@
  */
 
 #include <linux/cpufreq.h>
+#include <linux/mfd/intel_mid_pmic.h>
 #include "i915_drv.h"
 #include "intel_drv.h"
 #include "../../../platform/x86/intel_ips.h"
 #include <linux/module.h>
 #include <drm/i915_powerwell.h>
 #include <psb_powermgmt.h>
+#include <linux/early_suspend_sysfs.h>
+
 static struct drm_device *gdev;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -5881,8 +5884,12 @@ void intel_aux_display_runtime_put(struct drm_i915_private *dev_priv)
 	hsw_enable_package_c8(dev_priv);
 }
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void display_early_suspend(struct early_suspend *h)
+static int set_vhdmi_state(u8 value)
+{
+	return intel_mid_pmic_writeb(VHDMICNT, value);
+}
+
+static void display_early_suspend_handler(void)
 {
 	struct drm_device *drm_dev = gdev;
 	struct drm_i915_private *dev_priv = gdev->dev_private;
@@ -5892,17 +5899,30 @@ static void display_early_suspend(struct early_suspend *h)
 	if (ret)
 		DRM_ERROR("Display suspend failure\n");
 	else {
+		ret = set_vhdmi_state(VHDMI_OFF);
+		if (ret) {
+			dev_err(&dev_priv->bridge_dev->dev,
+					"Power gate HDMI failed\n");
+		}
+
 		dev_priv->early_suspended = true;
 		DRM_DEBUG_PM("Early suspend finished\n");
 	}
 }
 
-static void display_late_resume(struct early_suspend *h)
+static void display_late_resume_handler(void)
 {
 	struct drm_device *drm_dev = gdev;
 	struct drm_i915_private *dev_priv = gdev->dev_private;
 	int ret;
 	DRM_DEBUG_PM("Late Resume called\n");
+	/* VHDMI power switch */
+	ret = set_vhdmi_state(VHDMI_ON);
+	if (ret) {
+		dev_err(&dev_priv->bridge_dev->dev,
+			"Power on VHDMI failed\n");
+	}
+
 	ret = display_runtime_resume(drm_dev);
 	if (ret)
 		DRM_ERROR("Display Resume failure\n");
@@ -5910,6 +5930,30 @@ static void display_late_resume(struct early_suspend *h)
 		dev_priv->early_suspended = false;
 		DRM_DEBUG_PM("Late Resume finished\n");
 	}
+}
+
+static ssize_t early_suspend_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	if (!strncmp(buf, EARLY_SUSPEND_ON, EARLY_SUSPEND_STATUS_LEN))
+		display_early_suspend_handler();
+	else if (!strncmp(buf, EARLY_SUSPEND_OFF, EARLY_SUSPEND_STATUS_LEN))
+		display_late_resume_handler();
+
+	return count;
+}
+
+static DEVICE_EARLY_SUSPEND_ATTR(early_suspend_store);
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void display_early_suspend(struct early_suspend *h)
+{
+	display_early_suspend_handler();
+}
+
+static void display_late_resume(struct early_suspend *h)
+{
+	display_late_resume_handler();
 }
 
 static struct early_suspend intel_display_early_suspend = {
@@ -5971,6 +6015,9 @@ void intel_init_pm(struct drm_device *dev)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	intel_s0ix_init(dev);
 #endif
+	device_create_file(&dev->pdev->dev, &dev_attr_early_suspend);
+
+	register_early_suspend_device(&dev->pdev->dev);
 
 	if (I915_HAS_FBC(dev)) {
 		if (HAS_PCH_SPLIT(dev)) {
@@ -6264,6 +6311,25 @@ int vlv_freq_opcode(struct drm_i915_private *dev_priv, int val)
 		opcode = min_opcode;
 
 	return opcode;
+}
+
+void program_pfi_credits(struct drm_i915_private *dev_priv, bool flag)
+{
+	int cd_clk, cz_clk;
+
+	if (!flag) {
+		I915_WRITE(GCI_CONTROL, 0x00004000);
+		return;
+	}
+
+	intel_get_cd_cz_clk(dev_priv, &cd_clk, &cz_clk);
+
+	if (cd_clk >= cz_clk) {
+		/* Disable before enabling WA */
+		I915_WRITE(GCI_CONTROL, 0x00004000);
+		I915_WRITE(GCI_CONTROL, 0x78004000);
+	} else
+		DRM_ERROR("cd clk < cz clk");
 }
 
 void intel_pm_init(struct drm_device *dev)

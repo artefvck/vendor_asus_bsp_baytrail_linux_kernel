@@ -49,7 +49,8 @@ enum {
 	PMIC_CLVT,
 	PMIC_MRFL,
 	PMIC_BYT,
-	PMIC_MOOR
+	PMIC_MOOR,
+	PMIC_CHT
 };
 
 /* Supported CPU IDs*/
@@ -59,7 +60,15 @@ enum {
 	CPU_CLVIEW,
 	CPU_TANGIER,
 	CPU_VVIEW2,
-	CPU_ANNIEDALE
+	CPU_ANNIEDALE,
+	CPU_CHERRYVIEW
+};
+
+/* Configuration types */
+enum {
+	CONF_UNSUP,
+	XMM_CONF_GENERIC,
+	XMM_CONF_M2
 };
 
 struct mdm_ops {
@@ -106,6 +115,9 @@ struct mcd_base_info {
 	int		pmic_ver;
 	struct	pmic_ops pmic;
 	void	*pmic_data;
+
+	/* conf info */
+	int		conf_type;
 };
 
 struct sfi_to_mdm {
@@ -144,10 +156,15 @@ struct mdm_ctrl_cpu_data {
 	int		gpio_rst_bbn;
 	char	*gpio_cdump_name;
 	int		 gpio_cdump;
+	char	*gpio_wwan_disable_name;
+	int		gpio_wwan_disable;
+	char	*gpio_wake_on_wwan_name;
+	int		gpio_wake_on_wwan;
 
 	/* IRQs */
 	int	irq_cdump;
 	int	irq_reset;
+	int	irq_wake_on_wwan;
 };
 
 /* struct mdm_ctrl_pmic_data

@@ -40,7 +40,10 @@ void __init *max3111_platform_data(void *info)
 		return &max3110_pdata;
 	}
 
-	if (INTEL_MID_BOARD(1, PHONE, MRFL)) {
+	if (INTEL_MID_BOARD(1, PHONE, MOFD)) {
+		spi_info->controller_data = &chip;
+		spi_info->bus_num = FORCE_SPI_BUS_NUM;
+	} else if (INTEL_MID_BOARD(1, PHONE, MRFL)) {
 		spi_info->controller_data = &chip;
 		spi_info->bus_num = FORCE_SPI_BUS_NUM;
 
@@ -54,15 +57,13 @@ void __init *max3111_platform_data(void *info)
 	}
 
 	/*force polling for HVP and VP simulation platforms
-	 * on TANGIER,  ANNIEDALE AND CARBONCANYON.
+	 * on TANGIER AND ANNIEDALE.
 	 */
 	if ((intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_VP) ||
 	    (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_SLE) ||
 	    (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_HVP)) {
 		if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) ||
-		   (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE) ||
-		   (intel_mid_identify_cpu()
-				== INTEL_MID_CPU_CHIP_CARBONCANYON)) {
+		   (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE)) {
 			spi_info->irq = 0;
 		}
 	}

@@ -33,7 +33,8 @@ static const struct acpi_device_id acpi_platform_device_ids[] = {
 	{ "BCM2E1A" },
 	{ "BCM2E3A" },
 	{ "BCM4752" },
-
+	{ "RTL8723" },
+	{ "OBDA8723" },
   /* Telepĥony */
 	{ "MCD0001", 0 },
 	/* SSP devices */
@@ -46,10 +47,17 @@ static const struct acpi_device_id acpi_platform_device_ids[] = {
 	{ "80860F28", 0 },
 	{ "LPE0F281", 0 },
 	{ "AMCR0F28", 0 },
+	{ "TIMC0F28", 0 },
 	{ "DMA0F28", 0 },
 	{ "ADMA0F28", 0 },
 	{ "VIB8601", 0 },
 	{ "BYTEC001", 0 },
+	{ "INT0002", 0 },
+	/* Cherrytrail Audio device*/
+	{ "808622A8", 0 },
+	{ "ADMA22A8", 0 },
+	{ "AMCR22A8", 0 },
+	{ "HAD022A8", 0 },
 	{ }
 };
 
