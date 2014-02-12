@@ -51,7 +51,7 @@ static struct soc_throttle_data tng_soc_data[] = {
 static struct soc_throttle_data vlv2_soc_data[] = {
 	{
 		.power_limit = 0xDA, /* 7W */
-		.floor_freq = 0x00,
+		.floor_freq = 0x01,
 	},
 	{
 		.power_limit = 0x6D, /* 3.5W */
