@@ -945,7 +945,7 @@ static int byt_init(struct snd_soc_pcm_runtime *runtime)
 					RT5640_JD_MASK, RT5640_JD_DIS);
 		} else
 			snd_soc_update_bits(codec, RT5640_JD_CTRL,
-					RT5640_JD_MASK, RT5640_JD_JD1_IN4P);
+					RT5640_JD_MASK, RT5640_JD_JD2_IN4N);
 	}
 
 	ret = snd_soc_jack_new(codec, "Intel MID Audio Jack",
