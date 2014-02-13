@@ -141,9 +141,6 @@ static bool intel_dsi_compute_config(struct intel_encoder *encoder,
 
 static void intel_dsi_pre_pll_enable(struct intel_encoder *encoder)
 {
-	//struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
-	struct drm_device *dev = encoder->base.dev;
-
 	DRM_DEBUG_KMS("\n");
 
 	/* nothing to do here as we do necessary stuff in pre_enable
@@ -306,8 +303,6 @@ static void intel_dsi_disable(struct intel_encoder *encoder)
 	else
 		usleep_range(intel_dsi->backlight_off_delay * 1000,
 			(intel_dsi->backlight_off_delay * 1000) + 500);
-	if (dev->is_booting)
-		return;
 
 	if (is_cmd_mode(intel_dsi)) {
 		/* XXX Impementation TBD */
@@ -577,8 +572,6 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 
 	I915_WRITE(MIPI_DEVICE_READY(pipe), 0x0);
 
-	I915_WRITE(MIPI_DEVICE_READY(pipe), 0x0);
-
 	dsi_config(encoder);
 
 	I915_WRITE(MIPI_LP_RX_TIMEOUT(pipe), intel_dsi->lp_rx_timeout);
@@ -672,7 +665,6 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 
 	I915_WRITE(MIPI_INTR_STAT(pipe), 0xFFFFFFFF);
 
-<<<<<<< HEAD
 	if (BYT_CR_CONFIG) {
 		val = PFIT_ENABLE | (intel_crtc->pipe <<
 			PFIT_PIPE_SHIFT) | PFIT_SCALING_AUTO;
