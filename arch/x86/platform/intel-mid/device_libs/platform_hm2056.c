@@ -208,9 +208,9 @@ static int hm2056_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 		}
 	}
 	if(PCBVersion==1){
-		return vlv2_plat_configure_clock(OSC_CAM1_CLK,flag);
+		return vlv2_plat_configure_clock(OSC_CAM1_CLK,flag?flag:2);
 	}else{
-		return vlv2_plat_configure_clock(OSC_CAM0_CLK,flag);
+		return vlv2_plat_configure_clock(OSC_CAM0_CLK,flag?flag:2);
 	}
 #elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 	if(PCBVersion==1){
@@ -234,10 +234,10 @@ static int hm2056_power_ctrl(struct v4l2_subdev *sd, int flag)
         //turn on power 1.8V and 2.8V
         if (!camera_vprog1_on) {
 			#ifdef CONFIG_CRYSTAL_COVE
-				ret = camera_set_pmic_power(CAMERA_2P8V, true);
+				ret = camera_set_pmic_power(CAMERA_1P8V, true);
 				if (ret)
 					return ret;
-				ret = camera_set_pmic_power(CAMERA_1P8V, true);
+				ret = camera_set_pmic_power(CAMERA_2P8V, true);
 			#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 				ret = intel_scu_ipc_msic_vprog1(1);
 			#else
@@ -258,7 +258,7 @@ static int hm2056_power_ctrl(struct v4l2_subdev *sd, int flag)
 				ret = camera_set_pmic_power(CAMERA_2P8V, false);
 				if (ret)
 					return ret;
-				//Can't disable 1.8V for HW request.	ret = camera_set_pmic_power(CAMERA_1P8V, false);
+				ret = camera_set_pmic_power(CAMERA_1P8V, false);
 			#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 				ret = intel_suc_ipc_msic_vprog1(0);
 			#else
@@ -267,7 +267,7 @@ static int hm2056_power_ctrl(struct v4l2_subdev *sd, int flag)
 				if (!ret)
 					camera_vprog1_on = 0;
 
-            printk("<<< 1.8V and 2.8V = 0\n");
+            printk("<<< %s 1.8V and 2.8V = 0\n",__FUNCTION__);
             msleep(1);
         }
         return ret;

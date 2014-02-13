@@ -145,7 +145,7 @@ static int ar0543_gpio_init()
 }
 static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 {
-	ar0543_gpio_init();
+	//move to power ctrl ar0543_gpio_init();
 	
 	if (flag) {
 #ifdef CONFIG_BOARD_CTP
@@ -153,10 +153,10 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		msleep(60);
 #endif
 		gpio_set_value(camera_power_down, 1);
-		msleep(2);
+		//msleep(2);
 		gpio_set_value(camera_reset, 1);
-		msleep(2);
-		
+		msleep(1);
+		camera_set_pmic_power(CAMERA_2P8V, true);//move from power ctrl
         //gpio_set_value(camera_vcm_power_down, 1);
 	} else {
 		gpio_set_value(camera_power_down, 0);
@@ -169,7 +169,7 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 			camera_reset = -1;
 			mdelay(1);
 		}
-		
+
 		if (camera_power_down >= 0){
 			gpio_free(camera_power_down);
 			camera_power_down = -1;
@@ -192,7 +192,7 @@ static int ar0543_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 		if (ret)
 			return ret;
 	}
-	ret = vlv2_plat_configure_clock(OSC_CAM0_CLK, flag);
+	ret = vlv2_plat_configure_clock(OSC_CAM0_CLK, flag?flag:2);
 #elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag ? clock_khz : 0);
 #else
@@ -228,20 +228,20 @@ static int ar0543_power_ctrl(struct v4l2_subdev *sd, int flag)
 			 * as WAs
 			 */
 			ret = camera_set_pmic_power(CAMERA_1P8V, true);
-			msleep(2);
-			if (ret)
-				return ret;
-			ret = camera_set_pmic_power(CAMERA_2P8V, true);
-			msleep(2);
+			//msleep(2);
+			//if (ret)
+			//	return ret;
+			//Move to gpio_ctrl ret = camera_set_pmic_power(CAMERA_2P8V, true);
+			//msleep(2);
 
 #endif
 			if (!ret) {
 				camera_vprog1_on = 1;
-				//msleep(10);
 			} else {
-				//Can't disable 1.8V for HW request.	camera_set_pmic_power(CAMERA_1P8V, false);
+				camera_set_pmic_power(CAMERA_1P8V, false);
 			}
-
+			ar0543_gpio_init();//move from gpio ctrl
+			printk("<<< %s 1.8V and 2.8V = 1\n",__FUNCTION__);
 			return ret;
 		}
 	} else {
@@ -252,7 +252,7 @@ static int ar0543_power_ctrl(struct v4l2_subdev *sd, int flag)
 			//FIXME: bug anyway
 			if (ret)
 				return ret;
-			//Can't disable 1.8V for HW request.	ret = camera_set_pmic_power(CAMERA_1P8V, false);
+			ret = camera_set_pmic_power(CAMERA_1P8V, false);
 #elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 			return intel_scu_ipc_msic_vprog1(0);
 #else
@@ -262,6 +262,7 @@ static int ar0543_power_ctrl(struct v4l2_subdev *sd, int flag)
 			if (!ret) {
 				camera_vprog1_on = 0;
 			}
+			printk("<<< %s 1.8V and 2.8V = 0\n",__FUNCTION__);
 			return ret;
 		}
 	}
