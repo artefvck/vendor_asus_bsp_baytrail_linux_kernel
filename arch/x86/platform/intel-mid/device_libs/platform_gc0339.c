@@ -155,7 +155,7 @@ static int gc0339_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 		if (ret)
 			return ret;
 	}
-	return vlv2_plat_configure_clock(OSC_CAM1_CLK, flag);
+	return vlv2_plat_configure_clock(OSC_CAM1_CLK, flag?flag:2);
 #elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 	return intel_scu_ipc_osc_clk(OSC_CLK_CAM1,
 				     flag ? clock_khz : 0);
@@ -189,13 +189,6 @@ static int gc0339_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 			msleep(10);
 		}
 	}else{
-		//pull low reset first
-		if (camera_reset >= 0){
-			gpio_set_value(camera_reset, 0);
-			printk("<<< camera_reset = 0\n");
-			msleep(10);
-		}
-
 		//pull high power down
 		if (camera_power_down >= 0){
 			gpio_set_value(camera_power_down, 1);
@@ -238,17 +231,17 @@ static int gc0339_power_ctrl(struct v4l2_subdev *sd, int flag)
 		if (!camera_vprog1_on) {
 			camera_vprog1_on = 1;
 #ifdef CONFIG_CRYSTAL_COVE
-			ret = camera_set_pmic_power(CAMERA_2P8V, true);
+			ret = camera_set_pmic_power(CAMERA_1P8V, true);
 			if (ret)
 				return ret;
-			ret = camera_set_pmic_power(CAMERA_1P8V, true);
+			ret = camera_set_pmic_power(CAMERA_2P8V, true);
 #elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 			ret = intel_scu_ipc_msic_vprog1(1);
 #else
 			pr_err("gc0339 power is not set.\n");
 #endif
-			printk("<<< VDD_SEN VDD_HOST 1.8V = 1\n");
-			msleep(10);
+			printk("<<< %s 1.8V and 2.8V = 1\n",__FUNCTION__);
+			msleep(1);
 		}
 
 		//turn on MCLK
@@ -267,13 +260,13 @@ static int gc0339_power_ctrl(struct v4l2_subdev *sd, int flag)
 			ret = camera_set_pmic_power(CAMERA_2P8V, false);
 			if (ret)
 				return ret;
-			//Can't disable 1.8V for HW request.	ret = camera_set_pmic_power(CAMERA_1P8V, false);
+			ret = camera_set_pmic_power(CAMERA_1P8V, false);
 #elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 			ret = intel_scu_ipc_msic_vprog1(0);
 #else
 			pr_err("gc0339 power is not set.\n");
 #endif
-			printk("<<< VDD_SEN VDD_HOST 1.8V = 0\n");
+			printk("<<< %s 1.8V and 2.8V = 0\n",__FUNCTION__);
 			msleep(10);
 		}
 	}
