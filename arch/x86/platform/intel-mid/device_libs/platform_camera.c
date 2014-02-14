@@ -36,29 +36,8 @@
  */
 const struct intel_v4l2_subdev_id v4l2_ids[] = {
 	{"ar0543", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"hm2056", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"gc0339", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
-	{"hm2056", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"mt9e013", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"ov8830", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"imx175", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"imx135", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"imx135fuji", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"imx134", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"imx132", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
-	{"ov9724", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
-	{"ov2722", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
-	{"ov5693", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"mt9d113", SOC_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"mt9m114", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
-	{"mt9v113", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
-	{"s5k8aay", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
-	{"ap1302", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
-	{"lm3554", LED_FLASH, -1},
-	{"lm3559", LED_FLASH, -1},
-	{"lm3560", LED_FLASH, -1},
-	{"xactor_a", SOC_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"xactor_b", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
-	{"xactor_c", SOC_CAMERA, ATOMISP_CAMERA_PORT_TERTIARY},
 	{},
 };
 
@@ -79,17 +58,17 @@ static struct camera_device_table byt_ffrd8_cam_table[] = {
 			&intel_register_i2c_camera_device}
 	},
 
-	{								//note: AR0543 must be the second one.
-		{SFI_DEV_TYPE_I2C, 4, 0x21, 0x0, 0x0, "gc0339"},		//<ASUS-Oscar131209>
-		{"gc0339", SFI_DEV_TYPE_I2C, 0, &gc0339_platform_data,
-			&intel_register_i2c_camera_device}
-	},
-
 	{
 		{SFI_DEV_TYPE_I2C, 4, 0x24, 0x0, 0x0, "hm2056"},		//<ASUS-Oscar131209>
 		{"hm2056", SFI_DEV_TYPE_I2C, 0, &hm2056_platform_data,
 			&intel_register_i2c_camera_device}
-	}
+	},
+
+	{
+		{SFI_DEV_TYPE_I2C, 4, 0x21, 0x0, 0x0, "gc0339"},		//<ASUS-Oscar131209>
+		{"gc0339", SFI_DEV_TYPE_I2C, 0, &gc0339_platform_data,
+			&intel_register_i2c_camera_device}
+	},
 };
 
 
