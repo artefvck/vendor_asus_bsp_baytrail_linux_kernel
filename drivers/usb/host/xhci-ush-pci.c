@@ -1150,6 +1150,9 @@ static int xhci_ush_pci_probe(struct pci_dev *dev,
 	struct usb_hcd *hcd;
 	struct ush_hsic_pdata *hsic_pdata;
 
+	// use xhci_hcd
+	return -ENODEV;
+
 	hsic_pdata = dev->dev.platform_data;
 	if (!hsic_pdata->has_modem) {
 		dev_err(&dev->dev, "Don't match this driver\n");
