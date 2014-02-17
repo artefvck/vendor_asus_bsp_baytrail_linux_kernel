@@ -73,7 +73,7 @@ extern u16 total_len;
 #define GTP_AUTO_UPDATE       1     // auto updated by .bin file as default
 #define GTP_HEADER_FW_UPDATE  1     
                                
-#define GTP_CREATE_WR_NODE    0
+#define GTP_CREATE_WR_NODE    1
 #define GTP_ESD_PROTECT       1
 #define GTP_WITH_PEN          0
 
