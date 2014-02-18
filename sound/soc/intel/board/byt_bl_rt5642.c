@@ -42,6 +42,8 @@
 #include "byt_bl_rt5642.h"
 #include "../ssp/mid_ssp.h"
 
+#include <linux/mfd/intel_mid_pmic.h>
+
 //terry_tao@asus.com++ audio debug mode
 #ifdef CONFIG_PROC_FS
 #include <linux/proc_fs.h>
@@ -1242,6 +1244,16 @@ static void remove_audio_debug_proc_file(void)
 #endif //#ifdef CONFIG_PROC_FS
 //terry_tao@asus.com-- Audio debug mode
 
+static void PMIC_enable_codec(void)
+{
+	intel_mid_pmic_writeb(0x2e,0x23);
+}
+
+static void PMIC_disable_codec(void)
+{
+	intel_mid_pmic_writeb(0x2e,0x22);
+}
+
 static int snd_byt_mc_probe(struct platform_device *pdev)
 {
 	int ret_val = 0;
@@ -1251,6 +1263,8 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 	int debug_gpio_ret;
 #endif
 	int jd_gpio;
+
+	PMIC_enable_codec();
 
 	pr_debug("Entry %s\n", __func__);
 	drv = devm_kzalloc(&pdev->dev, sizeof(*drv), GFP_ATOMIC);
@@ -1373,6 +1387,7 @@ static void snd_byt_mc_shutdown(struct platform_device *pdev)
 
 	pr_debug("In %s\n", __func__);
 	snd_byt_unregister_jack(drv);
+	PMIC_disable_codec();
 }
 
 const struct dev_pm_ops snd_byt_mc_pm_ops = {
