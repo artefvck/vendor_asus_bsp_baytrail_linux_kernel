@@ -149,19 +149,29 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 	
 	if (flag) {
 #ifdef CONFIG_BOARD_CTP
-		gpio_set_value(camera_reset, 0);
-		msleep(60);
+		if(camera_reset >= 0){
+			gpio_set_value(camera_reset, 0);
+			msleep(60);
+		}
 #endif
-		gpio_set_value(camera_power_down, 1);
-		//msleep(2);
-		gpio_set_value(camera_reset, 1);
-		msleep(1);
+		if(camera_power_down >= 0){
+			gpio_set_value(camera_power_down, 1);
+			//msleep(2);
+		}
+		if(camera_reset >= 0){
+			gpio_set_value(camera_reset, 1);
+			msleep(1);
+		}
 		camera_set_pmic_power(CAMERA_2P8V, true);//move from power ctrl
         //gpio_set_value(camera_vcm_power_down, 1);
 	} else {
-		gpio_set_value(camera_power_down, 0);
-		gpio_set_value(camera_reset, 0);
-		msleep(2);
+		if(camera_power_down >= 0){
+			gpio_set_value(camera_power_down, 0);
+		}
+		if(camera_reset >= 0){
+			gpio_set_value(camera_reset, 0);
+			msleep(2);
+		}
         //gpio_set_value(camera_vcm_power_down, 0);
 
 		if (camera_reset >= 0){
