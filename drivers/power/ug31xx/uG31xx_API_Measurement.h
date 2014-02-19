@@ -4,7 +4,7 @@
  *  Header for uG31xx measurement API
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 411 $
+ * @revision  $Revision: 463 $
  */
 
 typedef signed char       _meas_s8_;
@@ -51,6 +51,7 @@ typedef enum _MEAS_SEL_CODE {
   MEAS_SEL_CURRENT,
   MEAS_SEL_EXT_TEMP,
   MEAS_SEL_INT_TEMP,
+  MEAS_SEL_INITIAL,
 } MEAS_SEL_CODE;
 
 typedef struct MeasDataST {
@@ -63,13 +64,16 @@ typedef struct MeasDataST {
   
   /// [AT-PM] : Physical value ; 01/23/2013
   _meas_u16_ bat1Voltage;
+  _meas_u16_ bat1VoltageAvg;
   _meas_s16_ curr;
+  _meas_s16_ currAvg;
   _meas_s16_ intTemperature;
   _meas_s16_ extTemperature;
   _meas_s16_ instExtTemperature;
   _meas_s16_ deltaCap;
   _meas_s16_ stepCap;
   _meas_u32_ deltaTime;
+  _meas_u32_ deltaTimeDaemon;
 
   /// [AT-PM] : ADC code ; 01/23/2013
   _meas_u16_ codeBat1;

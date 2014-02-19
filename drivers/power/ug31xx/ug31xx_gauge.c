@@ -36,6 +36,7 @@
 #include <linux/proc_fs.h>
 #include <linux/workqueue.h> //tan
 #include <linux/init.h> 		    //tan
+
 //#define	UPI_CALLBACK_FUNC	            ///< [AT-PM] : Used for removing callback function ; 04/15/2013
 #define	UG31XX_DYNAMIC_POLLING	      ///< [AT-PM] : Used for dynamic polling time ; 04/30/2013
 //#define UG31XX_WAIT_CHARGER_FC        ///< [AT-PM] : Used for full charge status decided by charger ; 07/25/2013
@@ -53,6 +54,12 @@
 #ifndef ME372CG_USER_BUILD
 //#define UG31XX_PROC_DEV
 #endif
+//#define UG31XX_WAKEUP_ALARM ///< [FC] : wakeup alarm functions ; 02/08/2014
+
+#ifdef UG31XX_WAKEUP_ALARM
+#include <linux/timer.h>
+#include <linux/android_alarm.h>
+#endif
 
 //#include "../smb345_external_include.h"
 //#include "../asus_ec_power.h"
@@ -67,11 +74,13 @@ extern int ec_power_changed_all();
 #endif
 //static int hwid;
 //tan extern int entry_mode;
-struct switch_dev batt_dev;
+//struct switch_dev batt_dev;
 
 #define UG31XX_USER_DAEMON_VER_LENGTH   (16)
 #define UG31XX_CALI_BO_LOW_TEMP         (100)
 #define UG31XX_CALI_BO_HIGH_TEMP        (450)
+
+#define UG31XX_WAKEUP_ALARM_TIME        (40*60)  ///< [FC] : wakeup alarm 40 min ; 02/08/2014
 
 struct ug31xx_gauge {
 #if defined(CONFIG_HAS_EARLYSUSPEND) && defined(UG31XX_EARLY_SUSPEND)
@@ -85,8 +94,10 @@ struct ug31xx_gauge {
 	struct delayed_work     board_offset_cali_work;
 	struct delayed_work     shell_algorithm_work;
 	struct delayed_work     shell_backup_work;
+	struct delayed_work     shell_timeout_work;
 	struct wake_lock        batt_wake_lock;
 	struct wake_lock        shell_algorithm_wake_lock;
+	struct wake_lock        shell_timeout_wake_lock;
 	struct mutex            info_update_lock;
 
 	u32 cable_status;
@@ -94,7 +105,6 @@ struct ug31xx_gauge {
 	u32 update_time;          ///< [AT-PM] : unit in second ; 12/10/2013
 	u32 batt_volt;            ///< [AT-PM] : unit in mV ; 10/07/2013
 	int batt_capacity;        ///< [AT-PM] : unit in % ; 10/07/2013
-	int batt_capacity_shifted;///< [AT-PM] : unit in % ; 10/07/2013 chris add.
 	int batt_capacity_last;   ///< [AT-PM] : unit in % ; 10/07/2013
 	int batt_capacity_real;   ///< [AT-PM] : unit in % ; 11/27/2013
 	u32 batt_charge_now;      ///< [AT-PM] : unit in mAh ; 10/07/2013
@@ -113,6 +123,11 @@ struct ug31xx_gauge {
 
 	char daemon_ver[UG31XX_USER_DAEMON_VER_LENGTH];
 	int daemon_uevent_count;
+
+#ifdef UG31XX_WAKEUP_ALARM
+	struct alarm wakeup_alarm;
+	ktime_t last_poll;
+#endif  ///<end of UG31XX_WAKEUP_ALARM
 };
 
 static void batt_info_update_work_func(struct work_struct *work);
@@ -151,6 +166,8 @@ static void batt_info_update_work_func(struct work_struct *work);
 #define UG31XX_IOCTL_ALGORITHM_TABLE_DATA     _IOWR(UG31XX_IOC_MAGIC, 23, unsigned char *)
 #define UG31XX_IOCTL_ALGORITHM_TABLE_BUF      _IOWR(UG31XX_IOC_MAGIC, 24, unsigned char *)
 #define UG31XX_IOCTL_ALGORITHM_VERSION        _IOWR(UG31XX_IOC_MAGIC, 25, unsigned char *)
+#define UG31XX_IOCTL_ALGORITHM_LOCK           _IO(UG31XX_IOC_MAGIC, 26)
+#define UG31XX_IOCTL_ALGORITHM_UNLOCK         _IO(UG31XX_IOC_MAGIC, 27)
 
 #endif	///< end of UG31XX_MISC_DEV
 
@@ -202,7 +219,6 @@ extern char FactoryGGBXFile[];
 /* Global Variables */
 static struct ug31xx_gauge *ug31 = NULL;
 unsigned char cur_cable_status = UG31XX_NO_CABLE;
-unsigned char old_cable_status = UG31XX_NO_CABLE;
 ug31xx_drv_status_t ug31xx_drv_status = UG31XX_DRV_NOT_READY;
 static bool charger_detect_full = false;
 static bool curr_charger_full_status = false;
@@ -211,7 +227,7 @@ static int cable_status_changed = 0;
 static bool force_power_supply_change = true;
 static bool charger_full_status = false;
 static bool charger_dc_in_before_suspend = false;
-static unsigned char op_options = LKM_OPTIONS_DEBUG_ERROR;
+static unsigned char op_options = LKM_OPTIONS_DEBUG_ERROR;	///< [AT-PM] : Set to "LKM_OPTIONS_ENABLE_REVERSE_CURRENT" to enable reverse current direction feature ; 11/12/2013
 static int rsense_value = 0;                        ///< [AT-PM] : Set R-Sense value (0 = from GGB settings) ; 09/05/2013
 static int ug31xx_backup_file_status = 0;
 static unsigned short design_capacity = 0;
@@ -222,6 +238,7 @@ static int rsoc_before_suspend = 0;
 static bool user_space_algorithm_response = true;
 static int user_space_algorithm_prev_fc_sts = 0;
 static int user_space_algorithm_now_fc_sts = 0;
+static bool user_space_in_progress = false;
 static bool force_update_backup_file = false;
 static bool enable_board_offset_cali_at_eoc = false;
 
@@ -491,11 +508,8 @@ static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long
         rc = -EINVAL;
         UG31_LOGE("[%s] copy_from_user fail\n", __func__);
       }
-      else
-      {
-        schedule_delayed_work(&ug31->shell_backup_work, 0*HZ);
-      }
       ug31_module.restore_pointer();
+      schedule_delayed_work(&ug31->shell_backup_work, 0*HZ);
       break;
 
     case UG31XX_IOCTL_ALGORITHM_BACKUP_BUFFER:
@@ -562,6 +576,28 @@ static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long
       ug31->daemon_uevent_count = 0;
       break;
 
+    case UG31XX_IOCTL_ALGORITHM_LOCK:
+      UG31_LOGI("[%s] cmd -> UG31XX_IOCTL_ALGORITHM_LOCK\n", __func__);
+      if(wake_lock_active(&ug31->shell_timeout_wake_lock) != 0)
+      {
+        wake_unlock(&ug31->shell_timeout_wake_lock);
+      }
+      wake_lock(&ug31->shell_timeout_wake_lock);
+      mutex_lock(&ug31->info_update_lock); 
+      user_space_in_progress = true;
+      schedule_delayed_work(&ug31->shell_timeout_work, 1*HZ);
+      break;
+
+    case UG31XX_IOCTL_ALGORITHM_UNLOCK:
+      UG31_LOGI("[%s] cmd -> UG31XX_IOCTL_ALGORITHM_UNLOCK\n", __func__);
+      user_space_in_progress = false;
+      mutex_unlock(&ug31->info_update_lock);
+      if(wake_lock_active(&ug31->shell_timeout_wake_lock) != 0)
+      {
+        wake_unlock(&ug31->shell_timeout_wake_lock);
+      }
+      break;
+      
     default:
       UG31_LOGE("[%s] invalid cmd %d\n", __func__, _IOC_NR(cmd));
       rc = -EINVAL;
@@ -933,7 +969,11 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 	}
 	if(psp == POWER_SUPPLY_PROP_CAPACITY)
 	{
-		val->intval = ug31->batt_capacity_shifted;
+		if (ug31->batt_status == POWER_SUPPLY_STATUS_FULL)
+		{
+			ug31->batt_capacity = 100;
+		}
+		val->intval = ug31->batt_capacity;
 		if (ug31->batt_ntc_sts != UPI_UG31XX_NTC_NORMAL)
 			val->intval = -99;
 	}
@@ -965,25 +1005,21 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 	}
 	if(psp == POWER_SUPPLY_PROP_STATUS)
 	{
-		if (ug31->batt_capacity_shifted == 100) {
-			if (cur_cable_status)
+		if(cur_cable_status) 
+		{
+			if (ug31->batt_capacity == 100)
+			{
 				ug31->batt_status = POWER_SUPPLY_STATUS_FULL;
-			else
-				ug31->batt_status = POWER_SUPPLY_STATUS_NOT_CHARGING;
-		}
-		else {
-			if (cur_cable_status) {
-				if (cur_cable_status != UG31XX_PAD_POWER)
-					ug31->batt_status = POWER_SUPPLY_STATUS_CHARGING;
-				else if (is_charging())
-					ug31->batt_status = POWER_SUPPLY_STATUS_CHARGING;
-				else
-					ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
 			}
 			else
-				ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
+			{
+				ug31->batt_status = POWER_SUPPLY_STATUS_CHARGING;
+			}
 		}
-
+		else
+		{
+			ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
+		}
 		val->intval = ug31->batt_status;
 		if (ug31->batt_ntc_sts != UPI_UG31XX_NTC_NORMAL)
 			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
@@ -1028,20 +1064,25 @@ static int ug31xx_powersupply_init(struct i2c_client *client)
 
 int ug31xx_cable_callback(unsigned char usb_cable_state)
 {
-	int old_cable_status;
+	int old_cable_status = cur_cable_status;
+
+	cur_cable_status = usb_cable_state; 
 
 	if(ug31xx_drv_status == UG31XX_DRV_NOT_READY)
 	{
 		GAUGE_err("[%s] Gauge driver not init finish\n", __func__);
-		cur_cable_status = usb_cable_state;
-		return -EPERM;
+		return (0);
 	}
-	printk("========================================================\n");
-	printk("%s  usb_cable_state = %x\n", __func__, usb_cable_state) ;
-	printk("========================================================\n");
 
-	old_cable_status = cur_cable_status;
-	cur_cable_status = usb_cable_state;
+	if(old_cable_status != cur_cable_status)
+	{
+		cable_status_changed = CABLE_STATUS_CHANGE_RELEASE_COUNT;
+		GAUGE_notice("[%s] Cable status changed (%d -> %d)\n", __func__,
+					old_cable_status,
+					cur_cable_status)
+	}
+
+#ifdef  UG31XX_REGISTER_POWERSUPPLY
 
 	if(cur_cable_status == UG31XX_NO_CABLE)
 	{
@@ -1062,9 +1103,8 @@ int ug31xx_cable_callback(unsigned char usb_cable_state)
 	{
 		power_supply_changed(&ug31xx_supply[PWR_SUPPLY_AC]);
 	}
-  
-	cable_status_changed = CABLE_STATUS_CHANGE_RELEASE_COUNT;
-	return 0;
+#endif  ///< end of UG31XX_REGISTER_POWERSUPPLY
+	return (0);
 }
 EXPORT_SYMBOL(ug31xx_cable_callback);
 
@@ -1074,19 +1114,24 @@ EXPORT_SYMBOL(ug31xx_cable_callback);
 
 static void ug31xx_battery_external_power_changed(struct power_supply *psy)
 {
-
+  /*tan
+	int old_cable_status = cur_cable_status;
     if (power_supply_am_i_supplied(psy)) {
-        switch (cur_cable_status) {
-        case UG31XX_USB_PC_CABLE:
+        switch (get_charger_type()) {
+        case USB_IN:
+            cur_cable_status = UG31XX_USB_PC_CABLE;
             GAUGE_err("[%s] UG31XX_USB_PC_CABLE\n", __func__);
             break;
-        case UG31XX_AC_ADAPTER_CABLE:
+        case AC_IN:
+            cur_cable_status = UG31XX_AC_ADAPTER_CABLE;
             GAUGE_err("[%s] UG31XX_AC_ADAPTER_CABLE\n", __func__);
             break;
-        case UG31XX_NO_CABLE:
+        case CABLE_OUT:
+            cur_cable_status = UG31XX_NO_CABLE;
             GAUGE_err("[%s] UG31XX_NO_CABLE\n", __func__);
             break;
-        case UG31XX_PAD_POWER:
+        case PAD_SUPPLY:
+            cur_cable_status = UG31XX_PAD_POWER;
             GAUGE_err("[%s] UG31XX_PAD_POWER\n", __func__);
             break;
         }
@@ -1105,8 +1150,7 @@ static void ug31xx_battery_external_power_changed(struct power_supply *psy)
 	if(old_cable_status != cur_cable_status)
 	{
 		cable_status_changed = CABLE_STATUS_CHANGE_RELEASE_COUNT;
-	}
-	old_cable_status = cur_cable_status;
+	}*/
 }
 
 #endif	///< end of UG31XX_REGISTER_POWERSUPPLY
@@ -1119,7 +1163,6 @@ static void set_default_batt_status(void)
 	ug31->update_time		= 5;
 	ug31->batt_volt			= 3700;
 	ug31->batt_capacity		= 50;
-	ug31->batt_capacity_shifted	= ug31->batt_capacity;
 	ug31->batt_capacity_real	= 50;
 	ug31->batt_charge_now	= 1000;
 	ug31->batt_charge_full	= 2000;
@@ -1209,25 +1252,8 @@ static void asus_print_all(void)
             negative_sign = "";
     }
 
-    if (ug31->batt_capacity_shifted == 100) {
-        ug31->batt_status = POWER_SUPPLY_STATUS_FULL;
-    }
-    else {
-        if (cur_cable_status) {
-            if (cur_cable_status != UG31XX_PAD_POWER)
-                ug31->batt_status = POWER_SUPPLY_STATUS_CHARGING;
-            else if (is_charging())
-                ug31->batt_status = POWER_SUPPLY_STATUS_CHARGING;
-            else
-                ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
-        }
-        else
-            ug31->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
-    }
-
-    GAUGE_notice("P:%d(%d-%d)%%, V:%dmV, C:%dmA, T:%s%d.%dC(%d), "
+    GAUGE_notice("P:%d(%d)%%, V:%dmV, C:%dmA, T:%s%d.%dC(%d), "
         "S:%s, R:%dmAh, F:%dmAh, CC:%d, P:%d(%d)s, BO:%d, %s-%s (%d)\n",
-        ug31->batt_capacity_shifted,
         ug31->batt_capacity,
         ug31->batt_capacity_real,
         ug31->batt_volt,
@@ -1248,48 +1274,7 @@ static void asus_print_all(void)
         ug31->daemon_uevent_count);
 }
 
-static int asus_battery_cap_shifted(int rsoc)
-{
-#ifdef ENABLE_BATTERY_SHIFT
-    int ret;
 
-    ret = ((ret >= 100) ? 100 : rsoc);
-
-    /* start percentage shift:
-        battery percentage remapping according
-        to battery discharging curve
-    */
-
-    if (ret == 99) {
-        ret = 100;
-        return ret;
-    }
-    else if (ret >= 84 && ret <= 98) {
-        ret++;
-        return ret;
-    }
-
-    /* missing 26%, 47%, 58%, 69%, 79% */
-    if (ret > 70 && ret < 80)
-        ret -= 1;
-    else if (ret > 60 && ret <= 70)
-        ret -= 2;
-    else if (ret > 50 && ret <= 60)
-        ret -= 3;
-    else if (ret > 30 && ret <= 50)
-        ret -= 4;
-    else if (ret >= 0 && ret <= 30)
-        ret -= 5;
-
-    /* final check to avoid negative value */
-    if (ret < 0)
-        ret = 0;
-
-    return ret;
-#else
-    return rsoc;
-#endif
-}
 
 #define MAX_BATTERY_UPDATE_INTERVAL     (600)
 
@@ -1307,7 +1292,6 @@ static void show_update_batt_status(void)
 #endif  ///< end of UG31XX_DYNAMIC_POLLING
 	ug31->batt_volt			= (u32)ug31_module.get_voltage();
 	ug31->batt_capacity		= (int)ug31_module.get_relative_state_of_charge();
-	ug31->batt_capacity_shifted	= asus_battery_cap_shifted(ug31->batt_capacity);
 	ug31->batt_capacity_real	= (int)ug31_module.get_predict_rsoc();
 	ug31->batt_charge_now	= (u32)ug31_module.get_remaining_capacity();
 	ug31->batt_charge_full	= (u32)ug31_module.get_full_charge_capacity();
@@ -1370,6 +1354,25 @@ static void adjust_cell_table(void)
 	}
 	op_options = op_options & (~LKM_OPTIONS_ADJUST_DESIGN_CAPACITY);
 }
+
+#ifdef UG31XX_WAKEUP_ALARM
+
+static void ug31xx_gauge_alarm(struct alarm *alarm)
+{
+  GAUGE_info("[%s] wake up alarm\n", __func__);
+}
+
+static void ug31xx_program_alarm(int seconds)
+{
+	ktime_t low_interval = ktime_set(seconds, 0);
+	ktime_t slack = ktime_set(20, 0);
+	ktime_t next;
+
+	next = ktime_add(ug31->last_poll, low_interval);
+	alarm_start_range(&ug31->wakeup_alarm, next, ktime_add(next, slack));
+}
+
+#endif ///< end of UG31XX_WAKEUP_ALARM
 
 #define	UG31_BATTERY_MAX_UPDATE_INTERVAL	(100)
 
@@ -1587,7 +1590,10 @@ static void batt_info_update_work_func(struct work_struct *work)
 	mutex_lock(&ug31_dev->info_update_lock);
 	check_backup_file_routine();
 	#ifndef	UG31XX_USER_SPACE_ALGORITHM
-		ug31_module.set_capacity_suspend_mode(_UPI_FALSE_);
+		if(in_early_suspend == false)
+		{
+			ug31_module.set_capacity_suspend_mode(_UPI_FALSE_);
+		}
 	#endif	///< end of UG31XX_USER_SPACE_ALGORITHM
 	mutex_unlock(&ug31_dev->info_update_lock);
 
@@ -1600,12 +1606,7 @@ static void batt_info_update_work_func(struct work_struct *work)
 		schedule_delayed_work(&ug31_dev->batt_info_update_work, ug31_dev->update_time*HZ);
 	}
 
-	//tan aicl_dete_worker(NULL);
-	#ifdef CONFIG_EC_POWER
-	ec_power_changed_all();
-	#endif
-
-	if((is_charging_full() == true) && (enable_board_offset_cali_at_eoc == true) && (cur_cable_status != UG31XX_PAD_POWER))
+	if((is_charging_full() == true) && (enable_board_offset_cali_at_eoc == true))
 	{
 		enable_board_offset_cali_at_eoc = false;
 		if((ug31_dev->batt_avg_temp >= UG31XX_CALI_BO_LOW_TEMP) && (ug31_dev->batt_avg_temp <= UG31XX_CALI_BO_HIGH_TEMP))
@@ -1772,6 +1773,7 @@ static void ug31xx_early_suspend(struct early_suspend *e)
 		GAUGE_err("[%s] Fail in early suspend.\n", __func__);
 	}
 	rsoc_before_suspend = ug31_module.get_relative_state_of_charge();
+	ug31_module.set_capacity_suspend_mode(_UPI_TRUE_);
 	mutex_unlock(&ug31_dev->info_update_lock);
 
 	in_early_suspend = true;
@@ -1919,17 +1921,26 @@ static void ug31xx_config_earlysuspend(struct ug31xx_gauge *chip) { return; }
  */
 static void board_offset_cali_work_func(struct work_struct *work)
 {
-	if(is_charging() == false &&
-		cur_cable_status == UG31XX_AC_ADAPTER_CABLE)
-	{
-		mutex_lock(&ug31->info_update_lock);
-		ug31_module.calibrate_offset(UG31XX_BOARD_OFFSET_CALI_AVG);
-		mutex_unlock(&ug31->info_update_lock);
-	}
-	else
-		GAUGE_err("[%s] * cancel Board offset calibration *\n", __func__);
+	mutex_lock(&ug31->info_update_lock);
+	ug31_module.calibrate_offset(UG31XX_BOARD_OFFSET_CALI_AVG);
+	mutex_unlock(&ug31->info_update_lock);
+  
 	start_charging();
 	GAUGE_info("[%s] Board offset calibration done\n", __func__);
+}
+
+static void shell_timeout_work_func(struct work_struct *work)
+{
+  if(user_space_in_progress == true)
+  {
+    UG31_LOGI("[%s]: Daemon timeout\n", __func__);
+    user_space_in_progress = false;
+    mutex_unlock(&ug31->info_update_lock);
+    if(wake_lock_active(&ug31->shell_timeout_wake_lock) != 0)
+    {
+      wake_unlock(&ug31->shell_timeout_wake_lock);
+    }
+  }
 }
 
 static void shell_backup_work_func(struct work_struct *work)
@@ -1990,7 +2001,10 @@ static void shell_algorithm_work_func(struct work_struct *work)
 		schedule_delayed_work(&ug31->batt_power_update_work, 0*HZ);
 	} 
 
-	ug31_module.set_capacity_suspend_mode(_UPI_FALSE_);
+	if(in_early_suspend == false)
+	{
+		ug31_module.set_capacity_suspend_mode(_UPI_FALSE_);
+	}
 
 	mutex_unlock(&ug31->info_update_lock);
 
@@ -2059,12 +2073,14 @@ static void batt_probe_work_func(struct work_struct *work)
 	INIT_DELAYED_WORK_DEFERRABLE(&ug31->board_offset_cali_work, board_offset_cali_work_func);
 	INIT_DELAYED_WORK_DEFERRABLE(&ug31->shell_algorithm_work, shell_algorithm_work_func);
 	INIT_DELAYED_WORK_DEFERRABLE(&ug31->shell_backup_work, shell_backup_work_func);
+	INIT_DELAYED_WORK_DEFERRABLE(&ug31->shell_timeout_work, shell_timeout_work_func);
 	*/
 	INIT_DELAYED_WORK(&ug31->batt_info_update_work, batt_info_update_work_func);
 	INIT_DELAYED_WORK(&ug31->batt_power_update_work, batt_power_update_work_func);
 	INIT_DELAYED_WORK(&ug31->board_offset_cali_work, board_offset_cali_work_func);
 	INIT_DELAYED_WORK(&ug31->shell_algorithm_work, shell_algorithm_work_func);
 	INIT_DELAYED_WORK(&ug31->shell_backup_work, shell_backup_work_func);
+	INIT_DELAYED_WORK(&ug31->shell_timeout_work, shell_timeout_work_func);
 	if(ug31xx_powersupply_init(ug31->client))
 	{
 		goto pwr_supply_fail;
@@ -2143,18 +2159,16 @@ static void batt_probe_work_func(struct work_struct *work)
 	//power_supply_changed(&ug31xx_supply[PWR_SUPPLY_BATTERY]);//tan#
 
 	/* register switch device for battery information versions report */
-	batt_dev.name = "battery";
-	batt_dev.print_name = batt_switch_name;
+//	batt_dev.name = "battery";
+//	batt_dev.print_name = batt_switch_name;
 	/// tan
-	/*
-	if (switch_dev_register(&batt_dev) < 0) {
-		GAUGE_err("%s: fail to register battery switch\n", __func__);
-		goto pwr_supply_fail;
-	}*/
+//	if (switch_dev_register(&batt_dev) < 0) {
+//		GAUGE_err("%s: fail to register battery switch\n", __func__);
+//		goto pwr_supply_fail;
+//	}
 	ug31xx_config_earlysuspend(ug31);
 
-	if(is_charging() == false &&
-		cur_cable_status == UG31XX_AC_ADAPTER_CABLE)
+	if(is_charging() == true)
 	{
 		ug31_module.calibrate_offset(UG31XX_BOARD_OFFSET_CALI_AVG);
 	}
@@ -2179,7 +2193,7 @@ static int ug31xx_i2c_probe(struct i2c_client *client,
 				      const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
-    printk("FactoryGGBXFile[4]:%x\n",FactoryGGBXFile[4]);
+
 	pr_info("<BATT> ++++++++++++++++ %s ++++++++++++++++\n", __func__);
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE))
 	{
@@ -2205,9 +2219,14 @@ static int ug31xx_i2c_probe(struct i2c_client *client,
 	mutex_init(&ug31->info_update_lock);
 	wake_lock_init(&ug31->batt_wake_lock, WAKE_LOCK_SUSPEND, "ug31xx_driver_update");
 	wake_lock_init(&ug31->shell_algorithm_wake_lock, WAKE_LOCK_SUSPEND, "ug31xx_shell_algorithm");
-
-	//tan INIT_DELAYED_WORK_DEFERRABLE(&ug31->batt_probe_work, batt_probe_work_func);
-	INIT_DELAYED_WORK(&ug31->batt_probe_work, batt_probe_work_func);//tan
+	wake_lock_init(&ug31->shell_timeout_wake_lock, WAKE_LOCK_SUSPEND, "ug31xx_shell_timeout");
+#ifdef UG31XX_WAKEUP_ALARM
+  	ug31->last_poll = alarm_get_elapsed_realtime();
+	alarm_init(&ug31->wakeup_alarm, ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP,
+		ug31xx_gauge_alarm);
+#endif ///< end of UG31XX_WAKEUP_ALARM
+	//INIT_DELAYED_WORK_DEFERRABLE(&ug31->batt_probe_work, batt_probe_work_func);
+	INIT_DELAYED_WORK(&ug31->batt_probe_work, batt_probe_work_func); //tan
 #ifdef  UG31XX_PROBE_CHARGER_OFF
 	probe_with_cable = is_charging();
 	if(probe_with_cable == true)
@@ -2245,6 +2264,7 @@ static  int ug31xx_i2c_remove(struct i2c_client *client)
 	mutex_lock(&ug31->info_update_lock);
 	wake_lock_destroy(&ug31->batt_wake_lock);
 	wake_lock_destroy(&ug31->shell_algorithm_wake_lock);
+	wake_lock_destroy(&ug31->shell_timeout_wake_lock);
 
 	#ifdef  UG31XX_REGISTER_POWERSUPPLY
 
@@ -2268,9 +2288,6 @@ static  int ug31xx_i2c_remove(struct i2c_client *client)
 	remove_proc_entry( "RM",NULL );
 	remove_proc_entry( "FCC",NULL );
 	remove_proc_entry( "bat_current",NULL );  
-	remove_proc_entry("upi_60", NULL);
-	remove_proc_entry("upi2", NULL);
-	remove_proc_entry("upi_auto", NULL);
 
 	#endif	///< end of UG31XX_PROC_DEV
 
@@ -2329,6 +2346,11 @@ static int ug31xx_i2c_suspend(struct i2c_client *client, pm_message_t mesg)
 
 	mutex_lock(&ug31->info_update_lock);
 	gg_status = ug31_module.set_capacity_suspend_mode(_UPI_TRUE_);
+  /// Setting wakeup alarm
+#ifdef UG31XX_WAKEUP_ALARM
+	ug31->last_poll = alarm_get_elapsed_realtime();
+	ug31xx_program_alarm(UG31XX_WAKEUP_ALARM_TIME);
+#endif ///< end of UG31XX_WAKEUP_ALARM
 	mutex_unlock(&ug31->info_update_lock);
 
 	ug31xx_drv_status = UG31XX_DRV_SUSPEND;
@@ -2490,6 +2512,7 @@ static void ug31xx_i2c_shutdown(struct i2c_client *client)
 	cancel_delayed_work_sync(&ug31->batt_power_update_work);
 	cancel_delayed_work_sync(&ug31->shell_algorithm_work);
 	cancel_delayed_work_sync(&ug31->shell_backup_work);
+	cancel_delayed_work_sync(&ug31->shell_timeout_work);
 
 	mutex_lock(&ug31->info_update_lock);
 	gg_status = ug31_module.shutdown();
@@ -2514,28 +2537,16 @@ static const struct i2c_device_id ug31xx_i2c_id[] = {
 
 MODULE_DEVICE_TABLE(i2c, ug31xx_i2c_id);
 
-#ifndef CHRIS
-static const struct dev_pm_ops ug31xx_pm_ops = {
-	.suspend = ug31xx_i2c_suspend,
-	.resume = ug31xx_i2c_resume,
-};
-#endif
-
 static struct i2c_driver ug31xx_i2c_driver = {
 	.driver    = {
 		.name  = UG31XX_DEV_NAME,
 		.owner = THIS_MODULE,
-#ifndef CHRIS
-		.pm	= &ug31xx_pm_ops,
-#endif
 	},
 	.probe     = ug31xx_i2c_probe,
 	//tan.remove    = __devexit_p(ug31xx_i2c_remove),
 	.remove    = ug31xx_i2c_remove,
-#ifdef CHRIS
 	.suspend   = ug31xx_i2c_suspend,
 	.resume    = ug31xx_i2c_resume,
-#endif
 	.shutdown  = ug31xx_i2c_shutdown,
 	.id_table  = ug31xx_i2c_id,
 };

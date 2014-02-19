@@ -270,11 +270,11 @@ int ug31xx_write_backup_tag(const char *name, u8 *data)
    * @para  fp  address of struct file
    * @return  _UPI_TRUE_ if file is opened
    */
-#ifdef  uG31xx_BOOT_LOADER
+#if defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 
 #define is_err
 
-#else   ///< else of uG31xx_BOOT_LOADER
+#else   ///< else of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 
 _upi_bool_ is_err(struct file *fp)
 {
@@ -285,11 +285,11 @@ _upi_bool_ is_err(struct file *fp)
   #else   ///< else of uG31xx_OS_WINDOWS
 
     return (IS_ERR(fp) ? _UPI_TRUE_ : _UPI_FALSE_);
-  
+
   #endif  ///< end of uG31xx_OS_WINDOWS
 }
 
-#endif  ///< end of uG31xx_BOOT_LOADER
+#endif  ///< end of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 
 #ifndef uG31xx_OS_WINDOWS
 
@@ -372,69 +372,69 @@ _upi_u8_ clear_file_op_status_bit(_upi_u8_ bit_sts)
 
     #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
 
-      struct subprocess_info *sub_info;
-      char *argv[] = {shell_ap_name, "BACKUP_FILE", "EXIST", filename, NULL};
-      char *env[] = {NULL};
-      int rtn;
+    struct subprocess_info *sub_info;
+    char *argv[] = {shell_ap_name, "BACKUP_FILE", "EXIST", filename, NULL};
+    char *env[] = {NULL};
+    int rtn;
 
-      sub_info = NULL;
-      sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
-      if(sub_info == NULL)
+    sub_info = NULL;
+    sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
+    if(sub_info == NULL)
+    {
+      return (_UPI_FALSE_);
+    }
+    UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d)\n", __func__, (int)sub_info);
+
+    rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
+    UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
+    return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
+      
+  #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+
+  #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
+    if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
+    {
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+      return (_UPI_FALSE_);
+    }
+
+    if(get_file_op_status() & UG31XX_USER_FILE_EXIST)
+    {
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+      return (_UPI_TRUE_);        
+    }
+
+    set_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+    set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+    return (_UPI_FALSE_);
+        
+  #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
+    struct file *fp;
+    _upi_u8_ retry;
+    
+    retry = 3;
+    while(retry)
+    {
+      fp = filp_open(filename, O_RDONLY, 0644);
+      if(!is_err(fp))
       {
-        return (_UPI_FALSE_);
+        break;
       }
-      UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d)\n", __func__, (int)sub_info);
+    
+      retry = retry - 1;
+    }
+    if(retry == 0)
+    {
+      return (_UPI_FALSE_);
+    }
 
-      rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
-      UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
-      return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
-      
-    #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+    filp_close(fp, _UPI_NULL_);
 
-      #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
-
-        if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
-        {
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-          return (_UPI_FALSE_);
-        }
-
-        if(get_file_op_status() & UG31XX_USER_FILE_EXIST)
-        {
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-          return (_UPI_TRUE_);        
-        }
-
-        set_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-        set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-        return (_UPI_FALSE_);
-        
-      #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
-      
-        struct file *fp;
-        _upi_u8_ retry;
-        
-        retry = 3;
-        while(retry)
-        {
-          fp = filp_open(filename, O_RDONLY, 0644);
-          if(!is_err(fp))
-          {
-            break;
-          }
-        
-          retry = retry - 1;
-        }
-        if(retry == 0)
-        {
-          return (_UPI_FALSE_);
-        }
-
-        filp_close(fp, _UPI_NULL_);
-
-      #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+  #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
       
     #endif  ///< end of UG31XX_USE_SHELL_AP_FOR_FILE_OP
     
@@ -461,11 +461,11 @@ _upi_u8_ clear_file_op_status_bit(_upi_u8_ bit_sts)
  * @para  data  address of data buffer to be written
  * @para  size  size of data buffer
  */
-#ifdef  uG31xx_BOOT_LOADER
+#if defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 
 #define write_file
 
-#else   ///< else of uG31xx_BOOT_LOADER
+#else   ///< else of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 
 void write_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
 {
@@ -506,7 +506,7 @@ void write_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
   set_fs(oldFS);
 }
 
-#endif  ///< end of uG31xx_BOOT_LOADER
+#endif  ///< end of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 
 /**
  * @brief create_backup_file
@@ -528,74 +528,74 @@ void write_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
 
     #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
   
-      struct subprocess_info *sub_info;
-      char *argv[] = {shell_ap_name, "BACKUP_FILE", "CREATE", filename, NULL};
-      char *env[] = {NULL};
-      int rtn;
+    struct subprocess_info *sub_info;
+    char *argv[] = {shell_ap_name, "BACKUP_FILE", "CREATE", filename, NULL};
+    char *env[] = {NULL};
+    int rtn;
+  
+    sub_info = NULL;
+    sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
+    if(sub_info == NULL)
+    {
+      return (_UPI_FALSE_);
+    }
+    UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
+  
+    rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
+    UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
+    return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
     
-      sub_info = NULL;
-      sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
-      if(sub_info == NULL)
-      {
-        return (_UPI_FALSE_);
-      }
-      UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
-    
-      rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
-      UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
-      return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
-    
-    #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+  #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
 
-      #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+  #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
 
-        if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
-        {
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-          return (_UPI_FALSE_);          
-        }
+    if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
+    {
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+      return (_UPI_FALSE_);          
+    }
 
-        if(get_file_op_status() & UG31XX_USER_FILE_WRITE)
-        {
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-          return (_UPI_TRUE_);
-        }
+    if(get_file_op_status() & UG31XX_USER_FILE_WRITE)
+    {
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+      return (_UPI_TRUE_);
+    }
 
-        clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-        clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-        set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-        set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-        return (_UPI_FALSE_);
+    clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+    clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+    set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+    set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+    return (_UPI_FALSE_);
         
-      #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+  #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
       
-        struct file *fp;
-        _upi_u8_ retry;
-        
-        retry = 3;
-        while(retry)
-        {
-          fp = filp_open(filename, O_CREAT | O_RDWR, 0644);
-          if(!is_err(fp))
-          {
-            break;
-          }
-        
-          retry = retry - 1;
-        }
-        if(retry == 0)
-        {
-          return (_UPI_FALSE_);
-        }
+    struct file *fp;
+    _upi_u8_ retry;
+    
+    retry = 3;
+    while(retry)
+    {
+      fp = filp_open(filename, O_CREAT | O_RDWR, 0644);
+      if(!is_err(fp))
+      {
+        break;
+      }
+    
+      retry = retry - 1;
+    }
+    if(retry == 0)
+    {
+      return (_UPI_FALSE_);
+    }
 
-        /// [AT-PM] : Write data to file ; 02/21/2013
-        write_file(fp, data, size);
+    /// [AT-PM] : Write data to file ; 02/21/2013
+    write_file(fp, data, size);
 
-        filp_close(fp, _UPI_NULL_);
+    filp_close(fp, _UPI_NULL_);
 
       #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
       
@@ -645,7 +645,7 @@ static _upi_u8_ memory_buffer[MEMORY_BUFFER_COUNT][MEMORY_BUFFER_SIZE];
 void upi_free(void *obj)
 {
   #if defined(uG31xx_OS_ANDROID)
-    #ifdef  uG31xx_BOOT_LOADER
+    #if defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
       #ifdef  uG31xx_NO_MEM_UNIT
         _upi_u8_ idx;
 
@@ -662,9 +662,9 @@ void upi_free(void *obj)
       #else   ///< else of uG31xx_NO_MEM_UNIT
         free(obj);
       #endif  ///< end of uG31xx_NO_MEM_UNIT
-    #else   ///< else of uG31xx_BOOT_LOADER
+    #else   ///< else of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
       kfree(obj);
-    #endif  ///< end of uG31xx_BOOT_LOADER
+    #endif  ///< end of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
   #else   ///< else of defined(uG31xx_OS_ANDROID)
     free(obj);
   #endif  ///< end of defined(uG31xx_OS_ANDROID)
@@ -683,7 +683,7 @@ void upi_free(void *obj)
 void *upi_malloc(_upi_u32_ size)
 {
   #if defined(uG31xx_OS_ANDROID)
-    #ifdef  uG31xx_BOOT_LOADER
+    #if defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
       #ifdef  uG31xx_NO_MEM_UNIT
         _upi_u8_ idx;
 
@@ -701,9 +701,9 @@ void *upi_malloc(_upi_u32_ size)
       #else   ///< else of uG31xx_NO_MEM_UNIT
         return (malloc(size));
       #endif  ///< end of uG31xx_NO_MEM_UNIT
-    #else   ///< else of uG31xx_BOOT_LOADER
+    #else   ///< else of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
       return (kzalloc(size, GFP_KERNEL));
-    #endif  ///< end of uG31xx_BOOT_LOADER
+    #endif  ///< end of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
   #else   ///< else of defined(uG31xx_OS_ANDROID)
 	  return (malloc(size));
   #endif  ///< end of defined(uG31xx_OS_ANDROID)
@@ -747,11 +747,11 @@ void upi_memcpy(void *dest, void *src, _upi_u32_ size)
  * @para  data  address of BackupDataType
  * @para  fp  address of struct fp
  */
-#ifdef  uG31xx_BOOT_LOADER
+#if defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 
 #define read_file
 
-#else   ///< else of uG31xx_BOOT_LOADER
+#else   ///< else of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 
 void read_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
 {  
@@ -792,7 +792,7 @@ void read_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
   set_fs(oldFS);
 }
 
-#endif  ///< end of uG31xx_BOOT_LOADER
+#endif  ///< end of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 
 /**
  * @brief read_backup_file
@@ -814,81 +814,81 @@ void read_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
   
     #ifndef CONFIG_ASUS_ENGINEER_MODE
 
-    #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
+  #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
   
-      struct subprocess_info *sub_info;
-      char *argv[] = {shell_ap_name, "BACKUP_FILE", "READ", filename, NULL};
-      char *env[] = {NULL};
-      int rtn;
-    
-      sub_info = NULL;
-      sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
-      if(sub_info == NULL)
+    struct subprocess_info *sub_info;
+    char *argv[] = {shell_ap_name, "BACKUP_FILE", "READ", filename, NULL};
+    char *env[] = {NULL};
+    int rtn;
+  
+    sub_info = NULL;
+    sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
+    if(sub_info == NULL)
+    {
+      return (_UPI_FALSE_);
+    }
+    UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
+  
+    rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
+    UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
+    return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
+  
+  #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+
+  #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
+    if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
+    {
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+      return (_UPI_FALSE_);
+    }
+
+    if(get_file_op_status() & UG31XX_USER_FILE_READ)
+    {
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+      return (_UPI_TRUE_);
+    }
+      
+    clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+    clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+    set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+    set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+    return (_UPI_FALSE_);
+
+  #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+      
+    struct file *fp;
+    _upi_u8_ retry;
+
+    retry = 3;
+    while(retry)
+    {
+      fp = filp_open(filename, O_RDWR, 0644);
+      if(!is_err(fp))
       {
-        return (_UPI_FALSE_);
+        break;
       }
-      UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
-    
-      rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
-      UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
-      return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
-  
-    #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
 
-      #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+      retry = retry - 1;
+    }
+    if(retry == 0)
+    {
+      return (_UPI_FALSE_);
+    }
 
-        if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
-        {
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-          return (_UPI_FALSE_);
-        }
+    /// [AT-PM] : Write data to file ; 02/21/2013
+    read_file(fp, data, size);
 
-        if(get_file_op_status() & UG31XX_USER_FILE_READ)
-        {
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-          return (_UPI_TRUE_);
-        }
-          
-        clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-        clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-        set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-        set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-        return (_UPI_FALSE_);
+    filp_close(fp, _UPI_NULL_);
 
-      #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+  #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
       
-        struct file *fp;
-        _upi_u8_ retry;
-
-        retry = 3;
-        while(retry)
-        {
-          fp = filp_open(filename, O_RDWR, 0644);
-          if(!is_err(fp))
-          {
-            break;
-          }
-
-          retry = retry - 1;
-        }
-        if(retry == 0)
-        {
-          return (_UPI_FALSE_);
-        }
-
-        /// [AT-PM] : Write data to file ; 02/21/2013
-        read_file(fp, data, size);
-
-        filp_close(fp, _UPI_NULL_);
-
-      #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
-      
-    #endif  ///< end of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+  #endif  ///< end of UG31XX_USE_SHELL_AP_FOR_FILE_OP
 
     #else
     if (ug31xx_restore_config_data("ug31xx", data, size)) {
@@ -923,79 +923,79 @@ void read_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
   
     #ifndef CONFIG_ASUS_ENGINEER_MODE
 
-    #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
+  #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
   
-      struct subprocess_info *sub_info;
-      char *argv[] = {shell_ap_name, "BACKUP_FILE", "WRITE", filename, NULL};
-      char *env[] = {NULL};
-      int rtn;
-    
-      sub_info = NULL;
-      sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
-      if(sub_info == NULL)
-      {
-        return (_UPI_FALSE_);
-      }
-      UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
-    
-      rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
-      UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
-      return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
+    struct subprocess_info *sub_info;
+    char *argv[] = {shell_ap_name, "BACKUP_FILE", "WRITE", filename, NULL};
+    char *env[] = {NULL};
+    int rtn;
   
-    #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+    sub_info = NULL;
+    sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
+    if(sub_info == NULL)
+    {
+      return (_UPI_FALSE_);
+    }
+    UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
+  
+    rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
+    UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
+    return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
+  
+  #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
 
-      #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+  #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
 
-        if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
-        {
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-          return (_UPI_FALSE_);
-        }
+    if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
+    {
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+      return (_UPI_FALSE_);
+    }
 
-        if(get_file_op_status() & UG31XX_USER_FILE_WRITE)
-        {
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-          clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-          set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-          return (_UPI_TRUE_);
-        }
-        
-        clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-        clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-        set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-        set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-        return (_UPI_FALSE_);
+    if(get_file_op_status() & UG31XX_USER_FILE_WRITE)
+    {
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+      clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+      set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+      return (_UPI_TRUE_);
+    }
+    
+    clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+    clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+    set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+    set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+    return (_UPI_FALSE_);
 
-      #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+  #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
       
-        struct file *fp;
-        _upi_u8_ retry;
-        
-        retry = 3;
-        while(retry)
-        {
-          fp = filp_open(filename, O_CREAT | O_RDWR, 0644);
-          if(!is_err(fp))
-          {
-            break;
-          }
-        
-          retry = retry - 1;
-        }
-        if(retry == 0)
-        {
-          return (_UPI_FALSE_);
-        }
-        
-        /// [AT-PM] : Write data to file ; 02/21/2013
-        write_file(fp, data, size);
+    struct file *fp;
+    _upi_u8_ retry;
+    
+    retry = 3;
+    while(retry)
+    {
+      fp = filp_open(filename, O_CREAT | O_RDWR, 0644);
+      if(!is_err(fp))
+      {
+        break;
+      }
+    
+      retry = retry - 1;
+    }
+    if(retry == 0)
+    {
+      return (_UPI_FALSE_);
+    }
+    
+    /// [AT-PM] : Write data to file ; 02/21/2013
+    write_file(fp, data, size);
 
-        filp_close(fp, _UPI_NULL_);
+    filp_close(fp, _UPI_NULL_);
 
-      #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+  #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
 
     #endif  ///< end of UG31XX_USE_SHELL_AP_FOR_FILE_OP
     
@@ -1058,15 +1058,15 @@ _upi_u32_ upi_memcmp(void *s1, void *s2, _upi_u32_ size)
  */
 _upi_u32_ GetTickCount(void) 
 {
-  #ifdef  uG31xx_BOOT_LOADER
+  #if defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 
     return (0);
 
-  #else   ///< else of uG31xx_BOOT_LOADER
+  #else   ///< else of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
   
     return jiffies_to_msecs(jiffies);      //20121121/jacky 
 
-  #endif  ///< end of uG31xx_BOOT_LOADER
+  #endif  ///< end of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 }
 
 /**
@@ -1078,11 +1078,11 @@ _upi_u32_ GetTickCount(void)
  */
 _upi_u32_ GetSysTickCount(void) 
 {
-  #ifdef  uG31xx_BOOT_LOADER
+  #if defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 
     return (0);
 
-  #else   ///< else of uG31xx_BOOT_LOADER
+  #else   ///< else of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
   
     struct timeval current_tick;
 
@@ -1090,7 +1090,7 @@ _upi_u32_ GetSysTickCount(void)
 
     return current_tick.tv_sec * 1000 + current_tick.tv_usec/1000;
 
-  #endif  ///< end of uG31xx_BOOT_LOADER
+  #endif  ///< end of defined(uG31xx_BOOT_LOADER) || defined(ANDROID_SHELL_ALGORITHM)
 }
 
 #endif  ///< end of defined(uG31xx_OS_ANDROID)
@@ -1167,31 +1167,6 @@ int ug31_printk(int level, const char *fmt, ...)
   #endif  ///< end of UG31XX_LIB_DEBUG_MSG
 }
 
-/**
- * @brief ug31_printk_special
- *
- *  Print debug message
- *
- * @para  level message level
- * @para  fmt message
- * @return  integer
- */
-int ug31_printk_special(int level, const char *fmt, ...) 
-{
-  va_list args;
-  int r;
-
-  r = 0;
-  if(level <= Ug31DebugEnable)
-  {
-    va_start(args, fmt);
-    r = vprintk(fmt, args);
-    va_end(args);
-  }
-
-  return (r);
-}
-
 #endif  ///< end of uG31xx_BOOT_LOADER
 
 #endif  ///< end of uG31xx_OS_WINDOWS
@@ -1223,7 +1198,7 @@ _upi_u32_ upi_strlen(char *stream)
 
 #ifndef uG31xx_OS_WINDOWS
 
-#ifndef uG31xx_BOOT_LOADER
+#if !defined(uG31xx_BOOT_LOADER) && !defined(ANDROID_SHELL_ALGORITHM)
 
 #define SECURITY_KEY    (0x5A)    //i2c read/write 
 #define ONE_BYTE        (0x1)
@@ -1431,7 +1406,7 @@ void API_I2C_Init(void *client)
   ug31xx_i2c_client_set((struct i2c_client *)client);
 }
 
-#endif  ///< end of uG31xx_BOOT_LOADER
+#endif  ///< end of !defined(uG31xx_BOOT_LOADER) && !defined(ANDROID_SHELL_ALGORITHM)
 
 #endif  ///< end of uG31xx_OS_WINDOWS
 

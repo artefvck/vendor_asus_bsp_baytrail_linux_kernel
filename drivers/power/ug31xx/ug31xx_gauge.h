@@ -26,16 +26,9 @@ typedef enum {
   UG31XX_GPIO_STS_UNKNOWN,
 } ug31xx_gpio_status_t;
 
-#if !defined(CONFIG_PF400CG) && !defined(CONFIG_ME175CG)
 #define UPI_UG31XX_SHELL_AP         ("/system/bin/upi_gg_ctl")
 #define	UPI_UG31XX_BACKUP_FILE		  ("/sdcard/upi_gg")
 #define UPI_UG31XX_BACKUP_SUSPEND   ("/sdcard/upi_table")
-#else
-#define UPI_UG31XX_SHELL_AP         ("/factory/upi_gg_ctl")
-#define	UPI_UG31XX_BACKUP_FILE		  ("/factory/upi_gg")
-#define UPI_UG31XX_BACKUP_SUSPEND   ("/factory/upi_table")
-#endif
-
 #define	UPI_UG31XX_MODULE_READY		  (1)
 #define	UPI_UG31XX_MODULE_NOT_READY	(0)
 #define	UPI_UG31XX_BATTERY_REMOVED	(1)
@@ -111,6 +104,7 @@ struct ug31xx_module_interface {
 	int (*get_update_time)(void);
 	int (*get_board_offset)(void);
 	int (*get_delta_q)(void);
+	int (*get_ggb_board_offset)(void);
 
 	int (*set_backup_file)(char enable);
 	int (*set_charger_full)(char is_full);
@@ -126,6 +120,8 @@ struct ug31xx_module_interface {
 	int (*set_backup_daemon_cntl)(unsigned char cntl);
 	int (*set_capacity_suspend_mode)(char in_suspend);
 	int (*set_cable_out)(unsigned char cntl);
+	int (*set_ggb_board_offset)(int offset);
+	int (*set_board_offset)(int offset);
 
 	int (*chk_backup_file)(void);
 	int (*enable_save_data)(char enable);

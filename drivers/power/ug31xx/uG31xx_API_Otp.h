@@ -4,7 +4,7 @@
  *  Header of OTP conversion module
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 315 $
+ * @revision  $Revision: 2 $
  */
 
 /// [AT-PM] : Product Type definition in OTP ; 01/23/2013

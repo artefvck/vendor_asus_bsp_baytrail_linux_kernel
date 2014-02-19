@@ -60,8 +60,6 @@
 #define CAP_STS_CHARGER_FULL        (1<<11)
 #define CAP_STS_CHG_CV_MODE         (1<<12)
 #define CAP_STS_CHG_FCC_UPDATE      (1<<13)
-#define CAP_STS_CHG_LOCK_TIME_OVER  (1<<14)
-#define CAP_STS_DSG_LOCK_TIME_OVER  (1<<15)
 #define CAP_STS_DSGCHARGE_INITED    (1<<16)
 #define CAP_STS_DSG_AFTER_FC        (1<<17)
 #define CAP_STS_DSG_REACH_EDVF      (1<<18)
@@ -69,6 +67,8 @@
 #define CAP_STS_V_UNDER_MIN_TABLE   (1<<20)
 #define CAP_STS_BOARD_OFFSET_KED    (1<<21)
 #define CAP_STS_FORCE_STEP_TO_100   (1<<22)
+#define CAP_STS_PREV_FC             (1<<23)
+#define CAP_STS_FILTER_LOCK_OVER    (1<<24)
 
 enum INDEX_BOUNDARY {
   INDEX_BOUNDARY_LOW = 0,
@@ -94,7 +94,10 @@ typedef struct CapacityInternalDataST {
   _cap_u16_ rm;
   _cap_u16_ fcc;
   _cap_u16_ fccRM;
-  
+
+  _cap_u8_ filterNewRsoc;  
+  _cap_u8_ filterLastRsoc;
+
 #if defined(uG31xx_OS_ANDROID)
   } __attribute__ ((packed)) CapacityInternalDataType;
 #else   ///< else of defined(uG31xx_OS_ANDROID)	      
@@ -146,12 +149,12 @@ void GetBatteryState(CapacityInternalDataType *obj)
   /// [AT-PM] : Update last state ; 01/25/2013
   tmp32 = (obj->info->status & CAP_STS_CURR_STATE) >> 2;
   
-  if(obj->info->measurement->curr < -(obj->info->ggbParameter->standbyCurrent))
+  if(obj->info->measurement->currAvg < -(obj->info->ggbParameter->standbyCurrent))
   {
     /// [AT-PM] : Discharging mode ; 01/25/2013
     tmp32 = tmp32 | CAP_STS_CURR_DSG;
   }
-  else if(obj->info->measurement->curr > obj->info->ggbParameter->standbyCurrent)
+  else if(obj->info->measurement->currAvg > obj->info->ggbParameter->standbyCurrent)
   {
     /// [AT-PM] : Charging mode ; 01/25/2013
     tmp32 = tmp32 | CAP_STS_CURR_CHG;
@@ -266,7 +269,7 @@ void PredictChargeCapacity(CapacityInternalDataType *obj)
   _cap_s16_ maxCurrStep;
   
   /// [AT-PM] : Check current is decreasing ; 08/02/2013
-  curr = (_cap_s16_)obj->info->measurement->curr;
+  curr = (_cap_s16_)obj->info->measurement->currAvg;
   curr = curr - obj->info->ggbParameter->TPCurrent;
   UG31_LOGD("[%s]: Delta Charging Current = %d (%d) -> %d\n", __func__, curr, obj->info->lastCVDeltaChgCurr, obj->info->cvCheckCnt);
   if(obj->info->lastCVDeltaChgCurr <= 0)
@@ -304,7 +307,7 @@ void PredictChargeCapacity(CapacityInternalDataType *obj)
   }
   
   UG31_LOGD("[%s]: (0x%08x) %d -> %d (%d) \n", __func__, 
-            (unsigned int)obj->info->status, obj->info->measurement->curr, obj->info->ggbParameter->TPCurrent, maxCurrStep);
+            (unsigned int)obj->info->status, obj->info->measurement->currAvg, obj->info->ggbParameter->TPCurrent, maxCurrStep);
   
   /// [AT-PM] : Find the target RSOC ; 01/26/2013
   rsoc = FULL_CHARGE_RSOC - 1;
@@ -571,12 +574,16 @@ void FindOcvRM(CapacityInternalDataType *obj, _cap_u8_ tableIdx, _cap_u16_ volta
 void ChargeSpeedDown(CapacityInternalDataType *obj)
 {  
   _cap_s32_ tmp32 = 0;
+  _cap_u8_ rsoc;
 
   if(obj->info->transferStateToChg > 0)
   {
     UG31_LOGD("[%s] Start voltage = %d, RSOC = %d\n", __func__, obj->info->startChgVolt, obj->info->startChgRsoc);
     return;
   }
+
+  /// [AT-PM] : Calculate new RSOC ; 02/09/2014
+  rsoc = (_cap_u8_)CalculateRsoc((_cap_u32_)obj->rm, obj->info->fcc);
   
   /// [FC] : Predict charge rsoc before VBAT greater than TP voltage; 07/05/2013
   tmp32 = (_cap_s32_)obj->info->avgVoltage;
@@ -587,10 +594,18 @@ void ChargeSpeedDown(CapacityInternalDataType *obj)
     tmp32 = tmp32 / (obj->info->ggbParameter->TPVoltage - obj->info->startChgVolt);
   }
   tmp32 = tmp32 + obj->info->startChgRsoc;
-  UG31_LOGD("[%s] Predict RSOC = %d, Current RSOC = %d\n", __func__, (int)tmp32, obj->info->rsoc);
-  if(obj->info->rsoc > tmp32)
+  UG31_LOGD("[%s] Predict RSOC = %d, Current RSOC = %d (%d)\n", __func__, 
+            (int)tmp32, 
+            rsoc,
+            obj->info->rsoc);
+  if(rsoc > tmp32)
   {
     tmp32 = tmp32 * obj->fcc / CONST_PERCENTAGE;
+    UG31_LOGN("[%s]: Limit RM = %d from %d (%d - %d).\n", __func__,
+              tmp32,
+              obj->rm,
+              rsoc,
+              obj->info->fcc);
     obj->rm = (_cap_u16_)tmp32;
   }
 }
@@ -1176,6 +1191,30 @@ void FindNacRM(CapacityInternalDataType *obj, _cap_u16_ voltage)
     weightVolt = obj->idxNacVoltage[INDEX_BOUNDARY_LOW];
     weightCC = (SOV_NUMS - 1) - obj->idxNacVoltage[INDEX_BOUNDARY_LOW];
     tmp32 = SOV_NUMS - 1;
+    switch(obj->info->ggbParameter->NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_VOLTAGE_CC_WEIGHT)
+    {
+      case  NAC_LMD_ADJUST_CFG_VOLTAGE_CC_WEIGHT_1:
+        tmp32 = tmp32*tmp32;
+        weightCC = weightCC*weightCC;
+        break;
+      case  NAC_LMD_ADJUST_CFG_VOLTAGE_CC_WEIGHT_2:
+        tmp32 = tmp32*tmp32*tmp32;
+        weightCC = weightCC*weightCC*weightCC;
+        break;
+      case  NAC_LMD_ADJUST_CFG_VOLTAGE_CC_WEIGHT_3:
+        tmp32 = tmp32*tmp32*tmp32*tmp32;
+        weightCC = weightCC*weightCC*weightCC*weightCC;
+        break;
+      case  NAC_LMD_ADJUST_CFG_VOLTAGE_CC_WEIGHT_4:
+        tmp32 = tmp32*tmp32*tmp32*tmp32*tmp32;
+        weightCC = weightCC*weightCC*weightCC*weightCC*weightCC;
+        break;
+      default:
+        tmp32 = tmp32*tmp32;
+        weightCC = weightCC*weightCC;
+        break;
+    }
+    weightVolt = tmp32 - weightCC;
     UG31_LOGD("[%s]: CC Weight = %d, Voltage Weight = %d, Base = %d\n", __func__, (int)weightCC, (int)weightVolt, (int)tmp32);
     weightCC = weightCC*obj->fccRM;
     weightVolt = weightVolt*obj->rm;
@@ -1211,7 +1250,7 @@ void CalculateCRate(CapacityInternalDataType *obj)
   _cap_s32_ cRate;
   
   /// [AT-PM] : Calculate CRate ; 01/25/2013
-  cRate = (_cap_s32_)obj->info->measurement->curr;
+  cRate = (_cap_s32_)obj->info->measurement->currAvg;
   cRate = cRate*C_RATE_CONVERT_BASE/obj->info->ggbParameter->ILMD;
   obj->cRate = (_cap_u8_)cRate;
   cRate = (cRate + obj->info->avgCRate)/2;
@@ -1293,16 +1332,16 @@ void InitCharge(CapacityInternalDataType *obj)
     case CAP_STS_CURR_STANDBY:
       UG31_LOGN("[%s]: (0x%08x) CAP_STS_CURR_STANDBY\n", __func__, (unsigned int)obj->info->status);
       /// [AT-PM] : Loop up OCV table ; 01/25/2013
-      FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1Voltage);
+      FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1VoltageAvg);
       FindOcvFcc(obj);
-      FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1Voltage);
+      FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1VoltageAvg);
       obj->info->rm = obj->rm;
       break;
     case CAP_STS_CURR_CHG:
       UG31_LOGN("[%s]: (0x%08x) CAP_STS_CURR_CHG\n", __func__, (unsigned int)obj->info->status);
       /// [AT-PM] : Loop up charging table ; 01/25/2013
-      tmp16 = obj->info->measurement->bat1Voltage;
-      tmp16 = tmp16 - obj->info->measurement->curr/CHARGE_VOLTAGE_CONST;
+      tmp16 = obj->info->measurement->bat1VoltageAvg;
+      tmp16 = tmp16 - obj->info->measurement->currAvg/CHARGE_VOLTAGE_CONST;
       FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, tmp16);
       FindOcvFcc(obj);
       FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, tmp16);
@@ -1320,22 +1359,22 @@ void InitCharge(CapacityInternalDataType *obj)
       {
         (*CreateNacVoltageTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj);
       }
-      FindNacIdxVoltage(obj, (_cap_u16_)obj->info->measurement->bat1Voltage);
+      FindNacIdxVoltage(obj, (_cap_u16_)obj->info->measurement->bat1VoltageAvg);
       if(CreateNacTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
       {
         (*CreateNacTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj);
       }
       obj->fcc = obj->tableNac[0];
       obj->info->fcc = obj->tableNac[0];
-      FindNacRM(obj, (_cap_u16_)obj->info->measurement->bat1Voltage);
+      FindNacRM(obj, (_cap_u16_)obj->info->measurement->bat1VoltageAvg);
       obj->info->rm = obj->rm;
       break;
     default:
       UG31_LOGE("[%s]: (0x%08x) CAP_STS_UNKNOWN\n", __func__, (unsigned int)obj->info->status);
       /// [AT-PM] : Loop up OCV table ; 01/25/2013
-      FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1Voltage);
+      FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1VoltageAvg);
       FindOcvFcc(obj);
-      FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1Voltage);
+      FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1VoltageAvg);
       obj->info->rm = obj->rm;
       break;
   }
@@ -1993,6 +2032,24 @@ void UpdateTable(CapacityInternalDataType *obj)
   return;
 }
 
+/**
+ * @brief RsocFilterReset
+ *
+ *  Reset timer
+ *
+ * @para  obj address of CapacityInternalDataType
+ * @return  NULL
+ */
+void RsocFilterReset(CapacityInternalDataType *obj)
+{
+  obj->info->status = obj->info->status & (~CAP_STS_FILTER_LOCK_OVER);
+  obj->info->socTimeStep = 0;
+  obj->info->socTimeStepOverCnt = 0;
+  obj->info->socTimeFull = 0;
+  obj->info->socTimeFullOverCnt = 0;
+  obj->info->socTimeLock = 0;
+}
+
 
 /**
  * @brief GetCCRecordFromTable
@@ -2126,7 +2183,7 @@ void UpiInitCapacity(CapacityDataType *data)
   
   /// [AT-PM] : Initialize variables ; 01/25/2013
   data->status = CAP_STS_LAST_STANDBY | CAP_STS_CURR_STANDBY | CAP_STS_INIT_PROCEDURE;
-  data->status = data->status & (~CAP_STS_INIT_TIMER_PASS);
+  data->status = data->status & (~(CAP_STS_INIT_TIMER_PASS));
   data->tableUpdateIdx = SOV_NUMS;
   data->dsgChargeStart = (_cap_s32_)data->ggbParameter->ILMD*2;
   data->tableUpdateDisqTime = 0;
@@ -2155,10 +2212,10 @@ void UpiInitCapacity(CapacityDataType *data)
   UG31_LOGN("[%s]: CRate Table: %d / %d / %d / %d\n", __func__,
             CRateTable[0], CRateTable[1], CRateTable[2], CRateTable[3]);
   UG31_LOGN("[%s]: Current status: %d mV / %d mA / %d 0.1oC / %d 0.1oC\n", __func__,
-            data->measurement->bat1Voltage, data->measurement->curr, data->measurement->intTemperature, data->measurement->extTemperature);
+            data->measurement->bat1VoltageAvg, data->measurement->currAvg, data->measurement->intTemperature, data->measurement->extTemperature);
   
   /// [AT-PM] : Get battery state ; 01/25/2013
-  data->avgVoltage = (_cap_u16_)data->measurement->bat1Voltage;
+  data->avgVoltage = (_cap_u16_)data->measurement->bat1VoltageAvg;
   data->avgTemperature = GetBatteryTemperature(obj);
   GetBatteryState(obj);
   /// [AT-PM] : Release full charge condition ; 01/25/2013
@@ -2167,6 +2224,8 @@ void UpiInitCapacity(CapacityDataType *data)
   InitCharge(obj);
   /// [AT-PM] : Initialize record CC array ; 02/19/2013
   InitCCRecord(obj);
+  /// [AT-PM] : Reset RSOC filter ; 02/07/2014  
+  RsocFilterReset(obj);
   
   data->status = data->status & (~CAP_STS_INIT_PROCEDURE);
   #ifdef  UG31XX_SHELL_ALGORITHM

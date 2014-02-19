@@ -4,7 +4,7 @@
  *  Header of uG31xx capacity algorithm
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 428 $
+ * @revision  $Revision: 464 $
  */
 
 typedef char            _cap_bool_;
@@ -67,7 +67,6 @@ typedef struct CapacityDataST {
   _cap_u8_ lastRsoc;
 
   _cap_u32_ tpTime;
-  _cap_u32_ tpStepTime;
 
   _cap_s32_ dsgCharge;
   _cap_s32_ dsgChargeStart;
@@ -86,8 +85,6 @@ typedef struct CapacityDataST {
 
   _cap_s16_ ccRecord[SOV_NUMS];
   _cap_u8_ chgPredictSOCStep;
-  _cap_u32_ lockTimeChg;
-  _cap_u32_ lockTimeDsg;
   _cap_u8_ transferStateToChg;
   _cap_u16_ startChgVolt;
   _cap_u8_ startChgRsoc;
@@ -95,6 +92,12 @@ typedef struct CapacityDataST {
   _cap_s16_ lastCVDeltaChgCurr;
   _cap_u8_ cvCheckCnt;
 
+  _cap_u32_ socTimeStep;
+  _cap_u8_ socTimeStepOverCnt;
+  _cap_u32_ socTimeFull;
+  _cap_u8_ socTimeFullOverCnt;
+  _cap_u32_ socTimeLock;
+  
   _cap_s16_ tableNac[SOV_NUMS];
   _cap_s16_ tableNacUpdate[SOV_NUMS];
 } ALIGNED_ATTRIBUTE CapacityDataType;

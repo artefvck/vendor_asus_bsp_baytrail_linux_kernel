@@ -11,7 +11,7 @@
  *  uG31xx system control
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 428 $
+ * @revision  $Revision: 461 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,7 +19,7 @@
 
 #if defined(uG31xx_OS_WINDOWS)
 
-#define SYSTEM_VERSION      (_T("System $Rev: 428 $"))
+#define SYSTEM_VERSION      (_T("System $Rev: 461 $"))
 
 _upi_bool_ ReadGGBFileToCellDataAndInitSetting(SystemDataType *obj)
 {
@@ -54,7 +54,7 @@ _upi_bool_ ReadGGBFileToCellDataAndInitSetting(SystemDataType *obj)
 
 #else   ///< else of defined(uG31xx_OS_WINDOWS)
 
-#define SYSTEM_VERSION      ("System $Rev: 428 $")
+#define SYSTEM_VERSION      ("System $Rev: 461 $")
 
 _upi_bool_ ReadGGBXFileToCellDataAndInitSetting(SystemDataType *obj)
 {
@@ -1054,7 +1054,7 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
                &u8Temp);
   data->fccFromIC = (_sys_u16_)u8TempHigh;
   data->fccFromIC = data->fccFromIC*256 + u8Temp;
-  UG31_LOGI("[%s]:timeTag =%u/%x ms,NAC = %d mAh,LMD = %dmAh\n",
+  UG31_LOGI("[%s]:timeTag =%d/%x ms,NAC = %d mAh,LMD = %dmAh\n",
              __func__,
              (int)data->timeTagFromIC,
              (int)data->timeTagFromIC,
@@ -1302,7 +1302,7 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
     #endif  ///< end of defined(BUILD_UG31XX_LIB)
 
   #endif  ///< end of defined(uG31xx_OS_ANDROID)
-  UG31_LOGI("[%s]:timeTag =%u/%x ms,NAC = %d maH,LMD = %d maH\n",
+  UG31_LOGI("[%s]:timeTag =%d/%x ms,NAC = %d maH,LMD = %d maH\n",
   						__func__, 
   						(int)data->timeTagFromIC,
   						(int)data->timeTagFromIC,

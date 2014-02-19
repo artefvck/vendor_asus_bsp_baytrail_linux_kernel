@@ -4,7 +4,7 @@
  *  Define the platform for uG31xx driver
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 416 $
+ * @revision  $Revision: 22 $
  */
 
 #ifndef BUILD_UG31XX_LIB

@@ -52,6 +52,7 @@ void CreateBackupBuffer(BackupDataType *data)
   data->backupBufferSize = data->backupBufferSize + sizeof(data->sysData->standbyDsgRatio);
   data->backupBufferSize = data->backupBufferSize + sizeof(data->backupVolt1);
   data->backupBufferSize = data->backupBufferSize + sizeof(data->backupVolt2);
+  data->backupBufferSize = data->backupBufferSize + sizeof(data->capData->preDsgCharge);
   data->backupBufferSize = data->backupBufferSize + sizeof(_backup_u32_);     ///< [AT-PM] : Used for driver version ; 11/07/2013
   UG31_LOGN("[%s]: Total %d bytes need to be created for written to file.\n", __func__, data->backupBufferSize);
 
@@ -109,6 +110,8 @@ void PrepareData(BackupDataType *data)
   ptr = ptr + sizeof(data->backupVolt1)/sizeof(_backup_u8_);
   upi_memcpy(ptr, (_backup_u8_ *)&data->backupVolt2, sizeof(data->backupVolt2)/sizeof(_backup_u8_));
   ptr = ptr + sizeof(data->backupVolt2)/sizeof(_backup_u8_);
+  upi_memcpy(ptr, (_backup_u8_ *)&data->capData->preDsgCharge, sizeof(data->capData->preDsgCharge)/sizeof(_backup_u8_));
+  ptr = ptr + sizeof(data->capData->preDsgCharge)/sizeof(_backup_u8_);
   upi_memcpy(ptr, (_backup_u8_ *)&driverVer, sizeof(driverVer)/sizeof(_backup_u8_));
 }
 
@@ -154,6 +157,8 @@ _backup_u32_ ConvertData(BackupDataType *data)
   ptr = ptr + sizeof(data->backupVolt1)/sizeof(_backup_u8_);  
   upi_memcpy((_backup_u8_ *)&data->backupVolt2, ptr, sizeof(data->backupVolt2)/sizeof(_backup_u8_));
   ptr = ptr + sizeof(data->backupVolt2)/sizeof(_backup_u8_);  
+  upi_memcpy((_backup_u8_ *)&data->capData->preDsgCharge, ptr, sizeof(data->capData->preDsgCharge)/sizeof(_backup_u8_));
+  ptr = ptr + sizeof(data->capData->preDsgCharge)/sizeof(_backup_u8_);  
   upi_memcpy((_backup_u8_ *)&driverVer, ptr, sizeof(driverVer)/sizeof(_backup_u8_));
   UG31_LOGI("[%s]: Read driver version = %d (%d)\n", __func__, (int)driverVer, UG31XX_DRIVER_VERSION);
   return (driverVer);
@@ -216,6 +221,7 @@ _backup_u8_ CheckBackupFile(BackupDataType *data)
   data->sysData->timeTagFromIC = orgSysData->timeTagFromIC;
   data->sysData->deltaCapFromIC = orgSysData->deltaCapFromIC;
   data->sysData->adc1ConvTime = orgSysData->adc1ConvTime;
+  data->capData->preDsgCharge = orgCapData->preDsgCharge;
   
   /// [AT-PM] : Check data ; 02/21/2013
   if(driverVer != UG31XX_DRIVER_VERSION)

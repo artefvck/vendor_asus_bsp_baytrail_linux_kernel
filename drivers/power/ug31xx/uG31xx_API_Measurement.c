@@ -11,7 +11,7 @@
  *  guG31xx measurement API
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 441 $
+ * @revision  $Revision: 463 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,11 +19,11 @@
 
 #ifdef  uG31xx_OS_WINDOWS
 
-  #define MEASUREMENT_VERSION      (_T("Measurement $Rev: 441 $"))
+  #define MEASUREMENT_VERSION      (_T("Measurement $Rev: 463 $"))
 
 #else   ///< else of uG31xx_OS_WINDOWS
 
-  #define MEASUREMENT_VERSION      ("Measurement $Rev: 441 $")
+  #define MEASUREMENT_VERSION      ("Measurement $Rev: 463 $")
 
 #endif  ///< end of uG31xx_OS_WINDOWS
 
@@ -1003,18 +1003,20 @@ void ConvertCharge(MeasDataInternalType *obj)
 void TimeTick(MeasDataInternalType *obj)
 {
   if(MEAS_IN_SUSPEND_MODE(obj->info->status) == _UPI_TRUE_)
-  {
+  {    
     /// [AT-PM] : Prevent adc conversion count overflow ; 06/11/2013
     if(obj->codeCounter < obj->info->lastCounter)
     {
-      obj->info->deltaTime = 0;
-      UG31_LOGE("[%s]: Counter overflow in internal suspend mode, deltaTime = %d\n", __func__, (int)obj->info->deltaTime);
-      return;
+      obj->info->deltaTime = (_meas_u32_)obj->codeCounter;
+      UG31_LOGE("[%s]: Counter overflow in internal suspend mode, counter = %d\n", __func__, 
+                (int)obj->codeCounter);
     }
-    
+    else
+    {
+      obj->info->deltaTime = (_meas_u32_)obj->codeCounter;
+      obj->info->deltaTime = obj->info->deltaTime - obj->info->lastCounter;
+    }
     /// [AT-PM] : Use conversion count to estimate delta time ; 06/11/2013
-    obj->info->deltaTime = (_meas_u32_)obj->codeCounter;
-    obj->info->deltaTime = obj->info->deltaTime - obj->info->lastCounter;
     obj->info->deltaTime = obj->info->deltaTime*obj->info->adc1ConvertTime/TIME_CONVERT_TIME_TO_MSEC;
     UG31_LOGE("[%s]: In internal suspend mode, deltaTime = %d\n", __func__, (int)obj->info->deltaTime);
     return;
@@ -1025,10 +1027,10 @@ void TimeTick(MeasDataInternalType *obj)
   /// [AT-PM] : Prevent time tick overflow ; 01/25/2013
   if(obj->currTime <= obj->info->lastTimeTick)
   {
-    obj->info->deltaTime = 0;
-    obj->info->lastTimeTick = obj->currTime;
     UG31_LOGE("[%s]: OVERFLOW -> %d < %d\n", __func__, 
               (int)obj->currTime, (int)obj->info->lastTimeTick);
+    obj->info->deltaTime = obj->currTime;
+    obj->info->lastTimeTick = obj->currTime;
     return;
   }
 
@@ -1705,6 +1707,7 @@ void UpiResetCoulombCounter(MeasDataType *data)
 
   /// [AT-PM] : Get delta time ; 01/25/2013
   TimeTick(obj);
+  obj->info->deltaTimeDaemon = obj->info->deltaTimeDaemon + obj->info->deltaTime;
 
   /// [AT-PM] : Reset coulomb counter ; 01/30/2013
   ResetCoulombCounter(obj);
@@ -1739,6 +1742,7 @@ void UpiResetCoulombCounter(MeasDataType *data)
 }
 
 #define RESET_CC_CURRENT_MAGIC_NUMBER               (2)
+#define RESET_CC_DELTA_TIME                         (TIME_SEC_TO_HOUR*TIME_MSEC_TO_SEC)
 #define COULOMB_COUNTER_RESET_THRESHOLD_CHARGE_CHG  (30000)
 #define COULOMB_COUNTER_RESET_THREDHOLD_CHARGE_DSG  (-30000)
 
@@ -1758,6 +1762,7 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
   _meas_s16_ standbyUpper;
   _meas_s16_ standbyLower;
   _meas_u16_ tmp16;
+  _meas_s32_ tmp32;
   
   UG31_LOGI("[%s]: %s\n", __func__, MEASUREMENT_VERSION);
 
@@ -1775,7 +1780,7 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
 
   /// [AT-PM] : Get ADC code ; 06/04/2013
   rtn = FetchAdcCode(obj);
-  UG31_LOGI("[%s]: (%d-%d) V=%d, I=%d, IT=%d, ET=%d, CH=%d, CT=%d\n", __func__, 
+  UG31_LOGE("[%s]: (%d-%d) V=%d, I=%d, IT=%d, ET=%d, CH=%d, CT=%d\n", __func__, 
             select, obj->info->fetchRetryCnt, obj->codeBat1, obj->codeCurrent, 
             obj->codeIntTemperature, obj->codeExtTemperature, obj->codeCharge, obj->codeCounter);
   if(rtn != MEAS_RTN_PASS)
@@ -1787,12 +1792,13 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
   }
   
   /// [AT-PM] : Get delta time ; 01/25/2013
-  if(select == MEAS_SEL_ALL)
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_INITIAL))
   {
     TimeTick(obj);
+    obj->info->deltaTimeDaemon = obj->info->deltaTimeDaemon + obj->info->deltaTime;
   }
 
-  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_CURRENT))
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_CURRENT) || (select == MEAS_SEL_INITIAL))
   {
     /// [AT-PM] : Convert ADC characteristic from OTP ; 01/23/2013
     ConvertAdc1Data(obj);
@@ -1804,7 +1810,7 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
     /// [AT-PM] : Calculate ADC gain and offset ; 01/23/2013
     CalAdc1Factors(obj);
   }
-  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_VOLTAGE))
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_VOLTAGE) || (select == MEAS_SEL_INITIAL))
   {
     /// [AT-PM] : Convert ADC characteristic from OTP ; 01/23/2013
     ConvertAdc2Data(obj);
@@ -1818,42 +1824,72 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
   }  
 
   /// [AT-PM] : Calibrate ADC code ; 01/23/2013
-  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_VOLTAGE))
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_VOLTAGE) || (select == MEAS_SEL_INITIAL))
   {
     data->codeBat1 = (_meas_u16_)CalibrateAdc2Code(obj, (_meas_s32_)obj->codeBat1);
     UG31_LOGN("[%s]: VBat1 Code = %d -> %d\n", __func__, obj->codeBat1, data->codeBat1);
   }
-  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_CURRENT))
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_CURRENT) || (select == MEAS_SEL_INITIAL))
   {
     data->codeCurrent = (_meas_s16_)CalibrateAdc1Code(obj, (_meas_s32_)obj->codeCurrent);
     UG31_LOGN("[%s]: Current Code = %d -> %d\n", __func__, obj->codeCurrent, data->codeCurrent);
   }
-  if(select == MEAS_SEL_ALL)
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_INITIAL))
   {
     CalibrateChargeCode(obj);
   }
-  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_INT_TEMP))
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_INT_TEMP) || (select == MEAS_SEL_INITIAL))
   {
     data->codeIntTemperature = CalibrateITCode(obj, obj->codeIntTemperature);
     UG31_LOGN("[%s]: Internal Temperature Code = %d -> %d\n", __func__,
               obj->codeIntTemperature, data->codeIntTemperature);
   }
-  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_EXT_TEMP))
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_EXT_TEMP) || (select == MEAS_SEL_INITIAL))
   {
     data->codeExtTemperature = CalibrateETCode(obj);
     UG31_LOGN("[%s]: External Temperature Code = %d -> %d\n", __func__, obj->codeExtTemperature, data->codeExtTemperature);
   }
 
   /// [AT-PM] : Convert into physical value ; 01/23/2013
-  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_VOLTAGE))
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_VOLTAGE) || (select == MEAS_SEL_INITIAL))
   {
     ConvertBat1(obj);
+
+    if(select == MEAS_SEL_INITIAL)
+    {
+      obj->info->bat1VoltageAvg = obj->info->bat1Voltage;
+    }
+    else
+    {
+      tmp32 = (_meas_s32_)obj->info->bat1Voltage;
+      tmp32 = tmp32 + obj->info->bat1VoltageAvg;
+      tmp32 = tmp32/2;
+      obj->info->bat1VoltageAvg = (_meas_u16_)tmp32;
+      UG31_LOGN("[%s]: Average voltage = %d (%d)\n", __func__,
+                obj->info->bat1VoltageAvg,
+                obj->info->bat1Voltage);
+    }
   }
-  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_CURRENT))
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_CURRENT) || (select == MEAS_SEL_INITIAL))
   {
     ConvertCurrent(obj);
+
+    if(select == MEAS_SEL_INITIAL)
+    {
+      obj->info->currAvg = obj->info->curr;
+    }
+    else
+    {
+      tmp32 = (_meas_s32_)obj->info->curr;
+      tmp32 = tmp32 + obj->info->currAvg;
+      tmp32 = tmp32/2;
+      obj->info->currAvg = (_meas_u16_)tmp32;
+      UG31_LOGN("[%s]: Average current = %d (%d)\n", __func__,
+                obj->info->currAvg,
+                obj->info->curr);
+    }
   }
-  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_INT_TEMP))
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_INT_TEMP) || (select == MEAS_SEL_INITIAL))
   {
     ConvertIntTemperature(obj);
     
@@ -1862,7 +1898,7 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
       data->intTemperature = MEAS_FAKE_INT_TEMP_OFFSET + data->intTemperature%100;
     #endif  ///< end of MEAS_FAKE_INT_TEMP
   }
-  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_EXT_TEMP))
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_EXT_TEMP) || (select == MEAS_SEL_INITIAL))
   {
     /// [AT-PM] : Convert instant external temperature ; 11/27/2013
     tmp16 = obj->info->codeExtTemperature;
@@ -1873,7 +1909,7 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
     obj->info->codeExtTemperature = tmp16;
     ConvertExtTemperature(obj);
   }
-  if(select == MEAS_SEL_ALL)
+  if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_INITIAL))
   {
     ConvertCharge(obj);
 
@@ -1891,7 +1927,8 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
        (obj->codeCharge < COULOMB_COUNTER_RESET_THREDHOLD_CHARGE_DSG) ||
        ((obj->info->curr < standbyUpper) && 
         (obj->info->curr > standbyLower) && 
-        (obj->codeCounter > CONST_CONVERSION_COUNT_THRESHOLD*RESET_CC_CURRENT_MAGIC_NUMBER)))
+        (obj->codeCounter > CONST_CONVERSION_COUNT_THRESHOLD*RESET_CC_CURRENT_MAGIC_NUMBER)) ||
+       (obj->info->deltaTime > RESET_CC_DELTA_TIME))
     {
       ResetCoulombCounter(obj);
       data->lastDeltaCap = 0;
