@@ -597,15 +597,16 @@ static int pmc_suspend_enter(suspend_state_t state)
 		return -EINVAL;
 
 	last_s0i3_residency = pmc_register_read(STATE_S0I3);
-	trace_printk("s3_entry\n");
+	printk("s3_entry\n");
 
 	__monitor((void *)&temp, 0, 0);
 	smp_mb();
 	__mwait(BYT_S3_HINT, 1);
 
-	trace_printk("s3_exit\n");
+	printk("s3_exit\n");
 	s3_res = pmc_register_read(STATE_S0I3) - last_s0i3_residency;
 	if (s3_res) {
+		printk("s3_time = %d ms \n",(s3_res*32/1000));
 		pmc->state_residency[STATE_S3] += s3_res;
 		pmc->s3_count += 1;
 	}
