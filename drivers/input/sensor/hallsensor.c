@@ -28,7 +28,7 @@
 #define MASK 0
 #define UNMASK 1
 
-//#define HALL_DEBUG
+#define HALL_DEBUG
 #ifdef HALL_DEBUG
 #define p_debug(format, ...) printk(format, ## __VA_ARGS__)
 #else
@@ -441,6 +441,12 @@ static int lid_probe(struct platform_device *pdev){
 					DRIVER_NAME,hall_sensor_dev->irq);	
 		hall_set_pmic_reg();
 
+		//create input_dev
+		hall_sensor_dev->lid_indev = NULL;
+		ret = lid_input_device_create();
+		if (ret < 0)
+		goto fail_for_create_input_dev;
+
 		//set irq
 		ret = set_irq_hall_sensor();
 		if (ret < 0){
@@ -450,24 +456,20 @@ static int lid_probe(struct platform_device *pdev){
 		else{
 			p_debug("[%s]set_ire_hall_sensor->successfully.\n", DRIVER_NAME);
 			}
-		//create input_dev
-		hall_sensor_dev->lid_indev = NULL;
-		ret = lid_input_device_create();
-		if (ret < 0)
-		goto fail_for_create_input_dev;
+
 		wake_lock_init(&hall_sensor_dev->wake_lock,WAKE_LOCK_SUSPEND,
 			"lid_suspend_blocker") ;
 		return 0;
 		
-	fail_for_create_input_dev:		
-		free_irq(hall_sensor_dev->irq, hall_sensor_dev);	
-	
-	fail_for_irq_hall_sensor:
 		
+
+		free_irq(hall_sensor_dev->irq, hall_sensor_dev);
+	fail_for_irq_hall_sensor:
+		input_unregister_device(hall_sensor_dev->lid_indev);
+	fail_for_create_input_dev:
 	fail_for_set_gpio_hall_sensor:
 		kfree(hall_sensor_dev);
 		hall_sensor_dev=NULL;
-	
 	fail_for_hall_sensor:
 		kobject_put(hall_sensor_kobj);
 	return 0;
@@ -496,6 +498,7 @@ static void __exit hall_sensor_exit(void)
 {
 	p_debug("[%s]hall_sensor_exit\n", DRIVER_NAME);
 	free_irq(hall_sensor_dev->irq, hall_sensor_dev);
+//	input_unregister_device(hall_sensor_dev->lid_indev);
 	input_free_device(hall_sensor_dev->lid_indev);
 	hall_sensor_dev->lid_indev=NULL;
 	kfree(hall_sensor_dev);
