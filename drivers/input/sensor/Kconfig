@@ -7,7 +7,7 @@ menuconfig INPUT_SENSOR
 if INPUT_SENSOR
 
 config INPUT_SENSOR_ME181
-	bool "Sensor settins for ME181"
+	bool "Sensor settings for ME181"
         default n
 	depends on INPUT_SENSOR
 	help
@@ -46,5 +46,14 @@ config INPUT_SENSOR_HALLSENSOR
         default n
 	help
 	This is the hall sensor driver for android system.
+
+config INPUT_SENSOR_BMA2X2
+        bool "gsensor bma2x2 support"
+        default n
+	help
+	This is the gsensor driver for android system.
+
+
 endif
 
+source "drivers/input/sensor/bosch/Kconfig"
