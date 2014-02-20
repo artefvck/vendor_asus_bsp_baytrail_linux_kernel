@@ -413,6 +413,9 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 	} else {
 		input_event(input, type, button->code, !!state);
 	}
+
+	if((type == EV_KEY) && (button->code == KEY_POWER))
+		printk("PRESS KEY_POWER %d\n",state);
 	input_sync(input);
 }
 
