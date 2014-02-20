@@ -35,6 +35,8 @@
 #include <linux/extcon.h>
 #include <linux/mfd/intel_mid_pmic.h>
 #include <asm/intel_crystalcove_pwrsrc.h>
+#include <linux/acpi_gpio.h>
+#include <linux/gpio.h>
 
 #define CRYSTALCOVE_PWRSRCIRQ_REG	0x03
 #define CRYSTALCOVE_MPWRSRCIRQS0_REG	0x0F
@@ -228,13 +230,18 @@ pmic_read_fail:
 static irqreturn_t crystalcove_pwrsrc_isr(int irq, void *data)
 {
 	struct pwrsrc_info *info = data;
-	int pwrsrcirq;
+	int pwrsrcirq,id_value,gpio_handle;
 
 	pwrsrcirq = intel_mid_pmic_readb(CRYSTALCOVE_PWRSRCIRQ_REG);
 	if (pwrsrcirq < 0) {
 		dev_err(&info->pdev->dev, "PWRSRCIRQ read failed\n");
 		goto pmic_irq_fail;
 	}
+
+	gpio_handle = acpi_get_gpio("\\_SB.GPO2", 22);//ID pin
+	id_value = __gpio_get_value(gpio_handle);
+	if(!id_value)
+		goto pmic_irq_fail;
 
 	dev_dbg(&info->pdev->dev, "pwrsrcirq=%x\n", pwrsrcirq);
 	handle_pwrsrc_event(info, pwrsrcirq);
