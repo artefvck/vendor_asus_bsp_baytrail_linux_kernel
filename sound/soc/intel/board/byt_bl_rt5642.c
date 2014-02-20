@@ -57,6 +57,10 @@
 #include <asm/uaccess.h>
 #endif
 //terry_tao@asus.com-- audio debug mode
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+#include <asm/intel_vlv2.h>
+#define CODEC_RESET_N   (VV_NGPIO_SCORE + 16)	
+#endif
 
 #define BYT_PLAT_CLK_3_HZ	25000000
 #define BYT_CODEC_GPIO_IDX      0
@@ -1263,9 +1267,31 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 	int debug_gpio_ret;
 #endif
 	int jd_gpio;
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+	int codec_reset_gpio_ret;
+#endif
 
 	PMIC_enable_codec();
-
+	
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+	//steve_chen@asus.com++
+	pr_debug("Request Codec_Reset_Gpio = %d\n",CODEC_RESET_N);
+	codec_reset_gpio_ret = gpio_request(CODEC_RESET_N,"codec_reset_gpio");
+	if(codec_reset_gpio_ret)
+	{
+		printk("codec reset gpio request FAIL!!!!!\n");}
+	else
+	{
+		pr_debug("Codec Reset Gpio Request SUCCESS!!!!!\n");}
+	codec_reset_gpio_ret = gpio_direction_output(CODEC_RESET_N,1);
+	if(codec_reset_gpio_ret)
+	{
+		printk("gpio_direction_output FAIL!!!!!!\n");}
+	else
+	{
+		pr_debug("gpio_direction_output SUCCESS!!!!!!\n");}
+	//steve_chen@asus.com--
+#endif
 	pr_debug("Entry %s\n", __func__);
 	drv = devm_kzalloc(&pdev->dev, sizeof(*drv), GFP_ATOMIC);
 	if (!drv) {
@@ -1386,6 +1412,9 @@ static void snd_byt_mc_shutdown(struct platform_device *pdev)
 	struct byt_mc_private *drv = snd_soc_card_get_drvdata(soc_card);
 
 	pr_debug("In %s\n", __func__);
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+	gpio_free(CODEC_RESET_N);
+#endif
 	snd_byt_unregister_jack(drv);
 	PMIC_disable_codec();
 }
