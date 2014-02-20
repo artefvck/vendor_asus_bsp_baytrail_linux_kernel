@@ -171,6 +171,7 @@ int crystal_cove_vbus_on_status(void)
 }
 EXPORT_SYMBOL(crystal_cove_vbus_on_status);
 extern unsigned char VbusDetach ; 
+extern unsigned char vbus_Event ; 
 static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 {
 	int spwrsrc, mask;
@@ -180,6 +181,8 @@ static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 		goto pmic_read_fail;
 
 	if (pwrsrcirq & PWRSRC_VBUS_DET) {
+		vbus_Event = 1;
+		printk("wigman....%s...vbus_Event=%d\n",__func__,vbus_Event);
 		if (spwrsrc & PWRSRC_VBUS_DET) {
 			dev_dbg(&info->pdev->dev, "VBUS attach event\n");
 			mask = 1;
