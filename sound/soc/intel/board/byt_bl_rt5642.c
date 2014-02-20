@@ -468,6 +468,10 @@ static int byt_jack_soc_gpio_intr(void)
 	int ret;
 	int status;
 
+#ifdef CONFIG_PROC_FS
+	if(g_bDebugMode) return 0;
+#endif
+
 	mutex_lock(&ctx->jack_mlock);
 
 	pr_debug("Enter:%s", __func__);
