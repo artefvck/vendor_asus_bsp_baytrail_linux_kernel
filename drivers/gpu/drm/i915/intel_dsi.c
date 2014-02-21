@@ -819,6 +819,62 @@ intel_dsi_add_properties(struct intel_dsi *intel_dsi,
 	intel_attach_force_pfit_property(connector);
 }
 
+//sean_lu@asus.com ++++ for create ME176C panel_type proc_file
+#ifdef CONFIG_PRO_ME176_PANEL
+#define PANEL_TYPE_PROC_FILE  "driver/me176c_panel_type"
+static struct proc_dir_entry *panel_type_proc_file;
+
+static ssize_t panel_type_proc_read(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
+{
+	u8 panel_type = 1;
+	ssize_t ret = 0;
+	char *buff;
+	int desc = 0;
+	char cx[] = "1";
+	char c[] = "0";
+
+	buff = kmalloc(10,GFP_KERNEL);
+
+	if(!buff)
+	{
+		return -ENOMEM;
+	}
+
+	panel_type = intel_mid_pmic_readb(0x38);//GPIOxxxCTLI GPIO0P5  /PCB_ID5  //ME176C(GPIO0P5=0)/ME176CX(GPIO0P5=1)
+
+	if(panel_type)
+	{
+		desc += sprintf(buff + desc,"%s\n",cx);
+		printk("[panel] panel_type_proc_read--1--\n");
+	}
+	else
+	{
+		desc += sprintf(buff + desc,"%s\n",c);
+		printk("[panel] panel_type_proc_read--2--\n");
+	}
+
+	ret = simple_read_from_buffer(buffer,count,ppos,buff,desc);
+
+	kfree(buff);
+    return ret;
+}
+
+static struct file_operations panel_type_proc_ops = {
+    .read = panel_type_proc_read,
+};
+
+static void create_panel_type_proc_file(void)
+{
+    printk("[panel] create_me176c_panel_type_proc_file\n");
+    panel_type_proc_file = proc_create(PANEL_TYPE_PROC_FILE, 0666,NULL, &panel_type_proc_ops);
+    if(!panel_type_proc_file)
+	{
+		printk("create driver/me176c_panel_type fail\n");
+	}
+}
+#endif
+//sean_lu@asus.com ----
+
 //sean_lu@asusu.com ++++ for create panel_id_proc_file
 //#if IS_ENABLED(CONFIG_FACTORY_ITEMS) //only factory version, create it
 #ifdef CONFIG_PRO_ME181_PANEL
@@ -947,6 +1003,8 @@ bool intel_dsi_init(struct drm_device *dev)
 #ifdef CONFIG_PRO_ME176_PANEL
 		dev_priv->mipi_panel_id = MIPI_DSI_NOV_M176_PANEL_ID;
 		printk("----sean test----select 176 panel id:%d----\n",dev_priv->mipi_panel_id);
+
+		create_panel_type_proc_file();//sean_lu ++++ for ME176C panel_type_proc_create
 #endif
 
 #ifdef CONFIG_PRO_ME181_PANEL
