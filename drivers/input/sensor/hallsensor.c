@@ -267,6 +267,7 @@ static void lid_report_function(void)
 	else{
 		hall_sensor_dev->status = 0;
 	}
+	p_debug("[%s] lid_report_function()->GPIO report value = %d\n", DRIVER_NAME, hall_sensor_dev->status);
 	input_report_switch(hall_sensor_dev->lid_indev,
 		SW_LID,!(hall_sensor_dev->status)) ;
 	input_sync(hall_sensor_dev->lid_indev) ;
@@ -274,7 +275,7 @@ static void lid_report_function(void)
 }
 static irqreturn_t hall_sensor_interrupt_handler(int irq, void *dev_id)
 {
-	p_debug("[%s] hal_sensor_interrupt_handler->hall_sensor suspending = %d, GPIO report value = %d\n", DRIVER_NAME,suspending, hall_get_din());
+	p_debug("[%s] hal_sensor_interrupt_handler-> GPIO report value = %d\n", DRIVER_NAME,suspending, hall_get_din());
 	//wake_lock(&hall_sensor_dev->wake_lock) ;
 	lid_report_function();
 	return IRQ_HANDLED;
