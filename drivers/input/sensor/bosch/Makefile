@@ -5,6 +5,10 @@ obj-y += bstclass.o
 
 obj-$(CONFIG_SENSORS_BMA2X2)	+= bma2x2.o
 
+ifeq ($(CONFIG_INPUT_SENSOR_ME181),y)
+CFLAGS_bma2x2.o += -D CONFIG_INPUT_SENSOR_ME181
+endif
+
 ifeq ($(CONFIG_SENSORS_BMA2X2_ENABLE_INT1),y)
 	EXTRA_CFLAGS += -DBMA2X2_ENABLE_INT1
 endif
