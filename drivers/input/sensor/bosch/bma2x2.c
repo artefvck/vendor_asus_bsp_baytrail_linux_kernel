@@ -6750,7 +6750,7 @@ static int bma2x2_probe(struct i2c_client *client,
 	printk(KERN_INFO "BMA2x2 driver probe successfully");
 
 #ifdef SENSOR_FACTORY
-        proc_create("bma2x2", 0666, NULL, &bma_proc_ops);
+        proc_create("bma2x2", 0000, NULL, &bma_proc_ops);
 #endif
 	return 0;
 

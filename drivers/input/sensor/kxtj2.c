@@ -756,7 +756,9 @@ out:
 	kxtj2_device_power_off(tj2);
 	return retval;
 }
-
+#ifdef SENSOR_FACTORY
+static const struct file_operations kxtj2_proc_ops;
+#endif
 static int kxtj2_probe(struct i2c_client *client,
 				 const struct i2c_device_id *id)
 {
@@ -862,7 +864,9 @@ static int kxtj2_probe(struct i2c_client *client,
 	tj2->no_cal_data_z = 0;
         spin_lock_init(&tj2->axis_cal_lock);
 	#endif
-
+#ifdef SENSOR_FACTORY
+        proc_create("kxtj2", 0000, NULL, &kxtj2_proc_ops);
+#endif
 	return 0;
 
 err_free_irq:
