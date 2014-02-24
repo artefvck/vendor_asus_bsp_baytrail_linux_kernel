@@ -1407,6 +1407,11 @@ static int akm09911_i2c_check_device(
 
 	return err;
 }
+
+#ifdef SENSOR_FACTORY
+static const struct file_operations ak09911_proc_ops;
+#endif
+
 int akm_compass_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct akm09911_platform_data *pdata;
@@ -1528,6 +1533,10 @@ int akm_compass_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	}
 
 	dev_info(&client->dev, "successfully probed.");
+
+#ifdef SENSOR_FACTORY
+        proc_create("ak09911", 0000, NULL, &ak09911_proc_ops);
+#endif
 	return 0;
 
 exit6:
