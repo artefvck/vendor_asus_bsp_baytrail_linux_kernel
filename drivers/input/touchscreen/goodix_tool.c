@@ -21,7 +21,7 @@
  *        V1.8: compatible with Linux 3.10, 2014/01/08
  */
 
-#include "me181_gt928.h"
+#include "gt9271.h"
 
 
 #pragma pack(1)

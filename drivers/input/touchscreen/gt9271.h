@@ -1,5 +1,5 @@
 /* drivers/input/touchscreen/gt9xx.h
- * 
+ *
  * 2010 - 2013 Goodix Technology.
  * 
  * This program is free software; you can redistribute it and/or modify
@@ -35,6 +35,40 @@
 #include <linux/earlysuspend.h>
 #include <linux/slab.h>
 
+
+//***************************PART1:ON/OFF define*******************************
+#define GTP_CUSTOM_CFG        0
+#define GTP_CHANGE_X2Y        0
+#define GTP_DRIVER_SEND_CFG   1
+#define GTP_HAVE_TOUCH_KEY    0
+#define GTP_POWER_CTRL_SLEEP  1
+#define GTP_ICS_SLOT_REPORT   0 
+
+#define GTP_AUTO_UPDATE       1    // auto update fw by .bin file as default
+#define GTP_HEADER_FW_UPDATE  1    // auto update fw by gtp_default_FW in gt9xx_firmware.h, function together with GTP_AUTO_UPDATE
+#define GTP_AUTO_UPDATE_CFG   0    // auto update config by .cfg file, function together with GTP_AUTO_UPDATE
+
+#define GTP_COMPATIBLE_MODE   0    // compatible with GT9XXF
+
+#define GTP_CREATE_WR_NODE    1
+#define GTP_ESD_PROTECT       1    // esd protection with a cycle of 2 seconds
+#define GTP_WITH_PEN          0
+
+#define GTP_SLIDE_WAKEUP      0
+#define GTP_DBL_CLK_WAKEUP    0    // double-click wakeup, function together with GTP_SLIDE_WAKEUP
+
+#define GTP_DEBUG_ON          0
+#define GTP_DEBUG_ARRAY_ON    0
+#define GTP_DEBUG_FUNC_ON     0
+
+#if GTP_COMPATIBLE_MODE
+typedef enum
+{
+    CHIP_TYPE_GT9  = 0,
+    CHIP_TYPE_GT9F = 1,
+} CHIP_TYPE_T;
+#endif
+
 struct goodix_ts_data {
     spinlock_t irq_lock;
     struct i2c_client *client;
@@ -49,42 +83,35 @@ struct goodix_ts_data {
     u8  max_touch_num;
     u8  int_trigger_type;
     u8  green_wake_mode;
-    u8  chip_type;
     u8  enter_update;
     u8  gtp_is_suspend;
     u8  gtp_rawdiff_mode;
     u8  gtp_cfg_len;
     u8  fixed_cfg;
-    u8  esd_running;
     u8  fw_error;
+    u8  pnl_init_error;
+    
+#if GTP_ESD_PROTECT
+    spinlock_t esd_lock;
+    u8  esd_running;
+    s32 clk_tick_cnt;
+#endif
+
+#if GTP_COMPATIBLE_MODE
+    u16 bak_ref_len;
+    s32 ref_chk_fs_times;
+    s32 clk_chk_fs_times;
+    CHIP_TYPE_T chip_type;
+    u8 rqst_processing;
+    u8 is_950;
+#endif
+    
 };
 
 extern u16 show_len;
 extern u16 total_len;
 
-//***************************PART1:ON/OFF define*******************************
-#define GTP_CUSTOM_CFG        0
-#define GTP_CHANGE_X2Y        0
-#define GTP_DRIVER_SEND_CFG   1
-#define GTP_HAVE_TOUCH_KEY    0
-#define GTP_POWER_CTRL_SLEEP  1
-#define GTP_ICS_SLOT_REPORT   0
-
-#define GTP_AUTO_UPDATE       1     // auto updated by .bin file as default
-#define GTP_HEADER_FW_UPDATE  1     
-                               
-#define GTP_CREATE_WR_NODE    1
-#define GTP_ESD_PROTECT       1
-#define GTP_WITH_PEN          0
-
-#define GTP_SLIDE_WAKEUP      0
-#define GTP_DBL_CLK_WAKEUP    0     // double-click wakeup, function together with GTP_SLIDE_WAKEUP
-
-#define GTP_DEBUG_ON          0
-#define GTP_DEBUG_ARRAY_ON    0
-#define GTP_DEBUG_FUNC_ON     0
-
-#if IS_ENABLED(CONFIG_FACTORY_ITEMS)
+#if IS_ENABLED(CONFIG_FACTORY_ITEMS)	//factory test-ver0
 //*************************** PART2:TODO define **********************************
 // STEP_1(REQUIRED): Define Configuration Information Group(s)
 // Sensor_ID Map:
@@ -98,12 +125,14 @@ extern u16 total_len;
 */
 // TODO: define your own default or for Sensor_ID == 0 config here. 
 // The predefined one is just a sample config, which is not suitable for your tp in most cases.
-#define CTP_CFG_GROUP1 { \
-}
+#define CTP_CFG_GROUP1 {\
+    }
 
+    
 // TODO: define your config for Sensor_ID == 1 here, if needed
 #define CTP_CFG_GROUP2 {\
     }
+
 // TODO: define your config for Sensor_ID == 2 here, if needed
 #define CTP_CFG_GROUP3 {\
     }
@@ -132,7 +161,7 @@ extern u16 total_len;
     0x0D,0x0E,0x0F,0x10,0x11,0x12,0x13,0x14,0x19,0x1B,\
     0x1C,0x1E,0x1F,0x20,0x21,0x22,0x23,0x24,0x25,0x26,\
     0x27,0x28,0x29,0xFF,0x00,0x00,0x00,0x00,0x00,0x00,\
-    0x00,0x00,0x00,0x00,0xB0,0x01\
+    0x00,0x00,0x00,0x00,0xB0,0x01\	
     }
 
 // TODO: define your config for Sensor_ID == 5 here, if needed
@@ -157,8 +186,7 @@ extern u16 total_len;
 	0x27,0x28,0x29,0xFF,0x00,0x00,0x00,0x00,0x00,0x00,\
 	0x00,0x00,0x00,0x00,0xB0,0x01\
     }
-
-#else
+#else	//bsp test ver65
 //*************************** PART2:TODO define **********************************
 // STEP_1(REQUIRED): Define Configuration Information Group(s)
 // Sensor_ID Map:
@@ -172,12 +200,14 @@ extern u16 total_len;
 */
 // TODO: define your own default or for Sensor_ID == 0 config here. 
 // The predefined one is just a sample config, which is not suitable for your tp in most cases.
-#define CTP_CFG_GROUP1 { \
-}
+#define CTP_CFG_GROUP1 {\
+    }
 
+    
 // TODO: define your config for Sensor_ID == 1 here, if needed
 #define CTP_CFG_GROUP2 {\
     }
+
 // TODO: define your config for Sensor_ID == 2 here, if needed
 #define CTP_CFG_GROUP3 {\
     }
@@ -231,14 +261,13 @@ extern u16 total_len;
 	0x27,0x28,0x29,0xFF,0x00,0x00,0x00,0x00,0x00,0x00,\
 	0x00,0x00,0x00,0x00,0x6F,0x01\
     }
-	
 #endif
+
 // STEP_2(REQUIRED): Customize your I/O ports & I/O operations
 #define GTP_RST_PORT    60
 #define GTP_INT_PORT    158
-#define GTP_INT_IRQ     158
+#define GTP_INT_IRQ     gpio_to_irq(GTP_INT_PORT)
 #define GTP_INT_CFG     0
-#define GTP_I2C_SCLK    400*1000 //ASUS-CCA20130606 
 
 #define GTP_GPIO_AS_INPUT(pin)          do{\
                                             gpio_direction_input(pin);\
@@ -263,7 +292,6 @@ extern u16 total_len;
   #define GTP_INT_TRIGGER  1
 #endif
 #define GTP_MAX_TOUCH         10
-#define GTP_ESD_CHECK_CIRCLE  2000      // jiffy: ms
 
 // STEP_4(optional): If keys are available and reported as keys, config your key info here                             
 #if GTP_HAVE_TOUCH_KEY
@@ -271,9 +299,9 @@ extern u16 total_len;
 #endif
 
 //***************************PART3:OTHER define*********************************
-#define GTP_DRIVER_VERSION    "V1.8<2013/06/08>"
+#define GTP_DRIVER_VERSION    "V2.0<2013/08/28>"
 #define GTP_I2C_NAME          "Goodix-TS"
-#define GTP_POLL_TIME         10     // jiffy: ms
+#define GTP_POLL_TIME         10    
 #define GTP_ADDR_LENGTH       2
 #define GTP_CONFIG_MIN_LENGTH 186
 #define GTP_CONFIG_MAX_LENGTH 240
@@ -282,6 +310,36 @@ extern u16 total_len;
 #define SWITCH_OFF            0
 #define SWITCH_ON             1
 
+//******************** For GT9XXF Start **********************//
+#define GTP_REG_BAK_REF                 0x99D0
+#define GTP_REG_MAIN_CLK                0x8020
+#define GTP_REG_CHIP_TYPE               0x8000
+#define GTP_REG_HAVE_KEY                0x804E
+#define GTP_REG_MATRIX_DRVNUM           0x8069     
+#define GTP_REG_MATRIX_SENNUM           0x806A
+
+#define GTP_FL_FW_BURN              0x00
+#define GTP_FL_ESD_RECOVERY         0x01
+#define GTP_FL_READ_REPAIR          0x02
+
+#define GTP_BAK_REF_SEND                0
+#define GTP_BAK_REF_STORE               1
+#define CFG_LOC_DRVA_NUM                29
+#define CFG_LOC_DRVB_NUM                30
+#define CFG_LOC_SENS_NUM                31
+
+#define GTP_CHK_FW_MAX                  40
+#define GTP_CHK_FS_MNT_MAX              300
+#define GTP_BAK_REF_PATH                "/data/gtp_ref.bin"
+#define GTP_MAIN_CLK_PATH               "/data/gtp_clk.bin"
+#define GTP_RQST_CONFIG                 0x01
+#define GTP_RQST_BAK_REF                0x02
+#define GTP_RQST_RESET                  0x03
+#define GTP_RQST_MAIN_CLOCK             0x04
+#define GTP_RQST_RESPONDED              0x00
+#define GTP_RQST_IDLE                   0xFF
+
+//******************** For GT9XXF End **********************//
 // Registers define
 #define GTP_READ_COOR_ADDR    0x814E
 #define GTP_REG_SLEEP         0x8040
