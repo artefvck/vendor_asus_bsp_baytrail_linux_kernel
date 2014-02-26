@@ -66,7 +66,7 @@ u8 config[GTP_CONFIG_MAX_LENGTH + GTP_ADDR_LENGTH]
     
 #endif
 
-static s8 gtp_i2c_test(struct i2c_client *client);
+s8 gtp_i2c_test(struct i2c_client *client);
 void gtp_reset_guitar(struct i2c_client *client, s32 ms);
 s32 gtp_send_cfg(struct i2c_client *client);
 void gtp_int_sync(s32 ms);
@@ -79,6 +79,11 @@ static void goodix_ts_late_resume(struct early_suspend *h);
 #if GTP_CREATE_WR_NODE
 extern s32 init_wr_node(struct i2c_client*);
 extern void uninit_wr_node(void);
+#endif
+
+#if GTP_OPENSHORT_TEST
+extern s32 gtp_test_sysfs_init(void);
+extern void gtp_test_sysfs_deinit(void);
 #endif
 
 #if GTP_AUTO_UPDATE
@@ -1492,7 +1497,7 @@ Output:
     Executive outcomes.
         2: succeed, otherwise failed.
 *******************************************************/
-static s8 gtp_i2c_test(struct i2c_client *client)
+s8 gtp_i2c_test(struct i2c_client *client)
 {
     u8 test[3] = {GTP_REG_CONFIG_DATA >> 8, GTP_REG_CONFIG_DATA & 0xff};
     u8 retry = 0;
@@ -2291,6 +2296,15 @@ Output:
 #if GTP_ESD_PROTECT
     gtp_esd_switch(client, SWITCH_ON);
 #endif
+
+#if GTP_OPENSHORT_TEST
+	ret = gtp_test_sysfs_init();
+		if (ret)	{
+				GTP_ERROR("	Create test sysfs failed.\n");
+		}
+
+#endif
+
     return 0;
 }
 
@@ -2727,6 +2741,10 @@ static void goodix_ts_exit(void)
     {
         destroy_workqueue(goodix_wq);
     }
+ 
+#if GTP_OPENSHORT_TEST
+		gtp_test_sysfs_deinit();
+#endif
 }
 
 late_initcall(goodix_ts_init);

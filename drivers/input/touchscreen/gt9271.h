@@ -61,6 +61,11 @@
 #define GTP_DEBUG_ARRAY_ON    0
 #define GTP_DEBUG_FUNC_ON     0
 
+//add for factory test tool
+#define GTP_OPENSHORT_TEST	1
+#define AREA_ACCORD_CHECK		1
+#define ALL_ACCORD_CHECK		1
+
 #if GTP_COMPATIBLE_MODE
 typedef enum
 {
