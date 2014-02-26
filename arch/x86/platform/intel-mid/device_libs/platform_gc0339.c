@@ -279,7 +279,7 @@ static int gc0339_csi_configure(struct v4l2_subdev *sd, int flag)
 {
 	/* soc sensor, there is no raw bayer order (set to -1) */
 	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_SECONDARY, 1,
-		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_gbrg, flag);
+		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_rggb, flag);
 }
 
 static int gc0339_platform_init(struct i2c_client *client)
