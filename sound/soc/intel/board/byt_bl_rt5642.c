@@ -395,6 +395,8 @@ static void byt_check_hs_remove_status(struct work_struct *work)
 			   But as soon as the interrupt thread(byt_jack/_bp_detection) detected a jack
 			   removal, button processing gets disabled. Hence re-enable button processing
 			   in the case of headset */
+			schedule_delayed_work(&ctx->hs_insert_work,
+					msecs_to_jiffies(ctx->hs_det_poll_intrvl));
 			pr_debug(" spurious Jack remove event for headset; re-enable button events");
 			ctx->process_button_events = true;
 		}
