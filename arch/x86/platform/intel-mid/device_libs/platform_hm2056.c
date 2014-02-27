@@ -111,7 +111,7 @@ static int hm2056_gpio_init()
 		if(PCBVersion==1){
 			printk("<<< hm2056_gpio_init CAMERA_1_RESET\n");
 			ret = camera_sensor_gpio(CAMERA_1_RESET, NULL, GPIOF_DIR_OUT, 0);
-		}else{
+		}else if(PCBVersion==0){
 			printk("<<< hm2056_gpio_init CAMERA_0_RESET\n");
         	ret = camera_sensor_gpio(CAMERA_0_RESET, NULL, GPIOF_DIR_OUT, 0);
 		}
@@ -126,7 +126,7 @@ static int hm2056_gpio_init()
     if (camera_power_down < 0) {
 		if(PCBVersion==1){
 			ret = camera_sensor_gpio(CAMERA_1_PWDN, NULL, GPIOF_DIR_OUT, 0);
-		}else{
+		}else if(PCBVersion==0){
 			ret = camera_sensor_gpio(CAMERA_0_PWDN, NULL, GPIOF_DIR_OUT, 0);
 		}
         if (ret < 0){
@@ -200,7 +200,7 @@ static int hm2056_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 		int ret;
 		if(PCBVersion==1){
 			ret = vlv2_plat_set_clock_freq(OSC_CAM1_CLK,CLK_19P2MHz);
-		}else{
+		}else if(PCBVersion==0){
 			ret = vlv2_plat_set_clock_freq(OSC_CAM0_CLK,CLK_19P2MHz);
 		}
 		if(ret){
@@ -209,13 +209,13 @@ static int hm2056_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 	}
 	if(PCBVersion==1){
 		return vlv2_plat_configure_clock(OSC_CAM1_CLK,flag?flag:2);
-	}else{
+	}else if(PCBVersion==0){
 		return vlv2_plat_configure_clock(OSC_CAM0_CLK,flag?flag:2);
 	}
 #elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 	if(PCBVersion==1){
 		return intel_scu_ipc_osc_clk(OSC_CLK_CAM1, flag ? clock_khz : 0);
-	}else{
+	}else if(PCBVersion==0){
 		return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag ? clock_khz : 0);
 	}
 #else
@@ -233,6 +233,10 @@ static int hm2056_power_ctrl(struct v4l2_subdev *sd, int flag)
     if (flag){
         //turn on power 1.8V and 2.8V
         if (!camera_vprog1_on) {
+			if(PCBVersion==-1){
+				printk("hm2056_power_ctrl Error!!! PCBVersion = %d\n",PCBVersion);
+				return -1;
+			}
 			#ifdef CONFIG_CRYSTAL_COVE
 				ret = camera_set_pmic_power(CAMERA_1P8V, true);
 				if (ret)
@@ -281,7 +285,7 @@ static int hm2056_csi_configure(struct v4l2_subdev *sd, int flag)
 	if(PCBVersion==1){
 		return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_SECONDARY, LANES,
 				ATOMISP_INPUT_FORMAT_RAW_8, atomisp_bayer_order_grbg, flag);
-	}else{
+	}else if(PCBVersion==0){
     	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_PRIMARY, LANES,
     	        ATOMISP_INPUT_FORMAT_RAW_8, atomisp_bayer_order_grbg, flag);
 	}
