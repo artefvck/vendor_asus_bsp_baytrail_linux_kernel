@@ -155,7 +155,7 @@ static ssize_t _store_boost(const char *buf, size_t count)
 	put_online_cpus();
 
 	boost_enabled = val;
-	pr_debug("Core Boosting %sabled.\n", val ? "en" : "dis");
+	printk("Core Boosting %sabled.\n", val ? "en" : "dis");
 
 	return count;
 }
@@ -366,7 +366,7 @@ static u32 get_cur_val(const struct cpumask *mask)
 	cmd.mask = mask;
 	drv_read(&cmd);
 
-	pr_debug("get_cur_val = %u\n", cmd.val);
+	printk("get_cur_val = %u\n", cmd.val);
 
 	return cmd.val;
 }
@@ -377,7 +377,7 @@ static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
 	unsigned int freq;
 	unsigned int cached_freq;
 
-	pr_debug("get_cur_freq_on_cpu (%d)\n", cpu);
+	printk("get_cur_freq_on_cpu (%d)\n", cpu);
 
 	if (unlikely(data == NULL ||
 		     data->acpi_data == NULL || data->freq_table == NULL)) {
@@ -394,7 +394,7 @@ static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
 		data->resume = 1;
 	}
 
-	pr_debug("cur freq = %u\n", freq);
+	printk("cur freq = %u\n", freq);
 
 	return freq;
 }
@@ -425,7 +425,7 @@ static int acpi_cpufreq_target(struct cpufreq_policy *policy,
 	unsigned int next_perf_state = 0; /* Index into perf table */
 	int result = 0;
 
-	pr_debug("acpi_cpufreq_target %d (%d)\n", target_freq, policy->cpu);
+	printk("acpi_cpufreq_target %d (%d)\n", target_freq, policy->cpu);
 
 	if (unlikely(data == NULL ||
 	     data->acpi_data == NULL || data->freq_table == NULL)) {
@@ -445,11 +445,11 @@ static int acpi_cpufreq_target(struct cpufreq_policy *policy,
 	next_perf_state = data->freq_table[next_state].index;
 	if (perf->state == next_perf_state) {
 		if (unlikely(data->resume)) {
-			pr_debug("Called after resume, resetting to P%d\n",
+			printk("Called after resume, resetting to P%d\n",
 				next_perf_state);
 			data->resume = 0;
 		} else {
-			pr_debug("Already at target state (P%d)\n",
+			printk("Already at target state (P%d)\n",
 				next_perf_state);
 			goto out;
 		}
@@ -491,7 +491,7 @@ static int acpi_cpufreq_target(struct cpufreq_policy *policy,
 
 	if (acpi_pstate_strict) {
 		if (!check_freqs(cmd.mask, freqs.new, data)) {
-			pr_debug("acpi_cpufreq_target failed (%d)\n",
+			printk("acpi_cpufreq_target failed (%d)\n",
 				policy->cpu);
 			result = -EAGAIN;
 			goto out;
@@ -509,7 +509,7 @@ static int acpi_cpufreq_verify(struct cpufreq_policy *policy)
 {
 	struct acpi_cpufreq_data *data = per_cpu(acfreq_data, policy->cpu);
 
-	pr_debug("acpi_cpufreq_verify\n");
+	printk("acpi_cpufreq_verify\n");
 
 	return cpufreq_frequency_table_verify(policy, data->freq_table);
 }
@@ -602,11 +602,11 @@ static struct notifier_block boost_nb = {
 static int __init acpi_cpufreq_early_init(void)
 {
 	unsigned int i;
-	pr_debug("acpi_cpufreq_early_init\n");
+	printk("acpi_cpufreq_early_init\n");
 
 	acpi_perf_data = alloc_percpu(struct acpi_processor_performance);
 	if (!acpi_perf_data) {
-		pr_debug("Memory allocation error for acpi_perf_data.\n");
+		printk("Memory allocation error for acpi_perf_data.\n");
 		return -ENOMEM;
 	}
 	for_each_possible_cpu(i) {
@@ -688,7 +688,7 @@ static int acpi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	static int blacklisted;
 #endif
 
-	pr_debug("acpi_cpufreq_cpu_init\n");
+	printk("acpi_cpufreq_cpu_init\n");
 
 #ifdef CONFIG_SMP
 	if (blacklisted)
@@ -741,7 +741,7 @@ static int acpi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 
 	/* capability check */
 	if (perf->state_count <= 1) {
-		pr_debug("No P-States\n");
+		printk("No P-States\n");
 		result = -ENODEV;
 		goto err_unreg;
 	}
@@ -755,15 +755,15 @@ static int acpi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	case ACPI_ADR_SPACE_SYSTEM_IO:
 		if (boot_cpu_data.x86_vendor == X86_VENDOR_AMD &&
 		    boot_cpu_data.x86 == 0xf) {
-			pr_debug("AMD K8 systems must use native drivers.\n");
+			printk("AMD K8 systems must use native drivers.\n");
 			result = -ENODEV;
 			goto err_unreg;
 		}
-		pr_debug("SYSTEM IO addr space\n");
+		printk("SYSTEM IO addr space\n");
 		data->cpu_feature = SYSTEM_IO_CAPABLE;
 		break;
 	case ACPI_ADR_SPACE_FIXED_HARDWARE:
-		pr_debug("HARDWARE addr space\n");
+		printk("HARDWARE addr space\n");
 		if (check_est_cpu(cpu)) {
 			data->cpu_feature = SYSTEM_INTEL_MSR_CAPABLE;
 			break;
@@ -775,7 +775,7 @@ static int acpi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		result = -ENODEV;
 		goto err_unreg;
 	default:
-		pr_debug("Unknown addr space %d\n",
+		printk("Unknown addr space %d\n",
 			(u32) (perf->control_register.space_id));
 		result = -ENODEV;
 		goto err_unreg;
@@ -845,11 +845,11 @@ static int acpi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	if (boot_cpu_has(X86_FEATURE_APERFMPERF))
 		acpi_cpufreq_driver.getavg = cpufreq_get_measured_perf;
 
-	pr_debug("CPU%u - ACPI performance management activated.\n", cpu);
+	printk("CPU%u - ACPI performance management activated.\n", cpu);
 	for (i = 0; i < perf->state_count; i++) {
 		if (policy->cur == (u32) perf->states[i].core_frequency * 1000)
 			perf->state = i;
-		pr_debug("     %cP%d: %d MHz, %d mW, %d uS\n",
+		printk("     %cP%d: %d MHz, %d mW, %d uS\n",
 			(i == perf->state ? '*' : ' '), i,
 			(u32) perf->states[i].core_frequency,
 			(u32) perf->states[i].power,
@@ -881,7 +881,7 @@ static int acpi_cpufreq_cpu_exit(struct cpufreq_policy *policy)
 {
 	struct acpi_cpufreq_data *data = per_cpu(acfreq_data, policy->cpu);
 
-	pr_debug("acpi_cpufreq_cpu_exit\n");
+	printk("acpi_cpufreq_cpu_exit\n");
 
 	if (data) {
 		cpufreq_frequency_table_put_attr(policy->cpu);
@@ -899,7 +899,7 @@ static int acpi_cpufreq_resume(struct cpufreq_policy *policy)
 {
 	struct acpi_cpufreq_data *data = per_cpu(acfreq_data, policy->cpu);
 
-	pr_debug("acpi_cpufreq_resume\n");
+	printk("acpi_cpufreq_resume\n");
 
 	data->resume = 1;
 
@@ -952,7 +952,7 @@ static void __init acpi_cpufreq_boost_init(void)
 	if (sysfs_create_file(cpufreq_global_kobject, &(global_boost.attr)))
 		pr_warn(PFX "could not register global boost sysfs file\n");
 	else
-		pr_debug("registered global boost sysfs file\n");
+		printk("registered global boost sysfs file\n");
 }
 
 static void __exit acpi_cpufreq_boost_exit(void)
@@ -974,7 +974,7 @@ static int __init acpi_cpufreq_init(void)
 	if (acpi_disabled)
 		return 0;
 
-	pr_debug("acpi_cpufreq_init\n");
+	printk("acpi_cpufreq_init\n");
 
 	ret = acpi_cpufreq_early_init();
 	if (ret)
@@ -990,7 +990,7 @@ static int __init acpi_cpufreq_init(void)
 	if (check_amd_hwpstate_cpu(0)) {
 		struct freq_attr **iter;
 
-		pr_debug("adding sysfs entry for cpb\n");
+		printk("adding sysfs entry for cpb\n");
 
 		for (iter = acpi_cpufreq_attr; *iter != NULL; iter++)
 			;
@@ -1012,7 +1012,7 @@ static int __init acpi_cpufreq_init(void)
 
 static void __exit acpi_cpufreq_exit(void)
 {
-	pr_debug("acpi_cpufreq_exit\n");
+	printk("acpi_cpufreq_exit\n");
 
 	acpi_cpufreq_boost_exit();
 
