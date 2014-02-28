@@ -1360,14 +1360,14 @@ struct bma2x2acc {
 static struct bosch_sensor_specific board_platform_data = {
 	.name=SENSOR_NAME,
 #ifdef CONFIG_INPUT_SENSOR_ME181
-	.place = 7,
-#else
 	.place = 5,
+#else
+	.place = 6,
 #endif
 };
 static struct i2c_board_info __initdata gsensor_i2c_board_info[] = {
 	{	/* EEPROM on mainboard */
-		I2C_BOARD_INFO(SENSOR_NAME,0x18),
+		I2C_BOARD_INFO(SENSOR_NAME,0x19),
 		.platform_data	= &board_platform_data,
 	},
 };
