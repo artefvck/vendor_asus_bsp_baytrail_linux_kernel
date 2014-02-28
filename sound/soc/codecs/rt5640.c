@@ -48,9 +48,9 @@
 #endif
 #endif
 
-#ifdef CONFIG_ME176C_CODEC_PARAMETER				   
+//#ifdef CONFIG_ME176C_CODEC_PARAMETER				   
 #define USE_EQ
-#endif
+//#endif
 #define USE_ASRC
 #define VERSION "0.8.4 alsa 1.0.25"
 
