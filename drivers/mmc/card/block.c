@@ -1572,16 +1572,16 @@ static void mmc_blk_rw_rq_prep(struct mmc_queue_req *mqrq,
 	 * We'll avoid using CMD23-bounded multiblock writes for
 	 * these, while retaining features like reliable writes.
 	 */
-	if ((md->flags & MMC_BLK_CMD23) && mmc_op_multi(brq->cmd.opcode) &&
-	    (do_rel_wr || !(card->quirks & MMC_QUIRK_BLK_NO_CMD23) ||
-	     do_data_tag)) {
-		brq->sbc.opcode = MMC_SET_BLOCK_COUNT;
-		brq->sbc.arg = brq->data.blocks |
-			(do_rel_wr ? (1 << 31) : 0) |
-			(do_data_tag ? (1 << 29) : 0);
-		brq->sbc.flags = MMC_RSP_R1 | MMC_CMD_AC;
-		brq->mrq.sbc = &brq->sbc;
-	}
+	//if ((md->flags & MMC_BLK_CMD23) && mmc_op_multi(brq->cmd.opcode) &&
+	//    (do_rel_wr || !(card->quirks & MMC_QUIRK_BLK_NO_CMD23) ||
+	//     do_data_tag)) {
+	//	brq->sbc.opcode = MMC_SET_BLOCK_COUNT;
+	//	brq->sbc.arg = brq->data.blocks |
+	//		(do_rel_wr ? (1 << 31) : 0) |
+	//		(do_data_tag ? (1 << 29) : 0);
+	//	brq->sbc.flags = MMC_RSP_R1 | MMC_CMD_AC;
+	//	brq->mrq.sbc = &brq->sbc;
+	//}
 
 	mmc_set_data_timeout(&brq->data, card);
 
