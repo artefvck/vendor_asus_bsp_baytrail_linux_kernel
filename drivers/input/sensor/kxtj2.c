@@ -940,17 +940,19 @@ static int __init kxtj2_attach(struct i2c_adapter *adapter)
 {
 
         struct i2c_client *kxtj2_client;
-
-
+	static const unsigned short kxtj2_valid_addrs[] = { 0x0e, 0x0f, I2C_CLIENT_END };
 
         if(adapter->nr != KXTJ2_I2C_ADAPTER)
         {
             return 0;
         }
 
-	kxtj2_client = i2c_new_device(adapter, &kxtj2_board_info);
-	if (!kxtj2_client)
+	kxtj2_client = i2c_new_probed_device(adapter, &kxtj2_board_info, kxtj2_valid_addrs, NULL);
+        if( NULL == kxtj2_client )      {
+                printk(KERN_ERR "kxtj2 driver new i2c_client failed\n");
 		return -ENODEV;
+        }
+
 	/*
 	 * We know the driver is already loaded, so the device should be
 	 * already bound. If not it means binding failed, and then there
@@ -991,16 +993,16 @@ static struct i2c_driver kxtj2_driver = {
 		.name	= NAME,
 		.owner	= THIS_MODULE,
 		.pm	= &kxtj2_pm_ops,
-                .acpi_match_table = ACPI_PTR(kxtj2_acpi_match),
+        //        .acpi_match_table = ACPI_PTR(kxtj2_acpi_match),
 	},
 	.probe		= kxtj2_probe,
 	.remove		= kxtj2_remove,
 	.id_table	= kxtj2_id,
-        //.attach_adapter = kxtj2_attach,
+        .attach_adapter = kxtj2_attach,
 };
 static int __init kxtj2_init(void)
 {
-printk("__init akm_compass_init\n");
+printk("__init kxtj2_init\n");
 /*struct i2c_adapter *adapter = i2c_get_adapter(KXTJ2_I2C_ADAPTER);
         i2c_new_device(adapter, &kxtj2_board_info);
         i2c_put_adapter(adapter);*/

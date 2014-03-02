@@ -6907,6 +6907,44 @@ static int bma2x2_resume(struct i2c_client *client)
 
 #endif /* CONFIG_PM */
 
+static int __init bma2x2_attach(struct i2c_adapter *adapter)
+{
+
+        struct i2c_client *bma2x2_client;
+        static const unsigned short bma2x2_valid_addrs[] = { 0x18, 0x19, I2C_CLIENT_END };
+
+        if(adapter->nr != GSENSOR_BUS_NO )
+        {
+            return 0;
+        }
+
+        bma2x2_client = i2c_new_probed_device(adapter, gsensor_i2c_board_info, bma2x2_valid_addrs, NULL);
+        if( NULL == bma2x2_client )      {
+                printk(KERN_ERR "bma2x2 driver new i2c_client failed\n");
+                return -ENODEV;
+        }
+
+        /*
+         * We know the driver is already loaded, so the device should be
+         * already bound. If not it means binding failed, and then there
+         * is no point in keeping the device instantiated.
+         */
+        if (!bma2x2_client->driver) {
+                i2c_unregister_device(bma2x2_client);
+                bma2x2_client = NULL;
+                return -ENODEV;
+        }
+
+        /*
+         * Let i2c-core delete that device on driver removal.
+         * This is safe because i2c-core holds the core_lock mutex for us.
+         */
+        list_add_tail(&bma2x2_client->detected,
+                      &bma2x2_client->driver->clients);
+        return 0;
+}
+
+
 static const struct i2c_device_id bma2x2_id[] = {
 	{ SENSOR_NAME, 0 },
 	{ }
@@ -6923,13 +6961,14 @@ static struct i2c_driver bma2x2_driver = {
 	.resume     = bma2x2_resume,
 	.id_table   = bma2x2_id,
 	.probe      = bma2x2_probe,
+	.attach_adapter = bma2x2_attach,
 	.remove     = bma2x2_remove,
 	.shutdown   = bma2x2_shutdown,
 };
 
 static int __init BMA2X2_init(void)
 {
-	i2c_register_board_info(GSENSOR_BUS_NO, gsensor_i2c_board_info,ARRAY_SIZE(gsensor_i2c_board_info));
+	//i2c_register_board_info(GSENSOR_BUS_NO, gsensor_i2c_board_info,ARRAY_SIZE(gsensor_i2c_board_info));
 	return i2c_add_driver(&bma2x2_driver);
 }
 
