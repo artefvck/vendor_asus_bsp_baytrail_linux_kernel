@@ -29,6 +29,8 @@
 #include "platform_camera.h"
 #include "platform_ar0543.h"
 
+extern int PCBVersion;
+
 /* workround - pin defined for byt */
 #ifdef CONFIG_VLV2_PLAT_CLK
 #define OSC_CAM0_CLK	0x0
@@ -174,16 +176,18 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		}
         //gpio_set_value(camera_vcm_power_down, 0);
 
-		if (camera_reset >= 0){
-			gpio_free(camera_reset);
-			camera_reset = -1;
-			mdelay(1);
-		}
+		if(PCBVersion==-1){
+			if (camera_reset >= 0){
+				gpio_free(camera_reset);
+				camera_reset = -1;
+				mdelay(1);
+			}
 
-		if (camera_power_down >= 0){
-			gpio_free(camera_power_down);
-			camera_power_down = -1;
-			mdelay(1);
+			if (camera_power_down >= 0){
+				gpio_free(camera_power_down);
+				camera_power_down = -1;
+				mdelay(1);
+			}
 		}
     }
 		
@@ -203,6 +207,9 @@ static int ar0543_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 			return ret;
 	}
 	ret = vlv2_plat_configure_clock(OSC_CAM0_CLK, flag?flag:2);
+	if (flag) {
+		msleep(1);
+	}
 #elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag ? clock_khz : 0);
 #else
