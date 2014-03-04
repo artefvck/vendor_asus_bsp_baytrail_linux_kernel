@@ -29,7 +29,7 @@
 #include "platform_camera.h"
 #include "platform_ar0543.h"
 
-//extern int PCBVersion;
+extern int PCBVersion;
 
 /* workround - pin defined for byt */
 #ifdef CONFIG_VLV2_PLAT_CLK
@@ -176,7 +176,7 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		}
         //gpio_set_value(camera_vcm_power_down, 0);
 
-		//if(PCBVersion==-1){
+		if(PCBVersion==-1 || PCBVersion==0){
 			if (camera_reset >= 0){
 				gpio_free(camera_reset);
 				camera_reset = -1;
@@ -188,7 +188,7 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 				camera_power_down = -1;
 				mdelay(1);
 			}
-		//}
+		}
     }
 		
 	ar0543_i2c_gpio_set_alt(flag);
