@@ -14,6 +14,7 @@
 #include <linux/pci.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_em_config.h>
 #include <asm/spid.h>
 #include <linux/dma-mapping.h>
 
@@ -35,6 +36,26 @@ static bool dwc_otg_get_usbspecoverride(u32 addr)
 	return usb_spec_override;
 }
 
+/*
+ * Read USB Complaint charging bit from BIOS.
+ *   1 - Not Compliant, default
+ *   0 - Compliant
+ */
+static int dwc_otg_byt_get_usbspecoverride(void)
+{
+	struct em_config_oem1_data oem1_data;
+	int charge_bit = 1, ret = 0;
+
+	ret = em_config_get_oem1_data(&oem1_data);
+	if (ret <= 0) {
+		pr_err("no OEM1 table, return default value\n");
+		return charge_bit;
+	}
+	charge_bit = oem1_data.fpo_0 & BIT(0);
+	pr_info("OEM1 charging bit = %d\n", charge_bit);
+	return charge_bit;
+}
+
 /* Read SCCB_USB_CFG.bit14 to get the current phy select setting */
 static enum usb_phy_intf get_usb2_phy_type(void)
 {
@@ -42,6 +63,9 @@ static enum usb_phy_intf get_usb2_phy_type(void)
 	u32 val;
 
 	addr = ioremap_nocache(SCCB_USB_CFG, 4);
+	if (!addr)
+		return USB2_PHY_ULPI;
+
 	val = readl(addr) & SCCB_USB_CFG_SELECT_ULPI;
 	iounmap(addr);
 
@@ -101,6 +125,8 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 			dwc_otg_pdata.gpio_reset = 144;
 			dwc_otg_pdata.ti_phy_vs1 = 0x7f;
 			dwc_otg_pdata.sdp_charging = 1;
+			dwc_otg_pdata.charging_compliance =
+				!dwc_otg_byt_get_usbspecoverride();
 		} else if (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, CRV2) ||
 			INTEL_MID_BOARD(3, TABLET, BYT, BLK, ENG, CRV2)) {
 			dwc_otg_pdata.gpio_cs = 54;
@@ -108,6 +134,8 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 			dwc_otg_pdata.ti_phy_vs1 = 0x7f;
 			dwc_otg_pdata.gpio_id = 156;
 			dwc_otg_pdata.sdp_charging = 1;
+			dwc_otg_pdata.charging_compliance =
+				!dwc_otg_byt_get_usbspecoverride();
 		}
 		return &dwc_otg_pdata;
 	default:

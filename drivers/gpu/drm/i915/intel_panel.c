@@ -34,6 +34,7 @@
 #include "intel_drv.h"
 #include "linux/mfd/intel_mid_pmic.h"
 #include <linux/pwm.h>
+#include <linux/platform_data/lp855x.h>
 
 #define PCI_LBPC 0xf4 /* legacy/combination backlight modes */
 
@@ -597,6 +598,11 @@ void intel_panel_disable_backlight(struct drm_device *dev)
 
 	dev_priv->backlight.enabled = false;
 
+	if (IS_VALLEYVIEW(dev) && dev_priv->is_mipi) {
+		spin_unlock_irqrestore(&dev_priv->backlight.lock, flags);
+		return;
+	}
+
 	if (INTEL_INFO(dev)->gen >= 4 &&
 				!(IS_VALLEYVIEW(dev) && dev_priv->is_mipi)) {
 		uint32_t reg, tmp;
@@ -651,10 +657,17 @@ void intel_panel_enable_backlight(struct drm_device *dev,
 			intel_mid_pmic_writeb(0x4B, 0x80);
 			intel_mid_pmic_writeb(0x4E, 0xFF);
 			intel_mid_pmic_writeb(0x51, 0x01);
-			intel_mid_pmic_writeb(0x52, 0x01);
+
+			/* Control Backlight Slope programming for LP8556 IC*/
+			if (lpdata) {
+				mdelay(2);
+				if (lp855x_ext_write_byte(LP8556_CFG3, LP8556_MODE_SL_50MS_FL_HV_PWM_12BIT))
+					DRM_ERROR("Backlight slope programming failed\n");
+				else
+					DRM_INFO("Backlight slope programming success\n");
+				mdelay(2);
+			}
 		}
-		intel_panel_actually_set_mipi_backlight(dev,
-					dev_priv->backlight.level);
 #else
 		DRM_ERROR("Backlight not supported yet\n");
 #endif
@@ -719,6 +732,10 @@ set_level:
 						dev_priv->backlight.level);
 
 	spin_unlock_irqrestore(&dev_priv->backlight.lock, flags);
+
+	if (IS_VALLEYVIEW(dev) && dev_priv->is_mipi)
+		intel_panel_actually_set_mipi_backlight(dev,
+					dev_priv->backlight.level);
 }
 
 static void intel_panel_init_backlight(struct drm_device *dev)

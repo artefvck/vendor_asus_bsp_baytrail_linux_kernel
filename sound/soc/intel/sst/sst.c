@@ -396,9 +396,15 @@ int sst_driver_ops(struct intel_sst_drv *sst)
 	case SST_CHT_PCI_ID:
 		sst->tstamp = SST_TIME_STAMP_MRFLD;
 		sst->ops = &mrfld_ops;
+
+		/* Override the recovery ops for CHT & MOOR platforms */
+		if ((sst->pci_id == PCI_DEVICE_ID_INTEL_SST_MOOR) ||
+			(sst->pci_id == SST_CHT_PCI_ID))
+			sst->ops->do_recovery = sst_do_recovery;
+
 		return 0;
 	case SST_BYT_PCI_ID:
-		sst->tstamp = SST_TIME_STAMP_MRFLD;
+		sst->tstamp = SST_TIME_STAMP_BYT;
 		sst->ops = &mrfld_32_ops;
 		return 0;
 	case SST_CLV_PCI_ID:
@@ -455,7 +461,7 @@ static ssize_t sst_sysfs_set_recovery(struct device *dev,
 			pr_debug("%s: set sst state to uninit...\n", __func__);
 			sst_set_fw_state_locked(ctx, SST_UN_INIT);
 		} else {
-			pr_debug("%s: not setting sst state... %d\n", __func__,
+			pr_err("%s: not setting sst state... %d\n", __func__,
 					atomic_read(&ctx->pm_usage_count));
 			return -EPERM;
 		}
