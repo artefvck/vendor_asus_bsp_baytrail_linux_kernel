@@ -4,7 +4,7 @@
  *  Header for uG31xx measurement API
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 463 $
+ * @revision  $Revision: 476 $
  */
 
 typedef signed char       _meas_s8_;
@@ -72,6 +72,7 @@ typedef struct MeasDataST {
   _meas_s16_ instExtTemperature;
   _meas_s16_ deltaCap;
   _meas_s16_ stepCap;
+  _meas_s32_ cumuCap;
   _meas_u32_ deltaTime;
   _meas_u32_ deltaTimeDaemon;
 

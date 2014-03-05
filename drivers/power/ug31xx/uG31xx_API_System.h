@@ -4,7 +4,7 @@
  *  Interface of ug31xx system control
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 19 $
+ * @revision  $Revision: 405 $
  */
 
 #define UG31XX_SYSTEM_VERSION     (7)

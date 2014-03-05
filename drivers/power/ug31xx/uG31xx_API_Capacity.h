@@ -4,7 +4,7 @@
  *  Header of uG31xx capacity algorithm
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 464 $
+ * @revision  $Revision: 476 $
  */
 
 typedef char            _cap_bool_;
@@ -63,6 +63,8 @@ typedef struct CapacityDataST {
 
   _cap_u32_ standbyDsgResidual;
   _cap_u8_ standbyDsgRatio;
+  _cap_u32_ standbyMilliSec;
+  _cap_u8_ standbyHour;
 
   _cap_u8_ lastRsoc;
 
@@ -213,3 +215,13 @@ extern void UpiSetBoardOffsetKed(CapacityDataType *data);
  * @return  memory size
  */
 extern _cap_u32_ UpiGetCapacityMemorySize(void);
+
+/**
+ * @brief UpiSetFactoryBoardOffset
+ *
+ *  Set board offset is loaded from factory
+ *
+ * @para  data  address of CapacityDataType
+ * @return  NULL
+ */
+extern void UpiSetFactoryBoardOffset(CapacityDataType *data);
