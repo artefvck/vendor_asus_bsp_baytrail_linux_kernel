@@ -52,7 +52,7 @@
 #define UG31XX_USER_SPACE_BACKUP        ///< [AT-PM] : Used for user space backup operation ; 12/30/2013
 
 #ifndef ME372CG_USER_BUILD
-//#define UG31XX_PROC_DEV
+#define UG31XX_PROC_DEV
 #endif
 //#define UG31XX_WAKEUP_ALARM ///< [FC] : wakeup alarm functions ; 02/08/2014
 
@@ -74,7 +74,7 @@ extern int ec_power_changed_all();
 #endif
 //static int hwid;
 //tan extern int entry_mode;
-//struct switch_dev batt_dev;
+struct switch_dev batt_dev;
 
 #define UG31XX_USER_DAEMON_VER_LENGTH   (16)
 #define UG31XX_CALI_BO_LOW_TEMP         (100)
@@ -109,6 +109,7 @@ struct ug31xx_gauge {
 	int batt_capacity_real;   ///< [AT-PM] : unit in % ; 11/27/2013
 	u32 batt_charge_now;      ///< [AT-PM] : unit in mAh ; 10/07/2013
 	u32 batt_charge_full;     ///< [AT-PM] : unit in mAh ; 10/07/2013
+	int batt_charge_counter;  ///< [AT-PM] : unit in mAh ; 02/18/2014	
 	int batt_current;         ///< [AT-PM] : unit in mA ; 10/07/2013
 	int batt_current_last;    ///< [AT-PM] : unit in mA ; 10/07/2013
 	int batt_temp;            ///< [AT-PM] : unit in 0.1oC ; 10/07/2013
@@ -120,7 +121,7 @@ struct ug31xx_gauge {
 	int batt_cycle_count;
 	int batt_ntc_sts;
 	int board_offset;
-
+	char effective_board_offset[8];
 	char daemon_ver[UG31XX_USER_DAEMON_VER_LENGTH];
 	int daemon_uevent_count;
 
@@ -241,9 +242,46 @@ static int user_space_algorithm_now_fc_sts = 0;
 static bool user_space_in_progress = false;
 static bool force_update_backup_file = false;
 static bool enable_board_offset_cali_at_eoc = false;
-
+static int kbo_result = 0;
+static bool board_offset_cali_finish = false;
+static int ggb_board_offset = 0;
+static int ntc_offset = 0;
+static int standby_current = 0;
+static int ggb_board_gain = 1000;
 static bool fix_time_60s = false;
 static bool fix_time_2s = false;
+
+static void set_project_config(void)
+{
+}
+
+static void update_project_config(void)
+{
+	if(ug31_module.get_charge_termination_current() != charge_termination_current)
+	{
+		ug31_module.set_charge_termination_current(charge_termination_current);
+	}
+	if(ug31_module.get_rsense() != rsense_value)
+	{
+		ug31_module.set_rsense(rsense_value);
+	}
+	if(ug31_module.get_ggb_board_offset() != ggb_board_offset)
+	{
+		ug31_module.set_ggb_board_offset(ggb_board_offset);
+	}
+	if(ug31_module.get_ntc_offset() != ntc_offset)
+	{
+		ug31_module.set_ntc_offset(ntc_offset);
+	}
+	if(ug31_module.get_standby_current() != standby_current)
+	{
+		ug31_module.set_standby_current(standby_current);
+	}
+	if(ug31_module.get_ggb_board_gain() != ggb_board_gain)
+	{
+		ug31_module.set_ggb_board_gain(ggb_board_gain);
+	}
+}
 
 /*-----------------------tan#--------------*/
 extern int bq24192_is_charging(void);
@@ -567,7 +605,7 @@ static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long
       break;
 
     case UG31XX_IOCTL_ALGORITHM_VERSION:
-      UG31_LOGN("[%s] cmd -> UG31XX_IOCTL_ALGORITHM_VERSION\n", __func__);
+      UG31_LOGE("[%s] cmd -> UG31XX_IOCTL_ALGORITHM_VERSION\n", __func__);
       if(copy_from_user((void *)ug31->daemon_ver, (void __user *)arg, UG31XX_USER_DAEMON_VER_LENGTH))
       {
         rc = -EINVAL;
@@ -778,6 +816,8 @@ static enum power_supply_property ug31xx_batt_props[] = {
 	POWER_SUPPLY_PROP_TEMP_AMBIENT,
 	POWER_SUPPLY_PROP_CHARGE_NOW,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
+	POWER_SUPPLY_PROP_CHARGE_COUNTER,
+	POWER_SUPPLY_PROP_SERIAL_NUMBER,
 };
 
 #endif	///< end of UG31XX_REGISTER_POWERSUPPLY
@@ -856,6 +896,8 @@ static int ug31xx_battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_TEMP_AMBIENT:
 	case POWER_SUPPLY_PROP_CHARGE_NOW:
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
+	case POWER_SUPPLY_PROP_SERIAL_NUMBER:
 		if (ug31xx_update_psp(psp, val))
 			return -EINVAL;
 		break;
@@ -1033,6 +1075,22 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 	{
 		val->intval =ug31->batt_charge_full;
 	}
+	if(psp == POWER_SUPPLY_PROP_CHARGE_COUNTER)
+	{
+		val->intval = ug31->batt_charge_counter;
+	}
+	if(psp == POWER_SUPPLY_PROP_SERIAL_NUMBER)
+	{
+		if(board_offset_cali_finish == true)
+		{
+			sprintf(ug31->effective_board_offset, "C%d", ug31->board_offset);
+		}
+		else
+		{
+			sprintf(ug31->effective_board_offset, "G%d", ug31->board_offset);
+		}
+		val->strval = ug31->effective_board_offset;
+	}
 
 	return 0;
 }
@@ -1166,6 +1224,7 @@ static void set_default_batt_status(void)
 	ug31->batt_capacity_real	= 50;
 	ug31->batt_charge_now	= 1000;
 	ug31->batt_charge_full	= 2000;
+	ug31->batt_charge_counter = 0;
 	ug31->batt_current		= 0;
 	ug31->batt_temp			= 250;
 	ug31->batt_avg_temp		= 250;
@@ -1188,7 +1247,7 @@ static void show_abnormal_batt_status(void)
   
 	ug31->batt_capacity		= -99;
 
-	GAUGE_notice("ABN STS -> V=%d(mV) C=%d(mA) T=%d-%d(0.1oC) RSOC=%d(%d)(%%) RM=%d(mAh) FCC=%d(mAh) STS=%d CYCLE=%d\n",
+	GAUGE_notice("ABN STS -> V=%d(mV) C=%d(mA) T=%d-%d(0.1oC) RSOC=%d(%d)(%%) RM=%d(mAh) FCC=%d(mAh) Q=%d(mAh) STS=%d CYCLE=%d\n",
 		ug31->batt_volt,
 		ug31->batt_current,
 		ug31->batt_temp,
@@ -1197,6 +1256,7 @@ static void show_abnormal_batt_status(void)
 		ug31->batt_capacity_real,
 		ug31->batt_charge_now,
 		ug31->batt_charge_full,
+		ug31->batt_charge_counter,
 		ug31->batt_status,
 		ug31->batt_cycle_count);
 }
@@ -1205,7 +1265,7 @@ static void show_default_batt_status(void)
 {
 	set_default_batt_status();
   
-	GAUGE_notice("DEF STS -> V=%d(mV) C=%d(mA) T=%d-%d(0.1oC) RSOC=%d(%d)(%%) RM=%d(mAh) FCC=%d(mAh) STS=%d CYCLE=%d\n",
+	GAUGE_notice("DEF STS -> V=%d(mV) C=%d(mA) T=%d-%d(0.1oC) RSOC=%d(%d)(%%) RM=%d(mAh) FCC=%d(mAh) Q=%d(mAh) STS=%d CYCLE=%d\n",
 		ug31->batt_volt,
 		ug31->batt_current,
 		ug31->batt_temp,
@@ -1214,6 +1274,7 @@ static void show_default_batt_status(void)
 		ug31->batt_capacity_real,
 		ug31->batt_charge_now,
 		ug31->batt_charge_full,
+		ug31->batt_charge_counter,
 		ug31->batt_status,
 		ug31->batt_cycle_count);
 }
@@ -1253,7 +1314,7 @@ static void asus_print_all(void)
     }
 
     GAUGE_notice("P:%d(%d)%%, V:%dmV, C:%dmA, T:%s%d.%dC(%d), "
-        "S:%s, R:%dmAh, F:%dmAh, CC:%d, P:%d(%d)s, BO:%d, %s-%s (%d)\n",
+        "S:%s, R:%dmAh, F:%dmAh, Q=%d(mAh), CC:%d, P:%d(%d)s, BO:%d, %s-%s (%d)\n",
         ug31->batt_capacity,
         ug31->batt_capacity_real,
         ug31->batt_volt,
@@ -1265,6 +1326,7 @@ static void asus_print_all(void)
         batt_status_str[ug31->batt_status],
         ug31->batt_charge_now,
         ug31->batt_charge_full,
+        ug31->batt_charge_counter,
         ug31->batt_cycle_count,
         ug31->polling_time,
         ug31->update_time,
@@ -1295,6 +1357,7 @@ static void show_update_batt_status(void)
 	ug31->batt_capacity_real	= (int)ug31_module.get_predict_rsoc();
 	ug31->batt_charge_now	= (u32)ug31_module.get_remaining_capacity();
 	ug31->batt_charge_full	= (u32)ug31_module.get_full_charge_capacity();
+	ug31->batt_charge_counter = ug31_module.get_cumulative_capacity();
 	ug31->batt_current		= ug31_module.get_current();
 #ifdef UG31XX_SHOW_EXT_TEMP
 	ug31->batt_temp			= ug31_module.get_external_temperature();
@@ -1478,7 +1541,11 @@ static void batt_info_update_work_func(struct work_struct *work)
 	/// [AT-PM] : Update gauge information ; 02/04/2013
 
 	mutex_lock(&ug31_dev->info_update_lock); 
+	#ifdef  UG31XX_SHIFT_RSOC
+	ug31_module.set_options(op_options | LKM_OPTIONS_RSOC_REMAP);  
+	#else   ///< else of UG31XX_SHIFT_RSOC
 	ug31_module.set_options(op_options);  
+	#endif  ///< end of UG31XX_SHIFT_RSOC
 	if(op_options & LKM_OPTIONS_FORCE_RESET)
 	{
 		ug31_module.reset(FactoryGGBXFile);
@@ -1487,9 +1554,7 @@ static void batt_info_update_work_func(struct work_struct *work)
   
 	adjust_cell_table();
   
-#ifdef  UG31XX_DYNAMIC_TAPER_CURRENT
-  	ug31_module.set_charge_termination_current(charge_termination_current);
-#endif  ///< end of UG31XX_DYNAMIC_TAPER_CURRENT
+	update_project_config();
 
 	if(is_charging() == true)
 	{
@@ -1662,90 +1727,156 @@ EXPORT_SYMBOL(ug31xx_set_charge_termination_current);
 
 #ifdef UG31XX_PROC_DEV
 struct proc_dir_entry *battery; 
-int ug31xx_get_proc_rsoc(char *buf, char **start, off_t off, int count, 
-                         int *eof, void *data )
+int ug31xx_get_proc_rsoc(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
   int len = 0;
-  len += sprintf(buf+len, "%d\n", ug31_module.get_predict_rsoc());  
-  return len;
+  ssize_t ret = 0;
+  char *buff;
+
+  buff = kmalloc(10,GFP_KERNEL);
+  if(!buff)
+	return -ENOMEM;
+  len += sprintf(buff+len, "%d\n", ug31_module.get_predict_rsoc());  
+  ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
+  kfree(buff);
+  return ret;
 }
 
-int ug31xx_get_proc_psoc(char *buf, char **start, off_t off, int count, 
-                         int *eof, void *data )
+int ug31xx_get_proc_psoc(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
   int len = 0;
-  len += sprintf(buf+len, "%d\n", ug31_module.get_relative_state_of_charge());  
-  return len;
+  ssize_t ret = 0;
+  char *buff;
+
+  buff = kmalloc(10,GFP_KERNEL);
+  if(!buff)
+	return -ENOMEM;
+  len += sprintf(buff+len, "%d\n", ug31_module.get_relative_state_of_charge());  
+  ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
+  kfree(buff);
+  return ret;
 }
 
-int ug31xx_get_proc_rm(char *buf, char **start, off_t off, int count, 
-		       int *eof, void *data )
+int ug31xx_get_proc_rm(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
   int len = 0;
-  len += sprintf(buf+len, "%d\n", ug31_module.get_remaining_capacity());  
-  return len;
+  ssize_t ret = 0;
+  char *buff;
+
+  buff = kmalloc(10,GFP_KERNEL);
+  if(!buff)
+	return -ENOMEM;
+  len += sprintf(buff+len, "%d\n", ug31_module.get_remaining_capacity());  
+  ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
+  kfree(buff);
+  return ret;
 }
 
-int ug31xx_get_proc_fcc(char *buf, char **start, off_t off, int count, 
-			int *eof, void *data )
+int ug31xx_get_proc_fcc(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
   int len = 0;
-  len += sprintf(buf+len, "%d\n", ug31_module.get_full_charge_capacity());  
-  return len;
+  ssize_t ret = 0;
+  char *buff;
+
+  buff = kmalloc(10,GFP_KERNEL);
+  if(!buff)
+	return -ENOMEM;
+  len += sprintf(buff+len, "%d\n", ug31_module.get_full_charge_capacity());  
+  ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
+  kfree(buff);
+  return ret;
 }
 
-int ug31xx_get_proc_curr(char *buf, char **start, off_t off, int count, 
-                         int *eof, void *data )
+int ug31xx_get_proc_curr(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
   int len = 0;
-  len += sprintf(buf+len, "%d\n", ug31_module.get_current_now());  
-  return len;
+  ssize_t ret = 0;
+  char *buff;
+
+  buff = kmalloc(10,GFP_KERNEL);
+  if(!buff)
+	return -ENOMEM;
+  len += sprintf(buff+len, "%d\n", ug31_module.get_current_now());  
+  ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
+  kfree(buff);
+  return ret;
 }
 
-int ug31xx_get_proc_temp(char *buf, char **start, off_t off, int count, int *eof, void *data)
+int ug31xx_get_proc_temp(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
   int len = 0;
   int value;
+  ssize_t ret = 0;
+  char *buff;
 
+  buff = kmalloc(10,GFP_KERNEL);
+  if(!buff)
+	return -ENOMEM;
   value = ug31_module.get_avg_external_temperature();
-  len += sprintf(buf+len, "%d.%d\n", value/10, value%10);
-  return len;
+  len += sprintf(buff+len, "%d.%d\n", value/10, value%10);
+  ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
+  kfree(buff);
+  return ret;
 }
 
-int ug31xx_get_proc_upi_60(char *buf, char **start, off_t off, int count, int *eof, void *data)
+int ug31xx_get_proc_upi_60(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
-	int len;
+  int len = 0;
+  ssize_t ret = 0;
+  char *buff;
+
+  buff = kmalloc(10,GFP_KERNEL);
+  if(!buff)
+	return -ENOMEM;
 
 	fix_time_60s = true;
 	fix_time_2s = false;
 
 	len = 0;
-	len += sprintf(buf + len, "Fix polling time to 60 seconds\n");
-	return (len);
+	len += sprintf(buff + len, "Fix polling time to 60 seconds\n");
+	ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
+	kfree(buff);
+	return ret;
 }
 
-int ug31xx_get_proc_upi_2(char *buf, char **start, off_t off, int count, int *eof, void *data)
+int ug31xx_get_proc_upi_2(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
-	int len;
+  int len = 0;
+  ssize_t ret = 0;
+  char *buff;
+
+  buff = kmalloc(10,GFP_KERNEL);
+  if(!buff)
+	return -ENOMEM;
 
 	fix_time_60s = false;
 	fix_time_2s = true;
 
 	len = 0;
-	len += sprintf(buf + len, "Fix polling time to 2 seconds\n");
-	return (len);
+	len += sprintf(buff + len, "Fix polling time to 2 seconds\n");
+	ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
+	kfree(buff);
+	return ret;
 }
 
-int ug31xx_get_proc_upi_auto(char *buf, char **start, off_t off, int count, int *eof, void *data)
+int ug31xx_get_proc_upi_auto(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
-	int len;
+  int len = 0;
+  ssize_t ret = 0;
+  char *buff;
+
+  buff = kmalloc(10,GFP_KERNEL);
+  if(!buff)
+	return -ENOMEM;
 
 	fix_time_60s = false;
 	fix_time_2s = false;
 
 	len = 0;
-	len += sprintf(buf + len, "Set polling time to %d(%d) seconds\n", (int)ug31->polling_time);
-	return (len);
+	len += sprintf(buff + len, "Set polling time to %d(%d) seconds\n", (int)ug31->polling_time);
+	ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
+	kfree(buff);
+	return ret;
 }
 #endif  ///< end of UG31XX_PROC_DEV
 
@@ -1772,7 +1903,7 @@ static void ug31xx_early_suspend(struct early_suspend *e)
 		show_abnormal_batt_status();
 		GAUGE_err("[%s] Fail in early suspend.\n", __func__);
 	}
-	rsoc_before_suspend = ug31_module.get_relative_state_of_charge();
+	rsoc_before_suspend = ug31_module.get_predict_rsoc();
 	ug31_module.set_capacity_suspend_mode(_UPI_TRUE_);
 	mutex_unlock(&ug31_dev->info_update_lock);
 
@@ -1808,7 +1939,7 @@ static void ug31xx_late_resume(struct early_suspend *e)
 		if(charger_detect_full == true)
 		{
 			charger_detect_full = false;
-			gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_CHECK);
+			gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_STEP);
 		}
 
 		#ifndef UG31XX_WAIT_CHARGER_FC
@@ -1822,7 +1953,7 @@ static void ug31xx_late_resume(struct early_suspend *e)
 			GAUGE_info("[%s] Enter early suspend with charger\n", __func__);
 			if((prev_fc_sts == 0) && (now_fc_sts == 1))
 			{
-				gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL);
+				gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_STEP);
 				GAUGE_info("[%s] [FC] status changed (0->1)\n", __func__);
 			}
 			else
@@ -1837,7 +1968,7 @@ static void ug31xx_late_resume(struct early_suspend *e)
 
 						if(ug31_module.get_predict_rsoc() > 90)
 						{
-							gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL);
+							gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_STEP);
 							GAUGE_info("[%s] Set to full charge status\n", __func__);
 						}
 					}
@@ -1845,10 +1976,10 @@ static void ug31xx_late_resume(struct early_suspend *e)
 				else
 				{
 					GAUGE_info("[%s] Exit early suspend with charger\n", __func__);
-					if(is_charging_full() == 1)
+					if(curr_charger_full_status == true)
 					{
 						GAUGE_info("[%s] Charger detects full\n", __func__);
-						gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_CHECK);
+						gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_STEP);
 						GAUGE_info("[%s] Set to full charge status\n", __func__);
 					}
 					else
@@ -1859,7 +1990,7 @@ static void ug31xx_late_resume(struct early_suspend *e)
 							GAUGE_info("[%s] Charged capacity is enouth to check full charged (%d) > (%d)\n", __func__, delta_q_in_suspend, prev_rsoc);
 							if(ug31_module.get_predict_rsoc() > 95)
 							{
-								gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL);
+								gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_STEP);
 								GAUGE_info("[%s] Set to full charge status\n", __func__);
 							}
 						}
@@ -2033,7 +2164,11 @@ static void batt_probe_work_func(struct work_struct *work)
 	}
 #endif	///< end of CONFIG_PF400CG
 
-	ug31_module.set_options(op_options);
+	#ifdef  UG31XX_SHIFT_RSOC
+	ug31_module.set_options(op_options | LKM_OPTIONS_RSOC_REMAP);  
+	#else   ///< else of UG31XX_SHIFT_RSOC
+	ug31_module.set_options(op_options);  
+	#endif  ///< end of UG31XX_SHIFT_RSOC
 	rtn = ug31_module.initial(FactoryGGBXFile, ((probe_with_cable == true) ? UG31XX_CABLE_IN : UG31XX_CABLE_OUT));
 	op_options = op_options & (~LKM_OPTIONS_FORCE_RESET);
 	if(rtn != 0)
@@ -2048,17 +2183,14 @@ static void batt_probe_work_func(struct work_struct *work)
 	ug31_module.set_backup_file_name(UPI_UG31XX_BACKUP_FILE, strlen(UPI_UG31XX_BACKUP_FILE));
 	ug31_module.set_suspend_file_name(UPI_UG31XX_BACKUP_SUSPEND, strlen(UPI_UG31XX_BACKUP_SUSPEND));
 
-	if(charge_termination_current == 0)
-	{
-		charge_termination_current = ug31_module.get_charge_termination_current();
-	}
-	ug31_module.set_charge_termination_current(charge_termination_current);
-	GAUGE_info("[%s] rsense_value: %d\n", __func__, rsense_value);
-	if(rsense_value == 0)
-	{
-		rsense_value = ug31_module.get_rsense();
-	}
-	ug31_module.set_rsense(rsense_value);
+	charge_termination_current = ug31_module.get_charge_termination_current();
+	rsense_value = ug31_module.get_rsense();
+	ggb_board_offset = ug31_module.get_ggb_board_offset();
+	ntc_offset = ug31_module.get_ntc_offset();
+	standby_current = ug31_module.get_standby_current();
+	ggb_board_gain = ug31_module.get_ggb_board_gain();
+	set_project_config();
+	update_project_config();
 	GAUGE_info("[%s] ug31_module initialized. (%s)\n", __func__, ug31_module.get_version());
 
 #ifdef UG31XX_SHOW_EXT_TEMP
@@ -2105,67 +2237,95 @@ static void batt_probe_work_func(struct work_struct *work)
 	}
 
 #endif	///< end of UG31XX_MISC_DEV
-/*tan
+
 #ifdef UG31XX_PROC_DEV
-	ent = create_proc_read_entry("BMSSOC", 0744, NULL, ug31xx_get_proc_rsoc, NULL ); 
+	static struct file_operations Aug31xx_get_proc_rsoc = {
+	    .read = ug31xx_get_proc_rsoc,
+	};
+	static struct file_operations Aug31xx_get_proc_psoc = {
+	    .read = ug31xx_get_proc_psoc,
+	};
+	static struct file_operations Aug31xx_get_proc_rm = {
+	    .read = ug31xx_get_proc_rm,
+	};
+	static struct file_operations Aug31xx_get_proc_fcc = {
+	    .read = ug31xx_get_proc_fcc,
+	};
+	static struct file_operations Aug31xx_get_proc_curr = {
+	    .read = ug31xx_get_proc_curr,
+	};
+	static struct file_operations Aug31xx_get_proc_upi_60 = {
+	    .read = ug31xx_get_proc_upi_60,
+	};
+	static struct file_operations Aug31xx_get_proc_upi_2 = {
+	    .read = ug31xx_get_proc_upi_2,
+	};
+	static struct file_operations Aug31xx_get_proc_upi_auto = {
+	    .read = ug31xx_get_proc_upi_auto,
+	};
+	static struct file_operations Aug31xx_get_proc_temp = {
+	    .read = ug31xx_get_proc_temp,
+	};
+
+	ent = proc_create("BMSSOC", 0744,NULL, &Aug31xx_get_proc_rsoc); 
 	if(!ent)
 	{
 		GAUGE_err("create /proc/BMSSOC fail\n");
 	}
-	ent = create_proc_read_entry("RSOC", 0744, NULL, ug31xx_get_proc_psoc, NULL );
+	ent = proc_create("RSOC", 0744, NULL, &Aug31xx_get_proc_rsoc);
 	if(!ent)
 	{
 		GAUGE_err("create /proc/RSOC fail\n");
 	}
-	ent = create_proc_read_entry("RM", 0744, NULL, ug31xx_get_proc_rm, NULL );
+	ent = proc_create("RM", 0744, NULL, &Aug31xx_get_proc_rm);
 	if(!ent)
 	{
 		GAUGE_err("create /proc/RM fail\n");
 	}
-	ent = create_proc_read_entry("FCC", 0744, NULL, ug31xx_get_proc_fcc, NULL );
+	ent = proc_create("FCC", 0744, NULL, &Aug31xx_get_proc_fcc);
 	if(!ent)
 	{
 		GAUGE_err("create /proc/FCC fail\n");
 	}
-	ent = create_proc_read_entry("bat_current", 0744, NULL, ug31xx_get_proc_curr, NULL );
+	ent = proc_create("bat_current", 0744, NULL, &Aug31xx_get_proc_curr);
 	if(!ent)
 	{
 		GAUGE_err("create /proc/bat_current fail\n");
 	}
-	ent = create_proc_read_entry("upi_60", 0744, NULL, ug31xx_get_proc_upi_60, NULL);
+	ent = proc_create("upi_60", 0744, NULL, &Aug31xx_get_proc_upi_60);
 	if(!ent)
 	{
 		GAUGE_err("create /proc/upi_60 fail\n");
 	}
-	ent = create_proc_read_entry("upi2", 0744, NULL, ug31xx_get_proc_upi_2, NULL);
+	ent = proc_create("upi2", 0744, NULL, &Aug31xx_get_proc_upi_2);
 	if(!ent)
 	{
 		GAUGE_err("create /proc/upi2 fail\n");
 	}
-	ent = create_proc_read_entry("upi_auto", 0744, NULL, ug31xx_get_proc_upi_auto, NULL);
+	ent = proc_create("upi_auto", 0744, NULL, &Aug31xx_get_proc_upi_auto);
 	if(!ent)
 	{
 		GAUGE_err("create /proc/upi_auto fail\n");
 	}
-	ent = create_proc_read_entry("driver/BatTemp", 0744, NULL, ug31xx_get_proc_temp, NULL);
+	ent = proc_create("driver/BatTemp", 0744, NULL, &Aug31xx_get_proc_temp);
 	if(!ent)
 	{
 		GAUGE_err("create /proc/driver/BatTemp fail\n");
 	}
 #endif	///< end of UG31XX_PROC_DEV
-*/
+
 	/* request charger driver to update "power supply changed" */
 	//tan request_power_supply_changed();
 	//power_supply_changed(&ug31xx_supply[PWR_SUPPLY_BATTERY]);//tan#
 
 	/* register switch device for battery information versions report */
-//	batt_dev.name = "battery";
-//	batt_dev.print_name = batt_switch_name;
+	batt_dev.name = "battery";
+	batt_dev.print_name = batt_switch_name;
 	/// tan
-//	if (switch_dev_register(&batt_dev) < 0) {
-//		GAUGE_err("%s: fail to register battery switch\n", __func__);
-//		goto pwr_supply_fail;
-//	}
+	//if (switch_dev_register(&batt_dev) < 0) {
+	//	GAUGE_err("%s: fail to register battery switch\n", __func__);
+	//	goto pwr_supply_fail;
+	//}
 	ug31xx_config_earlysuspend(ug31);
 
 	if(is_charging() == true)
@@ -2339,7 +2499,7 @@ static int ug31xx_i2c_suspend(struct i2c_client *client, pm_message_t mesg)
 		show_abnormal_batt_status();
 		GAUGE_err("[%s] Fail in suspend.\n", __func__);
 	}
-	rsoc_before_suspend = ug31_module.get_relative_state_of_charge();
+	rsoc_before_suspend = ug31_module.get_predict_rsoc();
 	mutex_unlock(&ug31->info_update_lock);
 
 	#endif	///< end of defined(CONFIG_HAS_EARLYSUSPEND) && defined(UG31XX_EARLY_SUSPEND) 
@@ -2381,7 +2541,7 @@ static int ug31xx_i2c_resume(struct i2c_client *client)
 		if(charger_detect_full == true)
 		{
 			charger_detect_full = false;
-			gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_CHECK);
+			gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_STEP);
 		}
 
 		#ifndef UG31XX_WAIT_CHARGER_FC
@@ -2395,7 +2555,8 @@ static int ug31xx_i2c_resume(struct i2c_client *client)
 			GAUGE_info("[%s] Enter suspend with charger\n", __func__);
 			if((prev_fc_sts == 0) && (now_fc_sts == 1))
 			{
-				gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL);
+				gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_STEP);
+				curr_charger_full_status = is_charging_full(); 
 				GAUGE_info("[%s] [FC] status changed (0->1)\n", __func__);
 			}
 			else
@@ -2410,7 +2571,7 @@ static int ug31xx_i2c_resume(struct i2c_client *client)
 
 						if(ug31_module.get_predict_rsoc() > 90)
 						{
-							gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL);
+							gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_STEP);
 							GAUGE_info("[%s] Set to full charge status\n", __func__);
 						}
 					}
@@ -2418,10 +2579,11 @@ static int ug31xx_i2c_resume(struct i2c_client *client)
 				else
 				{
 					GAUGE_info("[%s] Exit suspend with charger\n", __func__);
-					if(is_charging_full() == 1)
+					curr_charger_full_status = is_charging_full();  
+					if(curr_charger_full_status == true)
 					{
 						GAUGE_info("[%s] Charger detects full\n", __func__);
-						gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_CHECK);
+						gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_STEP);
 						GAUGE_info("[%s] Set to full charge status\n", __func__);
 					}
 					else
@@ -2432,7 +2594,7 @@ static int ug31xx_i2c_resume(struct i2c_client *client)
 							GAUGE_info("[%s] Charged capacity is enouth to check full charged (%d) > (%d)\n", __func__, delta_q_in_suspend, prev_rsoc);
 							if(ug31_module.get_predict_rsoc() > 95)
 							{
-								gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL);
+								gg_status = ug31_module.set_charger_full(UG31XX_CHARGER_DETECTS_FULL_STEP);
 								GAUGE_info("[%s] Set to full charge status\n", __func__);
 							}
 						}
@@ -2469,10 +2631,17 @@ static int ug31xx_i2c_resume(struct i2c_client *client)
 
 	int time_interval;
 
+	curr_charger_full_status = is_charging_full();  
+	if(curr_charger_full_status == true)
+	{
+		charger_detect_full = true;
+	}
+	
 	mutex_lock(&ug31->info_update_lock);
 	time_interval = ug31_module.get_update_interval();
 	mutex_unlock(&ug31->info_update_lock);
-	if(cable_status_changed > 0)
+	if((cable_status_changed > 0) ||
+		(is_charging() != charger_dc_in_before_suspend))
 	{
 		cable_status_changed = 0;
 		schedule_delayed_work(&ug31->batt_info_update_work, ug31->update_time*HZ);
@@ -2644,5 +2813,18 @@ module_param(op_options, byte, 0644);
 MODULE_PARM_DESC(op_options, "Set operation options for uG31xx driver.");
 module_param(design_capacity, ushort, 0644);
 MODULE_PARM_DESC(design_capacity, "Set new design capacity for uG31xx driver.");
-
+module_param(kbo_result, int, 0644);
+MODULE_PARM_DESC(kbo_result, "Set board offset for uG31xx driver.");
+module_param(charge_termination_current, int, 0644);
+MODULE_PARM_DESC(charge_termination_current, "Set charge termination current for uG31xx driver.");
+module_param(rsense_value, int, 0644);
+MODULE_PARM_DESC(rsense_value, "Set RSense resistance for uG31xx driver");
+module_param(ggb_board_offset, int, 0644);
+MODULE_PARM_DESC(ggb_board_offset, "Set board offset in GGB file");
+module_param(ntc_offset, int, 0644);
+MODULE_PARM_DESC(ntc_offset, "Set NTC offset");
+module_param(standby_current, int, 0644);
+MODULE_PARM_DESC(standby_current, "Set current for suspend mode.");
+module_param(ggb_board_gain, int, 0644);
+MODULE_PARM_DESC(ggb_board_gain, "Set board gain in GGB file");
 

@@ -11,7 +11,7 @@
  *  guG31xx measurement API
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 463 $
+ * @revision  $Revision: 488 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,11 +19,11 @@
 
 #ifdef  uG31xx_OS_WINDOWS
 
-  #define MEASUREMENT_VERSION      (_T("Measurement $Rev: 463 $"))
+  #define MEASUREMENT_VERSION      (_T("Measurement $Rev: 488 $"))
 
 #else   ///< else of uG31xx_OS_WINDOWS
 
-  #define MEASUREMENT_VERSION      ("Measurement $Rev: 463 $")
+  #define MEASUREMENT_VERSION      ("Measurement $Rev: 488 $")
 
 #endif  ///< end of uG31xx_OS_WINDOWS
 
@@ -59,6 +59,20 @@ typedef struct MeasDataInternalST {
   _meas_u16_ codeCounter;
   _meas_s16_ ccOffset;
   _meas_s16_ codeExtTemperatureComp;
+
+  _meas_u8_ reg14;
+  _meas_u8_ reg9C;
+  _meas_u8_ regC5;
+  _meas_u8_ regC6;
+  _meas_u8_ regC7;
+  _meas_u8_ regC8;
+  _meas_u8_ regC9;
+  _meas_u8_ regCA;
+  _meas_u8_ regCB;
+  _meas_u8_ reg0A;
+  _meas_u8_ reg0B;
+  _meas_u8_ reg50;
+  _meas_u8_ reg51;
 } ALIGNED_ATTRIBUTE MeasDataInternalType;
 
 #ifndef UG31XX_SHELL_ALGORITHM
@@ -505,6 +519,7 @@ _meas_u16_ CalibrateITCode(MeasDataInternalType *obj, _meas_u16_ itCode)
 }
 
 #define NORMAL_REGISTER     (NORMAL)
+#define SEURITY_REGISTER    (SECURITY)
 
 /**
  * @brief CalibrateChargeCode
@@ -1106,6 +1121,38 @@ void ReadRegister(MeasDataInternalType *obj)
                REG_ADC1_OFFSET_LOW, 
                REG_ADC1_OFFSET_HIGH - REG_ADC1_OFFSET_LOW + 1, 
                (unsigned char *)&obj->ccOffset);
+
+  /// [AT-PM] : Read register for debugging ; 02/27/2014
+  API_I2C_Read(NORMAL_REGISTER, 
+               UG31XX_I2C_HIGH_SPEED_MODE, 
+               UG31XX_I2C_TEM_BITS_MODE, 
+               REG_INTR_STATUS, 
+               1, 
+               (unsigned char *)&obj->reg14);
+  API_I2C_Read(SEURITY_REGISTER, 
+               UG31XX_I2C_HIGH_SPEED_MODE, 
+               UG31XX_I2C_TEM_BITS_MODE, 
+               REG_INTR_CTRL_B, 
+               1, 
+               (unsigned char *)&obj->reg9C);
+  API_I2C_Read(SEURITY_REGISTER, 
+               UG31XX_I2C_HIGH_SPEED_MODE, 
+               UG31XX_I2C_TEM_BITS_MODE, 
+               REG_ADC_CTR_A, 
+               REG_ADC_V3 - REG_ADC_CTR_A + 1, 
+               (unsigned char *)&obj->regC5);
+  API_I2C_Read(NORMAL_REGISTER, 
+               UG31XX_I2C_HIGH_SPEED_MODE, 
+               UG31XX_I2C_TEM_BITS_MODE, 
+               REG_AVE_IT_LOW, 
+               REG_AVE_IT_HIGH - REG_AVE_IT_LOW + 1, 
+               (unsigned char *)&obj->reg0A);
+  API_I2C_Read(NORMAL_REGISTER, 
+               UG31XX_I2C_HIGH_SPEED_MODE, 
+               UG31XX_I2C_TEM_BITS_MODE, 
+               REG_INTR_TEMPER_LOW, 
+               REG_INTR_TEMPER_HIGH - REG_INTR_TEMPER_LOW + 1, 
+               (unsigned char *)&obj->reg50);
 }
 
 /**
@@ -1676,6 +1723,21 @@ void CountCycleCount(MeasDataInternalType *obj)
   }
 }
 
+/**
+ * @brief CountCumuCap
+ *
+ *  Count cumulative capacity
+ *
+ * @para  obj address of MeasDataInternalType
+ * @return  NULL
+ */
+void CountCumuCap(MeasDataInternalType *obj)
+{
+  obj->info->cumuCap = obj->info->cumuCap + obj->info->stepCap;
+  UG31_LOGI("[%s]: Cumulative capacity = %d\n", __func__,
+            obj->info->cumuCap);
+}
+
 /// =============================================
 /// [AT-PM] : Extern function region
 /// =============================================
@@ -1727,6 +1789,9 @@ void UpiResetCoulombCounter(MeasDataType *data)
   /// [AT-PM] : Count cycle count ; 10/08/2013  
   CountCycleCount(obj);
 
+  /// [AT-PM] : Count cumulative capacity ; 02/18/2014
+  CountCumuCap(obj);
+  
   /// [AT-PM] : Calculate coulomb counter offset ; 09/24/2013
   CalculateCCOffset(obj);
   
@@ -1780,9 +1845,14 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
 
   /// [AT-PM] : Get ADC code ; 06/04/2013
   rtn = FetchAdcCode(obj);
-  UG31_LOGE("[%s]: (%d-%d) V=%d, I=%d, IT=%d, ET=%d, CH=%d, CT=%d\n", __func__, 
+  UG31_LOGE("[%s]: (%d-%d) V=%d, I=%d, IT=%d, ET=%d, CH=%d, CT=%d, %02x%02x %02x%02x%02x%02x %02x%02x%02x %02x%02x %02x%02x\n", __func__, 
             select, obj->info->fetchRetryCnt, obj->codeBat1, obj->codeCurrent, 
-            obj->codeIntTemperature, obj->codeExtTemperature, obj->codeCharge, obj->codeCounter);
+            obj->codeIntTemperature, obj->codeExtTemperature, obj->codeCharge, obj->codeCounter,
+            obj->reg14, obj->reg9C,
+            obj->regC5, obj->regC6, obj->regC7, obj->regC8,
+            obj->regC9, obj->regCA, obj->regCB,
+            obj->reg0A, obj->reg0B,
+            obj->reg50, obj->reg51);
   if(rtn != MEAS_RTN_PASS)
   {
     #ifdef  UG31XX_SHELL_ALGORITHM
@@ -1916,6 +1986,9 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
     /// [AT-PM] : Count cycle count ; 10/08/2013  
     CountCycleCount(obj);
 
+    /// [AT-PM] : Count cumulative capacity ; 02/18/2014
+    CountCumuCap(obj);
+    
     /// [AT-PM] : Calculate coulomb counter offset ; 09/24/2013
     CalculateCCOffset(obj);
     

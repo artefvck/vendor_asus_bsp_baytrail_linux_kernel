@@ -25,11 +25,11 @@ _upi_bool_ MPK_active = _UPI_FALSE_;
 
 #if defined (uG31xx_OS_WINDOWS)
 
-  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 473 $"))
+  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 486 $"))
 
 #else
 
-  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 473 $")
+  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 486 $")
 
 #endif
 
@@ -594,9 +594,9 @@ void CheckInitCapacityFromCC(struct ug31xx_data *pUg31xx)
   }
 }
 
-#define MAX_DELTA_RSOC_THRESHOLD_FOR_WAKEUP     (25)
-#define MIN_DELTA_RSOC_THRESHOLD_FOR_WAKEUP     (-25)
-#define MAX_DELTA_TIME_THRESHOLD_FOR_WAKEUP     (MS_IN_A_DAY*5)
+#define MAX_DELTA_RSOC_THRESHOLD_FOR_WAKEUP     (10)
+#define MIN_DELTA_RSOC_THRESHOLD_FOR_WAKEUP     (-10)
+#define MAX_DELTA_TIME_THRESHOLD_FOR_WAKEUP     (MS_IN_A_DAY*1)
 #define MAX_DELTA_RSOC_THRESHOLD_FOR_TABLE      (10)
 #define MIN_DELTA_RSOC_THRESHOLD_FOR_TABLE      (-10)
 
@@ -877,6 +877,7 @@ GGSTATUS upiGG_Initial(char **pObj, GGBX_FILE_HEADER *pGGBXBuf, unsigned char Fo
   UpiLoadBatInfoFromIC(&pUg31xx->sysData);
   pUg31xx->measData.cycleCount = (ForceReset == 0) ? (_meas_u16_)pUg31xx->sysData.cycleCount : 0;
   pUg31xx->measData.ccOffsetAdj = (ForceReset == 0) ? (_meas_s8_)pUg31xx->sysData.ccOffset : 0;
+  pUg31xx->measData.cumuCap = 0;
   pUg31xx->capData.standbyDsgRatio = (ForceReset == 0) ? (_cap_u8_)pUg31xx->sysData.standbyDsgRatio : 0;
   /// Count total Time
   totalTime = CountTotalTime(pUg31xx->sysData.timeTagFromIC);
@@ -1299,28 +1300,37 @@ void upiGG_ShellUpdateCapacity(char *pObj)
 void upiGG_ShellUpdateCC(char *pObj)
 {
   struct ug31xx_data *pUg31xx;
-  _upi_s32_ tmp32;
+  _upi_s16_ tmp16;
   
   pUg31xx = (struct ug31xx_data *)pObj;
 
-  tmp32 = (_upi_s32_)pUg31xx->measData.curr;
-  tmp32 = tmp32*(pUg31xx->measData.stepCap);
-  if(tmp32 < 0)
+  if(((MEAS_CABLE_OUT(pUg31xx->measData.status) == _UPI_TRUE_) && (pUg31xx->measData.stepCap > 0)) ||
+     ((MEAS_CABLE_OUT(pUg31xx->measData.status) == _UPI_FALSE_) && (pUg31xx->measData.stepCap < 0)) ||
+     ((pUg31xx->measData.curr > 0) && (pUg31xx->measData.stepCap < 0)) ||
+     ((pUg31xx->measData.curr < 0) && (pUg31xx->measData.stepCap > 0)))
   {
-    tmp32 = 0;
+    tmp16 = 0;
+    UG31_LOGI("[%s]: Filter stepCap = 0 (%d)\n", __func__,
+              pUg31xx->measData.stepCap);
   }
   else
   {
-    tmp32 = (_upi_s32_)pUg31xx->measData.stepCap;
+    tmp16 = pUg31xx->measData.stepCap;
   }
   pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
   pUg31xx->sysData.curr = (_sys_s16_)pUg31xx->measData.curr;
-  UpiUpdateBatInfoFromIC(&pUg31xx->sysData, (_sys_s16_)tmp32);
+  UpiUpdateBatInfoFromIC(&pUg31xx->sysData, (_sys_s16_)tmp16);
 
   pUg31xx->batteryInfo.NAC = pUg31xx->sysData.rmFromIC;
   pUg31xx->batteryInfo.LMD = pUg31xx->sysData.fccFromIC;
   pUg31xx->batteryInfo.RSOC = pUg31xx->sysData.rsocFromIC;
-  UG31_LOGI("[%s]: %d / %d = %d\n", __func__, pUg31xx->batteryInfo.NAC, pUg31xx->batteryInfo.LMD, pUg31xx->batteryInfo.RSOC);
+  pUg31xx->capData.rm = (_cap_u16_)pUg31xx->batteryInfo.NAC;
+  pUg31xx->capData.fcc = (_cap_u16_)pUg31xx->batteryInfo.LMD;
+  pUg31xx->capData.rsoc = (_cap_u8_)pUg31xx->batteryInfo.RSOC;
+  UG31_LOGI("[%s]: %d / %d = %d\n", __func__, 
+            pUg31xx->batteryInfo.NAC, 
+            pUg31xx->batteryInfo.LMD, 
+            pUg31xx->batteryInfo.RSOC);
 
   pUg31xx->sysData.rmFromIC = pUg31xx->batteryInfo.NAC;
   pUg31xx->sysData.fccFromIC = pUg31xx->batteryInfo.LMD;
@@ -2719,18 +2729,27 @@ static BackupFileReloadRsocThrdType BackupFileReloadRsocThrdTable[] = {
     pUg31xx->backupData.icDataAvailable = BACKUP_BOOL_TRUE;
     UG31_LOGI("[%s]: Restore file routine START\n", __func__);
     rtn = UpiRestoreData(&pUg31xx->backupData);
-    if(rtn == _UPI_TRUE_)
+    if((rtn == _UPI_TRUE_) &&
+       (pUg31xx->cellParameter.NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_BATTERY_REINSERT_DETECT_EN))
     {
       pUg31xx->sysData.timeTagFromIC = pUg31xx->measData.lastTimeTick;
       pUg31xx->sysData.deltaCapFromIC = pUg31xx->measData.lastDeltaCap;
       /// [FC] : Compare rsoc difference between backup file and initial capacity ; 09/26/2013
       tmp16 = (_upi_s16_)pUg31xx->capData.predictRsoc;
       tmp16 = tmp16 - pUg31xx->sysData.predictRsoc; 
-      UG31_LOGI("[%s]: Check RSOC difference -> %d - %d = %d\n", __func__, pUg31xx->capData.rsoc, pUg31xx->sysData.rsocFromIC, tmp16);
+      UG31_LOGI("[%s]: Check RSOC difference -> %d - %d = %d\n", __func__, pUg31xx->capData.predictRsoc, pUg31xx->sysData.predictRsoc, tmp16);
 
       idx = 0;
-      while(BackupFileReloadRsocThrdTable[idx].rsoc >= pUg31xx->capData.predictRsoc)
+      while(1)
       {
+        if(BackupFileReloadRsocThrdTable[idx].rsoc < pUg31xx->capData.predictRsoc)
+        {
+          break;
+        }
+        if(BackupFileReloadRsocThrdTable[idx].rsoc == 0)
+        {
+          break;
+        }
         idx = idx + 1;
       }
       UG31_LOGN("[%s]: RSOC threshold (%d) %d -> %d\n", __func__, BackupFileReloadRsocThrdTable[idx].rsoc, BackupFileReloadRsocThrdTable[idx].max, BackupFileReloadRsocThrdTable[idx].min);
@@ -3896,6 +3915,8 @@ void upi_lib_debug_switch(unsigned char op_option)
   upiGG_DebugSwitch(LKM_OPTIONS_DEBUG_LEVEL(op_option));
 }
 
+static bool upi_lib_first_update_capacity = true;
+
 /**
  * @brief upi_lib_update_capacity
  *
@@ -3911,6 +3932,14 @@ void upi_lib_update_capacity(char *obj)
   pUg31xx = (struct ug31xx_data *)obj;
   UG31_LOGI("[%s]: Time Tick = %d (%d)\n", __func__, pUg31xx->measData.lastTimeTick, pUg31xx->measData.lastCounter);
 
+  if(upi_lib_first_update_capacity == true)
+  {
+    upi_lib_first_update_capacity = false;
+    UG31_LOGE("[%s]: First update capacity (%d -> %d)\n", __func__,
+              pUg31xx->measData.deltaTimeDaemon,
+              pUg31xx->measData.deltaTime);
+    pUg31xx->measData.deltaTimeDaemon = pUg31xx->measData.deltaTime;
+  }
   upiGG_ShellUpdateCapacity(obj);
 }
 
@@ -4627,6 +4656,9 @@ int lkm_get_full_charge_capacity(void)
   return ((int)ug31xx->batteryInfo.LMD);
 }
 
+#define LKM_RSOC_REMAP_TO_100     (99)
+#define LKM_RSOC_REMAP_TO_0       (5)
+
 /**
  * @brief lkm_get_relative_state_of_charge
  *
@@ -4637,10 +4669,43 @@ int lkm_get_full_charge_capacity(void)
 int lkm_get_relative_state_of_charge(void)
 {
   struct ug31xx_data *ug31xx;
+  int rmUpper;
+  int rmLower;
+  int rmRemap;
 
   ug31xx = (struct ug31xx_data *)lkm_gauge;
 
-  return ((int)ug31xx->batteryInfo.RSOC);
+  if(!(lkm_options & LKM_OPTIONS_RSOC_REMAP))
+  {
+    return ((int)ug31xx->batteryInfo.RSOC);
+  }
+
+  rmUpper = LKM_RSOC_REMAP_TO_100*ug31xx->batteryInfo.LMD/CONST_PERCENTAGE;
+  rmLower = LKM_RSOC_REMAP_TO_0*ug31xx->batteryInfo.NAC/CONST_PERCENTAGE;
+  
+  /// [AT-PM] : RSOC >= LKM_RSOC_REMAP_TO_100 -> report to 100% ; 02/20/2014
+  if(ug31xx->batteryInfo.NAC >= rmUpper)
+  {
+    UG31_LOGI("[%s]: Remap to 100 from RM = %d\n", __func__,
+              ug31xx->batteryInfo.NAC);
+    return (100);
+  }
+
+  /// [AT-PM] : RSOC <= LKM_RSOC_REMAP_TO_0 -> report to 0% ; 02/20/2014
+  if(ug31xx->batteryInfo.NAC <= rmLower)
+  {
+    UG31_LOGI("[%s]: Remap to 0 from RM = %d\n", __func__,
+              ug31xx->batteryInfo.NAC);
+    return (0);
+  }
+
+  rmRemap = (int)ug31xx->batteryInfo.NAC;
+  rmRemap = rmRemap - rmLower;
+  rmRemap = (int)CalculateRsoc((_cap_u32_)rmRemap, (_cap_u16_)(rmUpper - rmLower));
+  UG31_LOGI("[%s]: Remap to %d from %d\n", __func__,
+            rmRemap,
+            ug31xx->batteryInfo.RSOC);
+  return (rmRemap);
 }
 
 /**
@@ -4667,7 +4732,7 @@ char* lkm_get_version(void)
 #define UPI_POLLING_TIME_NEAR_UT        (10)
 #define UPI_POLLING_TIME_OT             (5)
 #define UPI_POLLING_TIME_UT             (5)
-#define UPI_POLLING_TIME_NEAR_OT_THRD   (450)
+#define UPI_POLLING_TIME_NEAR_OT_THRD   (400)
 #define UPI_POLLING_TIME_NEAR_UT_THRD   (50)
 #define UPI_POLLING_TIME_OT_THRD        (500)
 #define UPI_POLLING_TIME_UT_THRD        (0)
@@ -5107,6 +5172,8 @@ int lkm_set_taper_current(int curr)
   ug31xx = (struct ug31xx_data *)lkm_gauge;
 
   ug31xx->cellParameter.TPCurrent = (_upi_u16_)curr;
+  UG31_LOGE("[%s]: TPCurrent = %d\n", __func__,
+            curr);
   return (0);
 }
 
@@ -5224,6 +5291,8 @@ int lkm_set_rsense(int rsense)
   ug31xx = (struct ug31xx_data *)lkm_gauge;
 
   ug31xx->cellParameter.rSense = (_upi_u8_)rsense;
+  UG31_LOGE("[%s]: rSense = %d\n", __func__,
+            rsense);
   return (0);
 }
 
@@ -5895,6 +5964,8 @@ int lkm_set_ggb_board_offset(int offset)
 
   ug31xx = (struct ug31xx_data *)lkm_gauge;
   ug31xx->cellParameter.adc1_pos_offset = (_upi_s16_)offset;
+  UG31_LOGE("[%s]: adc1_pos_offset = %d\n", __func__,
+            offset);
   return (0);
 }
 
@@ -5907,9 +5978,10 @@ int lkm_set_ggb_board_offset(int offset)
  *  Set effective board offset
  *
  * @para  offset  target effective offset
+ * @para  from_upi_bo set UG31XX_BOARD_OFFSET_FROM_UPI_BO for board offset from upi_bo file
  * @return  0 if success
  */
-int lkm_set_board_offset(int offset)
+int lkm_set_board_offset(int offset, char from_upi_bo)
 {
   struct ug31xx_data *ug31xx;
 
@@ -5925,7 +5997,132 @@ int lkm_set_board_offset(int offset)
     offset = LKM_MIN_CC_OFFSET_ADJ;
   }
   ug31xx->measData.ccOffsetAdj = (_meas_s8_)offset;
-  return (offset);
+  UG31_LOGI("[%s]: Set board offset to %d + %d\n", __func__,
+            ug31xx->cellParameter.adc1_pos_offset,
+            ug31xx->measData.ccOffsetAdj);
+
+  if(from_upi_bo == UG31XX_BOARD_OFFSET_FROM_UPI_BO)
+  {
+    UpiSetFactoryBoardOffset(&ug31xx->capData);
+  }
+  return (0);
+}
+
+/**
+ * @brief lkm_set_ntc_offset
+ *
+ *  Set NTC offset to GGB file
+ *
+ * @para  offset  target NTC offset
+ * @return  0 if success
+ */
+int lkm_set_ntc_offset(int offset)
+{
+  struct ug31xx_data *ug31xx;
+
+  ug31xx = (struct ug31xx_data *)lkm_gauge;
+  ug31xx->cellParameter.offsetR = (_upi_u16_)offset;
+  UG31_LOGE("[%s]: offsetR = %d\n", __func__,
+            offset);
+  return (0);
+}
+
+/**
+ * @brief lkm_get_ntc_offset
+ *
+ *  Get NTC offset from GGB file
+ *
+ * @return  NTC offset in mOhm
+ */
+int lkm_get_ntc_offset(void)
+{
+  struct ug31xx_data *ug31xx;
+
+  ug31xx = (struct ug31xx_data *)lkm_gauge;
+  return ((int)ug31xx->cellParameter.offsetR);
+}
+
+/**
+ * @brief lkm_set_standby_current
+ *
+ *  Set standby current for suspend
+ *
+ * @para  curr  standby current in mA
+ * @return  0 if success
+ */
+int lkm_set_standby_current(int curr)
+{
+  struct ug31xx_data *ug31xx;
+
+  ug31xx = (struct ug31xx_data *)lkm_gauge;
+  ug31xx->cellParameter.deltaR = (_upi_u16_)curr;
+  UG31_LOGE("[%s]: deltaR = %d\n", __func__,
+            curr);
+  return (0);
+}
+
+/**
+ * @brief lkm_get_standby_current
+ *
+ *  Get standby current in suspend
+ *
+ * @return  standby current in mA
+ */
+int lkm_get_standby_current(void)
+{
+  struct ug31xx_data *ug31xx;
+
+  ug31xx = (struct ug31xx_data *)lkm_gauge;
+  return ((int)ug31xx->cellParameter.deltaR);
+}
+
+/**
+ * @brief lkm_get_ggb_board_gain
+ *
+ *  Get board gain in GGB
+ *
+ * @return  board gain in GGB
+ */
+int lkm_get_ggb_board_gain(void)
+{
+  struct ug31xx_data *ug31xx;
+
+  ug31xx = (struct ug31xx_data *)lkm_gauge;
+  return ((int)ug31xx->cellParameter.adc1_ngain);
+}
+
+/**
+ * @brief lkm_set_ggb_board_gain
+ *
+ *  Set board gain in GGB
+ *
+ * @para  gain  board gain
+ * @return   0 if success
+ */
+int lkm_set_ggb_board_gain(int gain)
+{
+  struct ug31xx_data *ug31xx;
+
+  ug31xx = (struct ug31xx_data *)lkm_gauge;
+  ug31xx->cellParameter.adc1_ngain = (_upi_s16_)gain;
+  UG31_LOGE("[%s]: adc1_ngain = %d\n", __func__,
+            gain);
+  return (0);
+}
+
+/**
+ * @brief lkm_get_cumulative_capacity
+ *
+ *  Get cumulative capacity from coulomb counter
+ *
+ * @return  cumulative capacity in mAh
+ */
+int lkm_get_cumulative_capacity(void)
+{
+  struct ug31xx_data *ug31xx;
+
+  ug31xx = (struct ug31xx_data *)lkm_gauge;
+  return ((int)ug31xx->measData.cumuCap);
 }
 
 /**
@@ -6231,6 +6428,10 @@ struct ug31xx_module_interface ug31_module = {
   .get_board_offset               = lkm_get_board_offset, 
   .get_delta_q                    = lkm_get_delta_q,
   .get_ggb_board_offset           = lkm_get_ggb_board_offset,
+  .get_ntc_offset                 = lkm_get_ntc_offset,
+  .get_cumulative_capacity        = lkm_get_cumulative_capacity,
+  .get_standby_current            = lkm_get_standby_current,
+  .get_ggb_board_gain             = lkm_get_ggb_board_gain,
 
   .set_backup_file                = lkm_set_backup_file,
   .set_charger_full               = lkm_set_charger_full,
@@ -6248,6 +6449,9 @@ struct ug31xx_module_interface ug31_module = {
   .set_cable_out                  = lkm_set_cable_out,
   .set_ggb_board_offset           = lkm_set_ggb_board_offset,
   .set_board_offset               = lkm_set_board_offset,
+  .set_ntc_offset                 = lkm_set_ntc_offset,
+  .set_standby_current            = lkm_set_standby_current,
+  .set_ggb_board_gain             = lkm_set_ggb_board_gain,
 
   .chk_backup_file                = lkm_chk_backup_file,
   .enable_save_data               = lkm_saveDataToIC_switch,
