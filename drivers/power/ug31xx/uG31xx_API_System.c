@@ -11,7 +11,7 @@
  *  uG31xx system control
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 461 $
+ * @revision  $Revision: 488 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,7 +19,7 @@
 
 #if defined(uG31xx_OS_WINDOWS)
 
-#define SYSTEM_VERSION      (_T("System $Rev: 461 $"))
+#define SYSTEM_VERSION      (_T("System $Rev: 488 $"))
 
 _upi_bool_ ReadGGBFileToCellDataAndInitSetting(SystemDataType *obj)
 {
@@ -54,7 +54,7 @@ _upi_bool_ ReadGGBFileToCellDataAndInitSetting(SystemDataType *obj)
 
 #else   ///< else of defined(uG31xx_OS_WINDOWS)
 
-#define SYSTEM_VERSION      ("System $Rev: 461 $")
+#define SYSTEM_VERSION      ("System $Rev: 488 $")
 
 _upi_bool_ ReadGGBXFileToCellDataAndInitSetting(SystemDataType *obj)
 {
@@ -969,17 +969,17 @@ void UpiAdcStatus(SystemDataType *data)
 
 #define BACKUP_TIME_BYTE3           (REG_COC_LOW)
 #define BACKUP_TIME_BYTE2           (REG_COC_HIGH)
-#define BACKUP_NAC_HIGH             (REG_CBC21_LOW)
-#define BACKUP_NAC_LOW              (REG_CBC21_HIGH)
-#define BACKUP_LMD_HIGH             (REG_CBC32_LOW)
-#define BACKUP_LMD_LOW              (REG_CBC32_HIGH)
-#define BACKUP_TABLE_UPDATE_IDX     (REG_UV3_HIGH)
+#define BACKUP_NAC_HIGH             (REG_RAM0)
+#define BACKUP_NAC_LOW              (REG_RAM1)
+#define BACKUP_LMD_HIGH             (REG_RAM2)
+#define BACKUP_LMD_LOW              (REG_RAM3)
+#define BACKUP_TABLE_UPDATE_IDX     (REG_UVP_HIGH)
 #define BACKUP_DELTA_CAP_HIGH       (REG_DOC_LOW)
 #define BACKUP_DELTA_CAP_LOW        (REG_DOC_HIGH)
-#define BACKUP_ADC1_CONV_TIME_HIGH  (REG_OVP_HIGH)
-#define BACKUP_ADC1_CONV_TIME_LOW   (REG_OVP_LOW)
-#define BACKUP_CYCLE_COUNT_LOW      (REG_UVP_LOW)
-#define BACKUP_CYCLE_COUNT_HIGH     (REG_UVP_HIGH)
+#define BACKUP_ADC1_CONV_TIME_HIGH  (REG_CBC21_LOW)
+#define BACKUP_ADC1_CONV_TIME_LOW   (REG_CBC21_HIGH)
+#define BACKUP_CYCLE_COUNT_LOW      (REG_CBC32_LOW)
+#define BACKUP_CYCLE_COUNT_HIGH     (REG_CBC32_HIGH)
 #define BACKUP_CC_OFFSET            (REG_INTR_OVER_TEMP_LOW)
 #define BACKUP_STANDBY_RATIO        (REG_INTR_OVER_TEMP_HIGH)
 
@@ -1054,7 +1054,7 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
                &u8Temp);
   data->fccFromIC = (_sys_u16_)u8TempHigh;
   data->fccFromIC = data->fccFromIC*256 + u8Temp;
-  UG31_LOGI("[%s]:timeTag =%d/%x ms,NAC = %d mAh,LMD = %dmAh\n",
+  UG31_LOGE("[%s]:timeTag =%d/%x ms,NAC = %d mAh,LMD = %dmAh\n",
              __func__,
              (int)data->timeTagFromIC,
              (int)data->timeTagFromIC,
@@ -1252,21 +1252,27 @@ void UpiUpdateBatInfoFromIC(SystemDataType *data, _sys_s16_ deltaQ)
     return;
   }
 
-  /// [AT-PM] : EDVF reached and RSOC = 0 not in charging -> do nothing ; 12/26/2013
-  if((data->rsocFromIC == 0) && 
-     (data->voltage < data->ggbParameter->edv1Voltage) && 
-     (data->curr < data->ggbParameter->standbyCurrent))
+  /// [AT-PM] : Operation for EDVF ; 02/25/2014
+  if(data->voltage > data->ggbParameter->edv1Voltage)
   {
-    return;
-  }
+    if(data->rsocFromIC > 0)
+    {
+      return;
+    }
 
-  /// [AT-PM] : EDVF reached not in charging -> set RSOC to 0 ; 12/26/2013
-  if((data->voltage < data->ggbParameter->edv1Voltage) && 
-     (data->curr < data->ggbParameter->standbyCurrent))
+    /// [AT-PM] : Force RSOC > 0 ; 02/25/2014
+    data->rsocFromIC = 1;
+    data->rmFromIC = data->fccFromIC/CONST_PERCENTAGE;
+  }
+  else
   {
-    data->rsocFromIC = 0;
-    data->rmFromIC = 0;
-    return;
+    /// [AT-PM] : Set RSOC to 0 if not in charging ; 02/25/2014
+    if(data->curr < data->ggbParameter->standbyCurrent)
+    {
+      data->rsocFromIC = 0;
+      data->rmFromIC = 0;
+      return;
+    }
   }
 }
 
@@ -1302,7 +1308,7 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
     #endif  ///< end of defined(BUILD_UG31XX_LIB)
 
   #endif  ///< end of defined(uG31xx_OS_ANDROID)
-  UG31_LOGI("[%s]:timeTag =%d/%x ms,NAC = %d maH,LMD = %d maH\n",
+  UG31_LOGE("[%s]:timeTag =%d/%x ms,NAC = %d maH,LMD = %d maH\n",
   						__func__, 
   						(int)data->timeTagFromIC,
   						(int)data->timeTagFromIC,
@@ -1520,8 +1526,8 @@ typedef struct TableStorageST {
 } ALIGNED_ATTRIBUTE TableStorageType;
 
 TableStorageType TableStorage[] = {
-  { REG_RAM0,     32, },
-  { REG_OV2_LOW,  7,  },
+  { REG_RAM4,     28, },
+  { REG_OV2_LOW,  11,  },
   { 0,            0,  },
 };
 

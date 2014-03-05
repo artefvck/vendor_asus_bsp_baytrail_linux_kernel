@@ -69,6 +69,8 @@
 #define CAP_STS_FORCE_STEP_TO_100   (1<<22)
 #define CAP_STS_PREV_FC             (1<<23)
 #define CAP_STS_FILTER_LOCK_OVER    (1<<24)
+#define CAP_STS_NO_STANDBY_CAP_EST  (1<<25)
+#define CAP_STS_NO_INIT_FORCE_100   (1<<26)
 
 enum INDEX_BOUNDARY {
   INDEX_BOUNDARY_LOW = 0,
@@ -502,6 +504,13 @@ static _cap_u8_ OcvSocTable[] = {
   0,    
 };
 
+static _cap_s16_ TemperatureTable[] = {
+  450, 
+  250, 
+  150, 
+  50,  
+};
+
 /**
  * @brief FindOcvRM
  *
@@ -516,6 +525,8 @@ static _cap_u8_ OcvSocTable[] = {
 void FindOcvRM(CapacityInternalDataType *obj, _cap_u8_ tableIdx, _cap_u16_ voltage)
 {
   _cap_s32_ tmp32;
+  _cap_s32_ voltHigh;
+  _cap_s32_ voltLow;
 
   UG31_LOGN("[%s] INIT_OCV[%d][%d][%d] (%d) = %d\n", __func__,
             obj->idxTemperature[INDEX_BOUNDARY_LOW], 
@@ -533,7 +544,69 @@ void FindOcvRM(CapacityInternalDataType *obj, _cap_u8_ tableIdx, _cap_u16_ volta
             obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                          [tableIdx]
                                          [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]]);
+  UG31_LOGN("[%s] INIT_OCV[%d][%d][%d] (%d) = %d\n", __func__,
+            obj->idxTemperature[INDEX_BOUNDARY_HIGH], 
+            tableIdx, 
+            obj->idxOcvVoltage[INDEX_BOUNDARY_LOW],
+            OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]],
+            obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+                                         [tableIdx]
+                                         [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]]);
+  UG31_LOGN("[%s] INIT_OCV[%d][%d][%d] (%d) = %d\n", __func__,
+            obj->idxTemperature[INDEX_BOUNDARY_HIGH], 
+            tableIdx, 
+            obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH],
+            OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]],
+            obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+                                         [tableIdx]
+                                         [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]]);
 
+  /// [AT-PM] : Interpolate voltage ; 02/16/2014
+  if(obj->idxTemperature[INDEX_BOUNDARY_HIGH] == obj->idxTemperature[INDEX_BOUNDARY_LOW])
+  {
+    voltHigh = obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+                                            [tableIdx]
+                                            [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]];
+    voltLow = obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+                                           [tableIdx]
+                                           [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]];
+  }
+  else
+  {
+    tmp32 = (_cap_s32_)obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+                                                    [tableIdx]
+                                                    [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]];
+    tmp32 = tmp32 - obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+                                                 [tableIdx]
+                                                 [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]];
+    tmp32 = tmp32*(GetBatteryTemperature(obj) - 
+                   TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
+    tmp32 = tmp32/(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] - 
+                   TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
+    tmp32 = tmp32 + obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+                                                 [tableIdx]
+                                                 [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]];
+    voltHigh = tmp32;
+
+    tmp32 = (_cap_s32_)obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+                                                    [tableIdx]
+                                                    [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]];
+    tmp32 = tmp32 - obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+                                                 [tableIdx]
+                                                 [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]];
+    tmp32 = tmp32*(GetBatteryTemperature(obj) - 
+                   TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
+    tmp32 = tmp32/(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] - 
+                   TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
+    tmp32 = tmp32 + obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+                                                 [tableIdx]
+                                                 [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]];
+    voltLow = tmp32;
+    UG31_LOGN("[%s]: Voltage High = %d and Low = %d\n", __func__,
+              (int)voltHigh,
+              (int)voltLow);
+  }
+  
   /// [AT-PM] : Calculate RSOC ; 01/25/2013
   if(OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]] == OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]])
   {
@@ -542,21 +615,16 @@ void FindOcvRM(CapacityInternalDataType *obj, _cap_u8_ tableIdx, _cap_u16_ volta
   else
   {
     tmp32 = (_cap_s32_)voltage;
-    tmp32 = tmp32 - obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
-                                                 [tableIdx]
-                                                 [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]];
+    tmp32 = tmp32 - voltLow;
     tmp32 = tmp32*
             (OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]] - 
              OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]]);
-    tmp32 = tmp32/(obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
-                                                [tableIdx]
-                                                [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]] - 
-                   obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
-                                                [tableIdx]
-                                                [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]]);
+    tmp32 = tmp32/(voltHigh - voltLow);
     tmp32 = tmp32 + OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]];
   }
-  UG31_LOGD("[%s] RSOC = %d (%d)\n", __func__, obj->info->rsoc, (int)tmp32);
+  UG31_LOGD("[%s] RSOC = %d (%d)\n", __func__, 
+            obj->info->rsoc, 
+            (int)tmp32);
   
   /// [AT-PM] : Calculate RM ; 01/25/2013
   tmp32 = tmp32*obj->info->fcc/CONST_PERCENTAGE;
@@ -630,13 +698,6 @@ void FullChargeSet(CapacityInternalDataType *obj)
   obj->rm = obj->fcc;
 }
 
-
-static _cap_s16_ TemperatureTable[] = {
-  450, 
-  250, 
-  150, 
-  50,  
-};
 
 /**
  * @brief FindIdxTemperatureVer0
@@ -1264,20 +1325,22 @@ void CalculateCRate(CapacityInternalDataType *obj)
 
 #define INIT_CAP_PARSER_FULL_SOC      (100)
 
-static _cap_u8_ const InitCapMap[] = 
+static _cap_s8_ const InitCapMap[] = 
 {
-  0,  0,  1,  1,  2,  2,  3,  3,  4,  4,      ///< 0% ~ 9%
-  5,  5,  6,  6,  7,  7,  8,  8,  9,  9,      ///< 10% ~ 19%
-  10, 10, 11, 11, 12, 12, 13, 13, 14, 14,     ///< 20% ~ 29%
-  15, 15, 16, 16, 17, 17, 18, 18, 19, 19,     ///< 30% ~ 39%
-  20, 20, 20, 20, 20, 20, 20, 20, 20, 20,     ///< 40% ~ 49%
-  20, 20, 20, 20, 20, 19, 19, 18, 18, 17,     ///< 50% ~ 59%
-  17, 16, 16, 15, 15, 14, 14, 13, 13, 12,     ///< 60% ~ 69%
-  12, 11, 11, 10, 10, 9,  9,  8,  8,  7,      ///< 70% ~ 79%
-  7,  6,  6,  5,  5,  4,  4,  3,  3,  2,      ///< 80% ~ 89%
-  2,  2,  1,  1,  1,  0,  0,  0,  0,  0,      ///< 90% ~ 99%
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      ///< 0% ~ 9%
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      ///< 10% ~ 19%
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      ///< 20% ~ 29%
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      ///< 30% ~ 39%
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      ///< 40% ~ 49%
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      ///< 50% ~ 59%
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      ///< 60% ~ 69%
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      ///< 70% ~ 79%
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      ///< 80% ~ 89%
+  2,  2,  2,  2,  2,  1,  1,  1,  1,  1,      ///< 90% ~ 99%
   0,                                          ///< 100%
 };
+
+#define INIT_PARSER_FORCE_100_THRD      (90)
 
 /**
  * @brief InitCapacityParser
@@ -1289,17 +1352,33 @@ static _cap_u8_ const InitCapMap[] =
  */
 void InitCapacityParser(CapacityInternalDataType *obj)
 {
-  _cap_u8_ newRsoc;
+  _cap_s8_ newRsoc;
   _cap_u32_ tmp32;
 
   if(obj->info->ggbParameter->NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_REMOVE_INIT_PARSER)
   {
+    UG31_LOGN("[%s]: NAC_LMD_ADJUST_CFG_REMOVE_INIT_PARSER is set\n", __func__);
     return;
   }
+
+  newRsoc = (_cap_s8_)obj->info->rsoc;
+  newRsoc = newRsoc + InitCapMap[obj->info->rsoc];
+  UG31_LOGN("[%s]: Parsed initial capacity = %d <- %d\n", __func__,
+            newRsoc,
+            obj->info->rsoc);
+
+  if((obj->info->ggbParameter->NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_INIT_PARSER_FORCE_100_EN) &&
+     (!(obj->info->status & CAP_STS_NO_INIT_FORCE_100)) &&
+     (newRsoc > INIT_PARSER_FORCE_100_THRD))
+  {
+    UG31_LOGN("[%s]: Force initial capacity to 100 from %d\n", __func__,
+              newRsoc);
+    newRsoc = CONST_PERCENTAGE;
+  }
   
-  newRsoc = obj->info->rsoc - InitCapMap[obj->info->rsoc];
   if(newRsoc == obj->info->rsoc)
   {
+    UG31_LOGN("[%s]: No changed.\n", __func__);
     return;
   }
 
@@ -2188,6 +2267,8 @@ void UpiInitCapacity(CapacityDataType *data)
   data->dsgChargeStart = (_cap_s32_)data->ggbParameter->ILMD*2;
   data->tableUpdateDisqTime = 0;
   data->standbyDsgRatio = 0;
+  data->standbyMilliSec = 0;
+  data->standbyHour = 0;
 
   #ifdef  UG31XX_SHELL_ALGORITHM
     obj = (CapacityInternalDataType *)upi_malloc(sizeof(CapacityInternalDataType));
@@ -2267,7 +2348,11 @@ void UpiTableCapacity(CapacityDataType *data)
   obj->fcc = obj->info->fcc;
 
   /// [AT-PM] : Find out initial capacity ; 01/28/2013
+  obj->info->status = obj->info->status | (CAP_STS_INIT_PROCEDURE | 
+                                           CAP_STS_NO_INIT_FORCE_100);
   InitCharge(obj);
+  obj->info->status = obj->info->status & (~(CAP_STS_INIT_PROCEDURE |
+                                             CAP_STS_NO_INIT_FORCE_100));
   #ifdef  UG31XX_SHELL_ALGORITHM
     upi_free(obj);
   #endif  ///< end of UG31XX_SHELL_ALGORITHM
@@ -2467,7 +2552,17 @@ _cap_u16_ CalculateRsoc(_cap_u32_ rm, _cap_u16_ fcc)
 {
   _sys_u32_ tmp32;
 
-  tmp32 = rm*CONST_PERCENTAGE*CONST_ROUNDING/fcc;
+  if(fcc == 0)
+  {
+    tmp32 = rm*CONST_PERCENTAGE*CONST_ROUNDING;    
+    UG31_LOGE("[%s]: FCC = 0. (%d <-> %d)\n", __func__,
+              tmp32,
+              rm);
+  }
+  else
+  {
+    tmp32 = rm*CONST_PERCENTAGE*CONST_ROUNDING/fcc;
+  }
   tmp32 = tmp32 + CONST_ROUNDING_5;
   tmp32 = tmp32/CONST_ROUNDING;
   return ((_cap_u16_)tmp32);
@@ -2484,6 +2579,19 @@ _cap_u16_ CalculateRsoc(_cap_u32_ rm, _cap_u16_ fcc)
 void UpiSetBoardOffsetKed(CapacityDataType *data)
 {
   data->status = data->status | CAP_STS_BOARD_OFFSET_KED;
+}
+
+/**
+ * @brief UpiSetFactoryBoardOffset
+ *
+ *  Set board offset is loaded from factory
+ *
+ * @para  data  address of CapacityDataType
+ * @return  NULL
+ */
+void UpiSetFactoryBoardOffset(CapacityDataType *data)
+{
+  data->status = data->status | CAP_STS_NO_STANDBY_CAP_EST;
 }
 
 

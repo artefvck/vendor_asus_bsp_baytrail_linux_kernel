@@ -53,6 +53,7 @@ typedef enum {
 #define LKM_OPTIONS_ENABLE_REVERSE_CURRENT  (1<<4)
 #define LKM_OPTIONS_ADJUST_DESIGN_CAPACITY  (1<<5)
 #define LKM_OPTIONS_DISABLE_BACHUP_FILE     (1<<6)
+#define LKM_OPTIONS_RSOC_REMAP              (1<<7)
 
 #endif  ///< end of _LKM_OPTIONS_
 
@@ -105,7 +106,11 @@ struct ug31xx_module_interface {
 	int (*get_board_offset)(void);
 	int (*get_delta_q)(void);
 	int (*get_ggb_board_offset)(void);
-
+	int (*get_ntc_offset)(void);
+	int (*get_cumulative_capacity)(void);
+	int (*get_standby_current)(void);
+	int (*get_ggb_board_gain)(void);
+	
 	int (*set_backup_file)(char enable);
 	int (*set_charger_full)(char is_full);
 	int (*set_charge_termination_current)(int curr);
@@ -121,7 +126,10 @@ struct ug31xx_module_interface {
 	int (*set_capacity_suspend_mode)(char in_suspend);
 	int (*set_cable_out)(unsigned char cntl);
 	int (*set_ggb_board_offset)(int offset);
-	int (*set_board_offset)(int offset);
+	int (*set_board_offset)(int offset, char from_upi_bo);
+	int (*set_ntc_offset)(int offset);
+	int (*set_standby_current)(int curr);
+	int (*set_ggb_board_gain)(int gain);
 
 	int (*chk_backup_file)(void);
 	int (*enable_save_data)(char enable);
@@ -158,6 +166,8 @@ enum {
   UG31XX_BOARD_OFFSET_CALI_FULL,
   UG31XX_BOARD_OFFSET_CALI_FULL_NO_UPPER,
   UG31XX_BOARD_OFFSET_CALI_AVG,
+  UG31XX_BOARD_OFFSET_FROM_UPI_BO,
+  UG31XX_BOARD_OFFSET_NOT_FROM_UPI_BO,
   UG31XX_CABLE_OUT,
   UG31XX_CABLE_IN,
   UG31XX_USER_SPACE_RESPONSE,
