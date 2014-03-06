@@ -716,9 +716,10 @@ static void valleyview_power_gate_disp(struct drm_i915_private *dev_priv)
             VLV_IOSFSB_PWRGT_STATUS,
             VLV_PWRGT_DISP_CNT_MASK,
             VLV_PWRGT_DISP_CNT_MASK);
-	if (ret != 0)
-		dev_err(&dev_priv->bridge_dev->dev,
-			"Power gate DISP Controller timed out, suspend might fail\n");
+    if (ret) {
+        dev_err(&dev_priv->bridge_dev->dev,
+        "Power gate DISP Controller timed out, suspend might fail\n");
+    }
 
 
 	/* 2. Power Gate DPIO - RX/TX Lanes */
@@ -728,17 +729,19 @@ static void valleyview_power_gate_disp(struct drm_i915_private *dev_priv)
 			VLV_IOSFSB_PWRGT_STATUS,
 			VLV_PWRGT_DPIO_RX_TX_LANES_MASK,
 			VLV_PWRGT_DPIO_RX_TX_LANES_MASK);
-	if (ret != 0)
+	if (ret) {
 		dev_err(&dev_priv->bridge_dev->dev,
 				"Power gate DPIO RX_TX timed out, suspend might fail\n");
+	}
 
 	/* 3. Power Gate DPIO Common Lanes */
 	ret = set_power_state_with_timeout(dev_priv, VLV_IOSFSB_PWRGT_CNT_CTRL,
 		VLV_PWRGT_DPIO_CMN_LANES_MASK, VLV_IOSFSB_PWRGT_STATUS,
 		VLV_PWRGT_DPIO_CMN_LANES_MASK, VLV_PWRGT_DPIO_CMN_LANES_MASK);
-	if (ret != 0)
+	if (ret) {
 		dev_err(&dev_priv->bridge_dev->dev,
 				"Power gate DPIO CMN timed out, suspend might fail\n");
+	}
 }
 
 static void valleyview_power_ungate_disp(struct drm_i915_private *dev_priv)
@@ -749,18 +752,20 @@ static void valleyview_power_ungate_disp(struct drm_i915_private *dev_priv)
 		VLV_IOSFSB_PWRGT_CNT_CTRL,
 		VLV_PWRGT_DPIO_TX_LANES_MASK, VLV_IOSFSB_PWRGT_STATUS,
 		VLV_PWRGT_DPIO_TX_LANES_MASK, 0);
-	if (ret != 0)
+	if (ret) {
 		dev_err(&dev_priv->bridge_dev->dev,
 				"Power ungate DPIO TX timed out, resume might fail\n");
+	}
 
 	/* 2. Power UnGate DPIO Common Lanes */
 	ret = set_power_state_with_timeout(dev_priv,
 		VLV_IOSFSB_PWRGT_CNT_CTRL,
 		VLV_PWRGT_DPIO_CMN_LANES_MASK, VLV_IOSFSB_PWRGT_STATUS,
 		VLV_PWRGT_DPIO_CMN_LANES_MASK, 0);
-	if (ret != 0)
+	if (ret) {
 		dev_err(&dev_priv->bridge_dev->dev,
 				"Power ungate DPIO CMN timed out, resume might fail\n");
+	}
 
 	/* 3. Power ungate display controller */
 	ret = set_power_state_with_timeout(dev_priv,
@@ -768,9 +773,10 @@ static void valleyview_power_ungate_disp(struct drm_i915_private *dev_priv)
 		VLV_PWRGT_DISP_CNT_MASK,
 		VLV_IOSFSB_PWRGT_STATUS,
 		VLV_PWRGT_DISP_CNT_MASK, 0);
-	if (ret != 0)
+	if (ret) {
 		dev_err(&dev_priv->bridge_dev->dev,
 		"Power ungate DISP Controller timed out, resume might fail\n");
+	}
 }
 
 /* follow the sequence below for VLV suspend*/
@@ -837,7 +843,7 @@ static int valleyview_freeze(struct drm_device *dev)
 		if (error) {
 			dev_err(&dev->pdev->dev,
 				"GEM idle failed, resume might fail\n");
-			goto out;
+			return error;
 		}
 
 		/* uninstall the interrupts and then cancel outstanding wq.
@@ -901,19 +907,16 @@ static int valleyview_freeze(struct drm_device *dev)
 				"ALLOW_WAKE_SET timed out, suspend might fail\n");
 	}
 
-	program_pfi_credits(dev_priv, false);
 
 	/* vii)  Power Gate Power Wells */
 	valleyview_power_gate_disp(dev_priv);
 
-	dev_priv->is_suspending = false;
-
-out:
 	/* viii) Release graphics clocks */
 	reg = I915_READ(VLV_GTLC_SURVIVABILITY_REG);
 	reg &= ~VLV_GFX_CLK_FORCE_ON_BIT;
 	I915_WRITE(VLV_GTLC_SURVIVABILITY_REG, reg);
 
+	dev_priv->is_suspending = false;
 	return 0;
 }
 
@@ -1020,8 +1023,6 @@ static int valleyview_thaw(struct drm_device *dev)
 	reg = I915_READ(VLV_GTLC_SURVIVABILITY_REG);
 	reg &= ~VLV_GFX_CLK_FORCE_ON_BIT;
 	I915_WRITE(VLV_GTLC_SURVIVABILITY_REG, reg);
-
-	program_pfi_credits(dev_priv, true);
 
 	return error;
 }

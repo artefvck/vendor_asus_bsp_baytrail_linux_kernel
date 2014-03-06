@@ -260,16 +260,17 @@ int intel_enable_dsi_pll(struct intel_dsi *intel_dsi)
 {
 	struct drm_encoder *encoder = &(intel_dsi->base.base);
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
-	struct drm_display_mode *mode = &intel_crtc->config.adjusted_mode;
+	struct drm_display_mode *mode = &intel_crtc->config.requested_mode;
 	struct drm_i915_private *dev_priv =
 					intel_dsi->base.base.dev->dev_private;
 	u32 tmp;
 
+	if (BYT_CR_CONFIG)
+		mode = intel_dsi->attached_connector->panel.fixed_mode;
+	else
+		mode = &intel_crtc->config.requested_mode;
+
 	DRM_DEBUG_KMS("\n");
-	if ((I915_READ(PIPECONF(PIPE_A)) & PIPECONF_DSI_PLL_LOCKED)) {
-		DRM_DEBUG_KMS("DSI PLL Already locked\n");
-		return 0;
-	}
 
 	mutex_lock(&dev_priv->dpio_lock);
 	intel_configure_dsi_pll(intel_dsi, mode);

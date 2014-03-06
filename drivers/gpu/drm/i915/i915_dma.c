@@ -1562,6 +1562,8 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	dev->dev_private = (void *)dev_priv;
 	dev_priv->dev = dev;
 	dev_priv->info = info;
+	DRM_DEBUG_DRIVER("Setting is_booting flag\n");
+	dev->is_booting = false;
 
 	spin_lock_init(&dev_priv->irq_lock);
 	spin_lock_init(&dev_priv->gpu_error.lock);
@@ -1815,7 +1817,7 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 
 	i915_setup_sysfs(dev);
 
-	dev_priv->is_first_modeset = true;
+	dev_priv->pfi_credit = true;
 
 	if (INTEL_INFO(dev)->num_pipes) {
 		/* Must be done after probing outputs */
@@ -2034,8 +2036,7 @@ void i915_driver_lastclose(struct drm_device * dev)
 #endif
 
 	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
-		if (!dev_priv->fwlogo_size)
-			intel_fb_restore_mode(dev);
+		intel_fb_restore_mode(dev);
 		vga_switcheroo_process_delayed_switch();
 		return;
 	}

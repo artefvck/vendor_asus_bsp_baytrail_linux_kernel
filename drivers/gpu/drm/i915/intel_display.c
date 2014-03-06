@@ -44,8 +44,6 @@
 #include <drm/drm_dp_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <linux/dma_remapping.h>
-#include <linux/regulator/consumer.h>
-#include <asm/spid.h>
 
 #define MAX_BRIGHTNESS	255
 
@@ -380,18 +378,6 @@ static const intel_limit_t intel_limits_vlv_dp = {
 	.p2 = { .dot_limit = 270000,
 		.p2_slow = 2, .p2_fast = 20 },
 };
-
-static bool check_live_status(struct drm_i915_private *dev_priv)
-{
-	DRM_DEBUG_PM("Reading: HDMIB_HOTPLUG_LIVE_STATUS = %x\n", I915_READ(PORT_HOTPLUG_STAT));
-
-	if (((I915_READ(PORT_HOTPLUG_STAT) & HDMIB_HOTPLUG_LIVE_STATUS) == 0) &&
-		((I915_READ(PORT_HOTPLUG_STAT) & HDMIC_HOTPLUG_LIVE_STATUS) == 0) &&
-		((I915_READ(PORT_HOTPLUG_STAT) & HDMID_HOTPLUG_LIVE_STATUS) == 0))
-		return false;
-	else
-		return true;
-}
 
 static const intel_limit_t *intel_ironlake_limit(struct drm_crtc *crtc,
 						int refclk)
@@ -2304,6 +2290,10 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 		intel_crtc->dspaddr_offset = linear_offset;
 	}
 
+	if (BYT_CR_CONFIG)
+		I915_WRITE(PIPESRC(plane),
+			((fb->width - 1) << 16) | (fb->height - 1));
+
 	I915_WRITE(DSPSTRIDE(plane), fb->pitches[0]);
 	if (INTEL_INFO(dev)->gen >= 4) {
 		I915_MODIFY_DISPBASE(DSPSURF(plane),
@@ -3982,8 +3972,7 @@ static void i9xx_pfit_enable(struct intel_crtc *crtc)
 	 * The panel fitter should only be adjusted whilst the pipe is disabled,
 	 * according to register description and PRM.
 	 */
-	if (I915_READ(PFIT_CONTROL) & PFIT_ENABLE)
-		return;
+	WARN_ON(I915_READ(PFIT_CONTROL) & PFIT_ENABLE);
 	assert_pipe_disabled(dev_priv, crtc->pipe);
 
 	I915_WRITE(PFIT_PGM_RATIOS, pipe_config->gmch_pfit.pgm_ratios);
@@ -3993,6 +3982,7 @@ static void i9xx_pfit_enable(struct intel_crtc *crtc)
 	 * default, change to something else for debugging. */
 	I915_WRITE(BCLRPAT(crtc->pipe), 0);
 }
+
 static void valleyview_crtc_enable(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
@@ -4002,12 +3992,10 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
 	bool is_dsi;
-	struct intel_program_clock_bending clockbend;
-	struct intel_program_clock_spread clockspread;
 
 	WARN_ON(!crtc->enabled);
 
-	if (intel_crtc->active)
+	if (intel_crtc->active || dev->is_booting)
 		return;
 
 	intel_crtc->active = true;
@@ -4023,23 +4011,6 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 
 	if (!is_dsi)
 		vlv_enable_pll(intel_crtc);
-
-	/* Bending and Spread Clock controls */
-	for_each_encoder_on_crtc(dev, crtc, encoder) {
-		if (encoder->type == INTEL_OUTPUT_EDP) {
-			DRM_DEBUG_DRIVER("INFO: Enable spread eDP\n");
-			dev_priv->clockspread = true;
-			valleyview_program_clock_spread(
-				dev_priv, &clockspread);
-		} else if ((encoder->type == INTEL_OUTPUT_HDMI) && (check_live_status(dev_priv) == true)) {
-			dev_priv->unplug = false;
-			DRM_DEBUG_DRIVER("INFO: Enable Bending For HDMI\n");
-			dev_priv->clockbend = true;
-			valleyview_program_clock_bending(
-			dev_priv, &clockbend);
-		} else if (encoder->type == INTEL_OUTPUT_DSI)
-			DRM_DEBUG_DRIVER("INFO: None For DSI\n");
-	}
 
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		if (encoder->type != INTEL_OUTPUT_DSI) {
@@ -4140,10 +4111,8 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
 	u32 data = 0;
-	struct intel_program_clock_bending clockbend;
-	struct intel_program_clock_spread clockspread;
 
-	if (!intel_crtc->active)
+	if (!intel_crtc->active || dev->is_booting)
 		return;
 
 	if ((pipe == 0) && (dev_priv->is_mipi || dev_priv->is_hdmi)) {
@@ -4172,25 +4141,6 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	intel_disable_plane(dev_priv, plane, pipe);
 	mdelay(1);
 	intel_disable_pipe(dev_priv, pipe);
-
-	/* Bending and Spread Clock controls */
-	if (dev_priv->is_suspending || dev_priv->unplug) {
-		for_each_encoder_on_crtc(dev, crtc, encoder) {
-			if (encoder->type == INTEL_OUTPUT_EDP) {
-				dev_priv->clockspread = false;
-				valleyview_program_clock_spread(
-					dev_priv, &clockspread);
-			} else if (encoder->type == INTEL_OUTPUT_HDMI) {
-				dev_priv->clockbend = false;
-				valleyview_program_clock_bending(
-					dev_priv, &clockbend);
-				if (dev_priv->unplug)
-					dev_priv->unplug = false;
-			}
-		}
-		/* FIXME: Wait for bending/spread clocks */
-		mdelay(1);
-	}
 
 	i9xx_pfit_disable(intel_crtc);
 
@@ -4230,146 +4180,6 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 		VLV_PWRGT_DPIO_RX_LANES_MASK) {
 		vlv_punit_write32_bits(dev_priv, VLV_IOSFSB_PWRGT_CNT_CTRL,
 		VLV_PWRGT_DPIO_RX_LANES_MASK, VLV_PWRGT_DPIO_RX_LANES_MASK);
-	}
-}
-
-#define BNDSPRDOFF ((vlv_ccu_read(dev_priv, CCU_ICLK_GATE_CTRL_REG) & (ICLKGTCTRL_SSON | ICLKGTCTRL_BNDON)) != (ICLKGTCTRL_SSON | ICLKGTCTRL_BNDON))
-void clock_off_bend_spread(struct drm_i915_private *dev_priv)
-{
-	bool done = false;
-	/*
-	 * We have only one bit to control both spread and bend main clocks
-	 * If Spread is not being used, we can disable clocks
-	 */
-	u32 punitspare = vlv_punit_read(dev_priv, PUNIT_GVD_SPARE1);
-	if (punitspare == PUNIT_CLKS_ON) {
-		vlv_punit_write(dev_priv, PUNIT_GVD_SPARE1, PUNIT_CLKS_OFF);
-		done = wait_for_atomic(BNDSPRDOFF, 10) == 0;
-		if (!done)
-			DRM_ERROR("WARN! Failed to turn off Bend/Spread clocks\n");
-	} else
-		DRM_ERROR("INFO: PUNIT clocks already OFF\n");
-}
-
-#define BNDSPRDON ((vlv_ccu_read(dev_priv, CCU_ICLK_GATE_CTRL_REG) & (ICLKGTCTRL_SSON | ICLKGTCTRL_BNDON)) == (ICLKGTCTRL_SSON | ICLKGTCTRL_BNDON))
-void clock_on_bend_spread(struct drm_i915_private *dev_priv)
-{
-	bool done = false;
-	/*
-	 * We have only one bit to control both spread and bend main clocks
-	 * If Spread is not being used, we can disable clocks
-	 */
-	u32 punitspare = vlv_punit_read(dev_priv, PUNIT_GVD_SPARE1);
-	if (punitspare == PUNIT_CLKS_OFF) {
-		vlv_punit_write(dev_priv, PUNIT_GVD_SPARE1, PUNIT_CLKS_ON);
-		done = wait_for_atomic(BNDSPRDON, 10) == 0;
-		if (!done)
-			DRM_ERROR("WARN! Failed to turn on Bend/Spread clocks\n");
-	} else
-		DRM_ERROR("INFO: PUNIT clocks already ON\n");
-}
-
-#define BNDOFF ((vlv_ccu_read(dev_priv, CCU_ICLK5_REG) & ICLK5_DISPBENDCLKEN) != ICLK5_DISPBENDCLKEN)
-void disable_bend_clock(struct drm_i915_private *dev_priv)
-{
-	u32 iClk5val = 0;
-	bool done = false;
-
-	/* HW WA - Clear the dispbendclken */
-	intel_pmc_read(dev_priv, PMC_WA_FORICLK5_REG, &iClk5val);
-	intel_pmc_write(dev_priv, PMC_WA_FORICLK5_REG,
-		((iClk5val & ~PMC_WA_ICLK5_BIT16_BND) | PMC_WA_HNDSHK));
-	done = wait_for_atomic(BNDOFF, 10) == 0;
-	if (!done)
-		DRM_ERROR("WARN! Clock bending disable timed out\n");
-	udelay(100);
-	dev_priv->clockbend = false;
-}
-
-#define BNDON ((vlv_ccu_read(dev_priv, CCU_ICLK5_REG) & ICLK5_DISPBENDCLKEN) == ICLK5_DISPBENDCLKEN)
-void enable_bend_clock(struct drm_i915_private *dev_priv)
-{
-	u32 iClk5val = 0;
-	bool done = false;
-
-	/* Enable clock bend Alternative HW WA
-	 * Handshake bit and bit 1 mapped to bit 16 of iclk5
-	 */
-	intel_pmc_read(dev_priv, PMC_WA_FORICLK5_REG, &iClk5val);
-	intel_pmc_write(dev_priv, PMC_WA_FORICLK5_REG,
-		((iClk5val | PMC_WA_ICLK5_BIT16_BND) | PMC_WA_HNDSHK));
-	done = wait_for_atomic(BNDON, 10) == 0;
-	if (!done)
-		DRM_ERROR("WARN! Clock bending enable timed out\n");
-	udelay(100);
-}
-
-#define SPRDOFF ((vlv_ccu_read(dev_priv, CCU_ICLK5_REG) & ICLK5_DISPSSCLK_SSEN) != ICLK5_DISPSSCLK_SSEN)
-void disable_spread_clock(struct drm_i915_private *dev_priv)
-{
-	u32 iClk5val = 0;
-	bool done = false;
-
-	/* HW WA - Clear the dispspreadclken */
-	intel_pmc_read(dev_priv, PMC_WA_FORICLK5_REG, &iClk5val);
-	intel_pmc_write(dev_priv, PMC_WA_FORICLK5_REG,
-		((iClk5val & ~PMC_WA_ICLK5_BIT17_SPRD) | PMC_WA_HNDSHK));
-	done = wait_for_atomic(SPRDOFF, 10) == 0;
-	if (!done)
-		DRM_ERROR("SPREAD: Clock Spread disable timed out\n");
-	dev_priv->clockspread = false;
-	udelay(100);
-}
-
-#define SPRDON ((vlv_ccu_read(dev_priv, CCU_ICLK5_REG) & ICLK5_DISPSSCLK_SSEN) == ICLK5_DISPSSCLK_SSEN)
-void enable_spread_clock(struct drm_i915_private *dev_priv)
-{
-	u32 iClk5val = 0;
-	bool done = false;
-
-	/* enable clock spread Alternative HW WA
-	 * Handshake bit and bit 2 mapped to bit 17 of iclk5
-	 */
-	intel_pmc_read(dev_priv, PMC_WA_FORICLK5_REG, &iClk5val);
-	intel_pmc_write(dev_priv, PMC_WA_FORICLK5_REG,
-		((iClk5val | PMC_WA_ICLK5_BIT17_SPRD) | PMC_WA_HNDSHK));
-	done = wait_for_atomic(SPRDON, 10) == 0;
-	if (!done)
-		DRM_ERROR("SPREAD: Clock spread enable timed out\n");
-	udelay(100);
-}
-
-void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
-		struct intel_program_clock_bending *clockbend)
-{
-	u32 iClk0val = 0, iClk1val = 0;
-	if (!dev_priv->clockbend) {
-		iClk0val = vlv_ccu_read(dev_priv, CCU_ICLK0_REG);
-		iClk0val = iClk0val & ~ICLK0_BENDSTEPSIZE;
-		vlv_ccu_write(dev_priv, CCU_ICLK0_REG, iClk0val);
-		iClk1val = vlv_ccu_read(dev_priv, CCU_ICLK1_REG);
-		iClk1val = iClk1val & ~(ICLK1_BENDTIMETOSW | ICLK1_BENDUPDOWN);
-		vlv_ccu_write(dev_priv, CCU_ICLK1_REG, iClk1val);
-		disable_bend_clock(dev_priv);
-		if (!dev_priv->clockspread)
-			clock_off_bend_spread(dev_priv);
-	} else if (dev_priv->clockbend) {
-		clock_on_bend_spread(dev_priv);
-		enable_bend_clock(dev_priv);
-	}
-}
-
-void valleyview_program_clock_spread(
-		struct drm_i915_private *dev_priv,
-		struct intel_program_clock_spread *clockspread)
-{
-	if (!dev_priv->clockspread) {
-		disable_spread_clock(dev_priv);
-		if (!dev_priv->clockbend)
-			clock_off_bend_spread(dev_priv);
-	} else if (dev_priv->clockspread) {
-		clock_on_bend_spread(dev_priv);
-		enable_spread_clock(dev_priv);
 	}
 }
 
@@ -4415,18 +4225,10 @@ void intel_crtc_update_dpms(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_encoder *intel_encoder;
-	struct drm_encoder *drm_encoder = NULL;
-	struct drm_encoder_helper_funcs *encoder_funcs = NULL;
 	bool enable = false;
 
-	for_each_encoder_on_crtc(dev, crtc, intel_encoder) {
+	for_each_encoder_on_crtc(dev, crtc, intel_encoder)
 		enable |= intel_encoder->connectors_active;
-		if (enable && intel_encoder->type == INTEL_OUTPUT_DSI) {
-			drm_encoder = &intel_encoder->base;
-			encoder_funcs = drm_encoder->helper_private;
-			encoder_funcs->dpms(drm_encoder, DRM_MODE_DPMS_ON);
-		}
-	}
 
 	if (enable)
 		dev_priv->display.crtc_enable(crtc);
@@ -5248,6 +5050,22 @@ static void intel_set_pipe_timings(struct intel_crtc *intel_crtc)
 	struct drm_display_mode *mode = &intel_crtc->config.requested_mode;
 	uint32_t vsyncshift, crtc_vtotal, crtc_vblank_end;
 
+	if (BYT_CR_CONFIG) {
+		struct intel_encoder *encoder;
+		struct intel_dsi *intel_dsi;
+
+		for_each_encoder_on_crtc(dev, &intel_crtc->base, encoder) {
+			switch (encoder->type) {
+			case INTEL_OUTPUT_DSI:
+			intel_dsi = enc_to_intel_dsi(&encoder->base);
+			mode = intel_dsi->attached_connector->panel.fixed_mode;
+			adjusted_mode =
+				intel_dsi->attached_connector->panel.fixed_mode;
+				break;
+			}
+
+		}
+	}
 	/* We need to be careful not to changed the adjusted mode, for otherwise
 	 * the hw state checker will get angry at the mismatch. */
 	crtc_vtotal = adjusted_mode->crtc_vtotal;
@@ -5464,15 +5282,177 @@ void intel_iosf_rw(struct drm_i915_private *dev_priv,
 	return;
 }
 
-bool get_regulator(struct drm_device *dev,
-	struct drm_i915_private *dev_priv)
+void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
+		struct intel_program_clock_bending *clockbend)
 {
-	dev_priv->v3p3s_reg = regulator_get(dev->dev, FFRD8_PR1_DISP_BKLGHT_REGULATOR);
-	if (IS_ERR(dev_priv->v3p3s_reg)) {
-		DRM_ERROR("FFRD8_PR1_DISP_BKLGHT_REGULATOR: Regulator_get failed\n");
-		return false;
+	unsigned long refclk = 0, targetclk = 0, currentclk = 0;
+	unsigned long long idealrefclk = 0, errorPPM = 0;
+	bool ssbendupdown = 0, clkbenden = 0;
+	u32 iClk1val = 0, iClk0val = 0, iClk5val = 0, writeval = 0;
+	unsigned long long bendadjust = 0, bendstepsize = 0;
+	u32 bendtimetosw = 0, regval = 0;
+	unsigned long long mult = 0, div = 0;
+	unsigned long timeout = jiffies + msecs_to_jiffies(100);
+
+	clkbenden = clockbend->is_enable;
+	if (clockbend->is_enable) {
+		/*clocks in Hz*/
+		refclk = (unsigned long)clockbend->referenceclk * 1000;
+		currentclk =  (unsigned long)clockbend->dotclock * 1000;
+		targetclk = (unsigned long)clockbend->targetclk * 1000;
+
+		/*errorPPM = (targetclock - actualclock)*1000000/actualclock*/
+		if (targetclk > currentclk) {
+			errorPPM = (unsigned long long)(targetclk - currentclk)*
+					PPM_MULTIPLIER;
+			do_div(errorPPM, currentclk);
+		} else {
+			errorPPM = (unsigned long long)(currentclk - targetclk)*
+					PPM_MULTIPLIER;
+			do_div(errorPPM, currentclk);
+		}
+
+		if (errorPPM > 1) {
+			/* multiplication by ACCURACY_MULTIPLIER
+			to increase accuracy of result */
+
+			/*IdealReferenceClock =
+			TargetClock/ActualClock*RefClkinMHz */
+			mult = ((unsigned long long)targetclk *
+				ACCURACY_MULTIPLIER);
+			div = (unsigned long long)currentclk;
+			do_div(mult, div);
+			div = (unsigned long long)NANOSEC_MULTIPLIER/refclk;
+			idealrefclk = mult * div;
+
+			/*BendAdjustment =
+			(10 - IdealRefClock)*4.8*128*249 */
+
+			/* need to set ssbendupdown based on sign
+				of bendadjust.
+			ssbendupdown = 1 ; BendAdjustment > 0.
+			ssbendupdown = 0 ; BendAdjustment < 0.*/
+			if (idealrefclk >= BENDADJUST_MULT) {
+				bendadjust = ((idealrefclk -
+				(unsigned long long)(BENDADJUST_MULT)) *
+					INVERSE_BEND_RESOLUTION);
+				div = (unsigned long long)BENDADJUST_MULT;
+				do_div(bendadjust, div);
+				ssbendupdown = true;
+			} else {
+				bendadjust = (((unsigned long long)
+					(BENDADJUST_MULT) -
+					idealrefclk) *
+					INVERSE_BEND_RESOLUTION);
+				div = (unsigned long long)BENDADJUST_MULT;
+				do_div(bendadjust, div);
+				ssbendupdown = false;
+			}
+
+			/*BendStepSize = BendAdjustment/249 */
+			bendstepsize = bendadjust;
+			div = (unsigned long long) VLV_ACCUMULATOR_SIZE;
+			do_div(bendstepsize, div);
+
+			/*BendTimetoSwitch = (BendAdjustment % 249) + 0.5 */
+			div_u64_rem(bendadjust, VLV_ACCUMULATOR_SIZE,
+					&bendtimetosw);
+			bendtimetosw = (2*bendtimetosw)+1;
+			do_div(bendtimetosw, 2);
+
+			/* Program and Enable clock bending to achieve 1ppm.
+			Enabled only for required CE modes for HDMI.
+
+			Disable clock bending if enabled: toggling of enable bit
+			is required for new parameters to take effect.*/
+			iClk5val = vlv_nc_read(dev_priv, CCU_iCLK5_REG);
+			if (true == ((iClk5val & iCLK5_DISPBENDCLKEN)
+					>> iCLK5_BENDCLKEN_SHIFT)) {
+				/* HW WA - Clear the dispbendclken */
+				intel_pmc_write_bits(dev_priv,
+				PMC_WA_FORICLK5_REG, PMC_WA_HNDSHK, 0x3);
+				do {
+					regval = 0xF; /* Random */
+					intel_pmc_read(dev_priv,
+						PMC_WA_FORICLK5_REG, &regval);
+				 /* Wait for handshake bit clearance */
+				} while (((regval & PMC_WA_HNDSHK) != 0x0) &&
+					time_after(timeout, jiffies));
+				if (time_after(jiffies, timeout))
+					DRM_DEBUG_DRIVER(
+					"Clock bending prgm timed out\n");
+			}
+
+			/*program step size*/
+			intel_iosf_rw(dev_priv, OPCODE_REG_READ,
+				IOSF_PORT_CCU, CCU_iCLK0_REG, &iClk0val);
+			writeval = bendstepsize << iCLK0_STEPSIZE_SHIFT;
+			iClk0val = iClk0val & ~iCLK0_BENDSTEPSIZE;
+			iClk0val = iClk0val | writeval;
+			intel_iosf_rw(dev_priv, OPCODE_REG_WRITE,
+				IOSF_PORT_CCU, CCU_iCLK0_REG,  &iClk0val);
+
+			/*program number of times to switch up/down*/
+			intel_iosf_rw(dev_priv, OPCODE_REG_READ,
+				IOSF_PORT_CCU, CCU_iCLK1_REG, &iClk1val);
+			writeval = (bendtimetosw << iCLK1_BENDTIME_SHIFT) |
+				(ssbendupdown << iCLK1_BENDUPDOWN_SHIFT);
+			iClk1val = iClk1val &
+				~(iCLK1_BENDTIMETOSW | iCLK1_BENDUPDOWN);
+			iClk1val = iClk1val | writeval;
+			intel_iosf_rw(dev_priv, OPCODE_REG_WRITE,
+				IOSF_PORT_CCU, CCU_iCLK1_REG, &iClk1val);
+
+			/*enable clock bend*/
+			/* Alternative HW WA */
+			/* Handshake bit and bit 1 mapped to bit 16 of iclk5 */
+			intel_pmc_write_bits(dev_priv, PMC_WA_FORICLK5_REG,
+				PMC_WA_HNDSHK | PMC_WA_ICLK5_BIT16_BND, 0x3);
+			do {
+				regval = 0xF; /* Random */
+				intel_pmc_read(dev_priv,
+					PMC_WA_FORICLK5_REG, &regval);
+			/* Wait for handshake bit clearance */
+			} while (((regval & PMC_WA_HNDSHK) != 0x0) &&
+				time_after(timeout, jiffies));
+			if (time_after(jiffies, timeout))
+				DRM_DEBUG_DRIVER(
+				"Clock bending prgm timed out\n");
+		} else {
+			clkbenden = false;
+		}
 	}
-	return true;
+
+	if (false == clkbenden) {
+		/*Disable clock bending for non HDMI modes and
+			HDMI modes with 0 ppm*/
+		intel_iosf_rw(dev_priv, OPCODE_REG_READ,
+				IOSF_PORT_CCU, CCU_iCLK0_REG, &iClk0val);
+		iClk0val = iClk0val & ~iCLK0_BENDSTEPSIZE;
+		intel_iosf_rw(dev_priv, OPCODE_REG_WRITE, IOSF_PORT_CCU,
+				CCU_iCLK0_REG, &iClk0val);
+
+		intel_iosf_rw(dev_priv, OPCODE_REG_READ,
+				IOSF_PORT_CCU, CCU_iCLK1_REG, &iClk1val);
+		iClk1val = iClk1val & ~(iCLK1_BENDTIMETOSW | iCLK1_BENDUPDOWN);
+		intel_iosf_rw(dev_priv, OPCODE_REG_WRITE, IOSF_PORT_CCU,
+				CCU_iCLK1_REG, &iClk1val);
+
+		/* Alternative HW WA */
+		intel_pmc_write_bits(dev_priv,
+			PMC_WA_FORICLK5_REG, PMC_WA_HNDSHK, 0x3);
+		do {
+			regval = 0xF; /* Random */
+			intel_pmc_read(dev_priv, PMC_WA_FORICLK5_REG, &regval);
+		 /* Wait for handshake bit clearance */
+		} while (((regval & PMC_WA_HNDSHK) != 0x0) &&
+			time_after(timeout, jiffies));
+		if (time_after(jiffies, timeout))
+			DRM_DEBUG_DRIVER(
+			"Clock bending prgm timed out\n");
+		iClk5val = vlv_nc_read(dev_priv, CCU_iCLK5_REG);
+		DRM_DEBUG_DRIVER("iCLK5 Reg Value = %x\n", iClk5val);
+	}
 }
 
 static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
@@ -5482,7 +5462,7 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	struct drm_display_mode *mode = &intel_crtc->config.adjusted_mode;
+	struct drm_display_mode *mode = &intel_crtc->config.requested_mode;
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
 	int refclk, num_connectors = 0;
@@ -5492,8 +5472,10 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	bool is_lvds = false, is_dsi = false;
 	struct intel_encoder *encoder;
 	const intel_limit_t *limit;
-	int ret, rgrt;
-	static bool getregulator = true;
+	int ret;
+
+	if (dev->is_booting)
+		return 0;
 
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 		switch (encoder->type) {
@@ -5502,6 +5484,12 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 			break;
 		case INTEL_OUTPUT_DSI:
 			is_dsi = true;
+			if (BYT_CR_CONFIG) {
+				struct intel_dsi *intel_dsi;
+				intel_dsi = enc_to_intel_dsi(&encoder->base);
+				mode =
+				intel_dsi->attached_connector->panel.fixed_mode;
+			}
 			break;
 		}
 
@@ -5601,23 +5589,6 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 			HAD_EVENT_MODE_CHANGING);
 	}
 
-	if (spid.hardware_id == BYT_TABLET_BLK_8PR1) {
-		/* Get the regulator once */
-		if (getregulator) {
-			getregulator = false;
-			rgrt = get_regulator(dev, dev_priv);
-			if (!rgrt) {
-				DRM_ERROR("WARN! 3P3SX Regulator get failed\n");
-				dev_priv->v3p3s_reg = NULL;
-				goto out;
-			}
-			/* FIXME:Remove this once regulator framework does default enable */
-			rgrt = regulator_enable(dev_priv->v3p3s_reg);
-			if (rgrt)
-				DRM_ERROR("WARN! Failed to turn ON 3P3SX\n");
-		}
-	}
-out:
 	return ret;
 }
 
@@ -8324,7 +8295,7 @@ static void do_intel_finish_page_flip(struct drm_device *dev,
 
 	if (work == NULL || atomic_read(&work->pending) < INTEL_FLIP_COMPLETE) {
 		spin_unlock_irqrestore(&dev->event_lock, flags);
-		DRM_DEBUG("invalid or inactive unpin_work!\n");
+		DRM_ERROR("invalid or inactive unpin_work!\n");
 		return;
 	}
 
@@ -8987,8 +8958,6 @@ compute_baseline_pipe_bpp(struct intel_crtc *crtc,
 {
 	struct drm_device *dev = crtc->base.dev;
 	struct intel_connector *connector;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_encoder *intel_encoder;
 	int bpp;
 
 	switch (fb->pixel_format) {
@@ -9029,29 +8998,17 @@ compute_baseline_pipe_bpp(struct intel_crtc *crtc,
 
 	pipe_config->pipe_bpp = bpp;
 
-	for_each_encoder_on_crtc(dev, &crtc->base, intel_encoder) {
-
 	/* Clamp display bpp to EDID value */
-
 	list_for_each_entry(connector, &dev->mode_config.connector_list,
 			    base.head) {
 		if (!connector->new_encoder ||
 		    connector->new_encoder->new_crtc != crtc)
 			continue;
+
 		connected_sink_compute_bpp(connector, pipe_config);
-
 	}
-		if (intel_encoder->type == INTEL_OUTPUT_DSI) {
-			if (dev_priv->mipi.panel_bpp == PIPE_24BPP)
-				bpp = DISPLAY_8BPC;
-		else
-				bpp = DISPLAY_6BPC;
-			}
-
-		}
 
 	return bpp;
-
 }
 
 static void intel_dump_pipe_config(struct intel_crtc *crtc,
@@ -9148,7 +9105,6 @@ intel_modeset_pipe_config(struct drm_crtc *crtc,
 	 * after encoders and crtc also have had their say. */
 	plane_bpp = compute_baseline_pipe_bpp(to_intel_crtc(crtc),
 					      fb, pipe_config);
-
 	if (plane_bpp < 0)
 		goto fail;
 
@@ -9199,7 +9155,7 @@ encoder_retry:
 	}
 
 	pipe_config->dither = pipe_config->pipe_bpp != plane_bpp;
-	DRM_ERROR("plane bpp: %i, pipe bpp: %i, dithering: %i\n",
+	DRM_DEBUG_KMS("plane bpp: %i, pipe bpp: %i, dithering: %i\n",
 		      plane_bpp, pipe_config->pipe_bpp, pipe_config->dither);
 
 	return pipe_config;
@@ -9768,9 +9724,9 @@ static int __intel_set_mode(struct drm_crtc *crtc,
 
 	/* DO it only once */
 	if (IS_VALLEYVIEW(dev))
-		if (dev_priv->is_first_modeset) {
+		if (dev_priv->pfi_credit) {
 			program_pfi_credits(dev_priv, true);
-			dev_priv->is_first_modeset = false;
+			dev_priv->pfi_credit = false;
 		}
 
 	/* crtc->mode is already used by the ->mode_set callbacks, hence we need
@@ -10355,14 +10311,6 @@ ssize_t display_runtime_suspend(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_crtc *crtc;
-	int rgrt;
-
-	if (spid.hardware_id == BYT_TABLET_BLK_8PR1)
-		if (dev_priv->v3p3s_reg) {
-			rgrt = regulator_disable(dev_priv->v3p3s_reg);
-			if (rgrt)
-				DRM_ERROR("Failed to turn OFF 3P3SX\n");
-		}
 
 	dev_priv->is_suspending = true;
 
@@ -10404,6 +10352,8 @@ ssize_t display_runtime_suspend(struct drm_device *dev)
 		}
 	}
 
+	program_pfi_credits(dev_priv, false);
+
 	dev_priv->s0ixstat = false;
 	drm_modeset_unlock_all(dev);
 	i915_rpm_put_disp(dev);
@@ -10414,34 +10364,19 @@ extern void intel_resume_hotplug(struct drm_device *dev);
 ssize_t display_runtime_resume(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int rgrt;
 
 	i915_rpm_get_disp(dev);
+
 
 	/* Re-detect hot pluggable displays */
 	i915_simulate_hpd(dev, true);
 
 	dev_priv->s0ixstat = true;
 	dev_priv->late_resume = true;
-
-	if (spid.hardware_id == BYT_TABLET_BLK_8PR1)
-		if (dev_priv->v3p3s_reg) {
-			rgrt = regulator_enable(dev_priv->v3p3s_reg);
-			if (rgrt)
-				DRM_ERROR("Failed to turn ON 3P3SX\n");
-		}
-	/*
-	 * DO NOT Move it from here
-	 * HOTPLUG_EN needs to be enabled for reading LIVE STATUS
-	 */
-	display_save_restore_hotplug(dev, RESTOREHPD);
-
 	/* KMS EnterVT equivalent */
 	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
 		drm_modeset_lock_all(dev);
-		/* For Bending/Spread controls */
-		if (check_live_status(dev_priv) == false)
-			dev_priv->unplug = true;
+		program_pfi_credits(dev_priv, true);
 		intel_modeset_setup_hw_state(dev, true);
 		drm_modeset_unlock_all(dev);
 		/*
@@ -10456,6 +10391,7 @@ ssize_t display_runtime_resume(struct drm_device *dev)
 		intel_resume_hotplug(dev);
 	}
 	drm_kms_helper_poll_enable(dev);
+	display_save_restore_hotplug(dev, RESTOREHPD);
 
 	mid_hdmi_audio_resume(dev);
 	/* Restore Gamma/Csc/Hue/Saturation/Brightness/Contrast */
@@ -10477,8 +10413,6 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc;
 	int i;
-	struct intel_program_clock_bending clockbend;
-	struct intel_program_clock_spread clockspread;
 
 	intel_crtc = kzalloc(sizeof(struct intel_crtc) + (INTELFB_CONN_LIMIT * sizeof(struct drm_connector *)), GFP_KERNEL);
 	if (intel_crtc == NULL)
@@ -10516,15 +10450,6 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 	intel_crtc->primary_alpha = false;
 	intel_crtc->sprite0_alpha = true;
 	intel_crtc->sprite1_alpha = true;
-
-	/* Disable both bend spread initially */
-	dev_priv->clockspread = false;
-	dev_priv->clockbend = false;
-	dev_priv->unplug = false;
-	valleyview_program_clock_bending(
-			dev_priv, &clockbend);
-	valleyview_program_clock_spread(
-			dev_priv, &clockspread);
 
 	intel_crtc->base.panning_en = false;
 }
@@ -10657,12 +10582,19 @@ static void intel_setup_outputs(struct drm_device *dev)
 		 * Enable both for now as we know that VLV Baylake supports
 		 * both.
 		 *
-		 * eDP Vs MIPI detection is based on VBT
+		 * FIXME:
+		 * Support eDP Vs MIPI detection based on VBT and AUX
+		 * transaction later. As of now if mipi panel id > 0 is
+		 * given as kernel param we treat MIPI is there else we
+		 * always initialize on eDP.
+		 *
+		 * Can be fixed later when VBT or equivalent is available
 		 */
-		if (dev_priv->is_mipi_from_vbt)
-			intel_dsi_init(dev);
+		if (i915_mipi_panel_id <= 0)
+			intel_dp_init(dev, VLV_DISPLAY_BASE + DP_C,
+					PORT_C);
 		else
-			intel_dp_init(dev, DP_C, PORT_C);
+			intel_dsi_init(dev);
 
 		intel_hdmi_init(dev, VLV_DISPLAY_BASE + GEN4_HDMIB,
 				PORT_B);
@@ -11505,14 +11437,6 @@ static void intel_modeset_readout_hw_state(struct drm_device *dev)
 			      drm_get_encoder_name(&encoder->base),
 			      encoder->base.crtc ? "enabled" : "disabled",
 			      pipe);
-		if ((encoder->type == INTEL_OUTPUT_DSI) && encoder->base.crtc) {
-			/* DSI will be enabled by IAFW; set a flag for this case
-			 * so that during sanitize process we do not apply DPMS
-			 * on DSI. Enable the flag to indicate that MIPI was
-			 * initialized by IAFW
-			 */
-			dev_priv->mipi_fw = 1;
-		}
 	}
 
 	list_for_each_entry(crtc, &dev->mode_config.crtc_list,

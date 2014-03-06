@@ -47,30 +47,26 @@ struct gpio_table gtable[] = {
 	{ GPIO_NC_2_HV_DDI0_DDC_SCL, GPIO_NC_2_HV_DDI0_DDC_SCL_PAD, 0 },
 	{ GPIO_NC_3_PANEL0_VDDEN, GPIO_NC_3_PANEL0_VDDEN_PAD, 0 },
 	{ GPIO_NC_4_PANEL0_BLKEN, GPIO_NC_4_PANEL0_BLKEN_PAD, 0 },
-	{ GPIO_NC_5_PANEL0_BLKCTL, GPIO_NC_5_PANEL0_BLKCTL_PAD, 0 },
-	{ GPIO_NC_6_PCONF0, GPIO_NC_6_PAD, 0 },
-	{ GPIO_NC_7_PCONF0, GPIO_NC_7_PAD, 0 },
-	{ GPIO_NC_8_PCONF0, GPIO_NC_8_PAD, 0 },
-	{ GPIO_NC_9_PCONF0, GPIO_NC_9_PAD, 0 },
-	{ GPIO_NC_10_PCONF0, GPIO_NC_10_PAD, 0},
-	{ GPIO_NC_11_PCONF0, GPIO_NC_11_PAD, 0}
+	{ GPIO_NC_5_PANEL0_BLKCTL, GPIO_NC_5_PANEL0_BLKCTL_PAD, 0 }
 };
 
 static u8 *mipi_exec_send_packet(struct intel_dsi *intel_dsi, u8 *data)
 {
+
 	u8 type, byte, mode, vc, port;
 	u16 len;
+
+//	DRM_DEBUG_DRIVER("MIPI: Executing sene packet element\n");
 
 	byte = *data++;
 	mode = (byte >> MIPI_TRANSFER_MODE_SHIFT) & 0x1;
 	vc = (byte >> MIPI_VIRTUAL_CHANNEL_SHIFT) & 0x3;
 	port = (byte >> MIPI_PORT_SHIFT) & 0x3;
-
-	/* LP or HS mode */
-	intel_dsi->hs = mode;
-
+		/* LP or HS mode */
+		intel_dsi->hs = mode;
 	/* get packet type and increment the pointer */
 	type = *data++;
+
 
 	len = *((u16 *) data);
 	data += 2;
@@ -81,9 +77,11 @@ static u8 *mipi_exec_send_packet(struct intel_dsi *intel_dsi, u8 *data)
 		break;
 	case MIPI_GENERIC_SHORT_WRITE_1_PARAM:
 		dsi_vc_generic_write_1(intel_dsi, vc, *data);
+	
 		break;
 	case MIPI_GENERIC_SHORT_WRITE_2_PARAM:
 		dsi_vc_generic_write_2(intel_dsi, vc, *data, *(data + 1));
+	
 		break;
 	case MIPI_GENERIC_READ_0_PARAM:
 	case MIPI_GENERIC_READ_1_PARAM:
@@ -92,28 +90,31 @@ static u8 *mipi_exec_send_packet(struct intel_dsi *intel_dsi, u8 *data)
 		break;
 	case MIPI_GENERIC_LONG_WRITE:
 		dsi_vc_generic_write(intel_dsi, vc, data, len);
+	
 		break;
 	case MIPI_MAN_DCS_SHORT_WRITE_0_PARAM:
 		dsi_vc_dcs_write_0(intel_dsi, vc, *data);
+		
 		break;
 	case MIPI_MAN_DCS_SHORT_WRITE_1_PARAM:
 		dsi_vc_dcs_write_1(intel_dsi, vc, *data, *(data + 1));
+	
 		break;
 	case MIPI_MAN_DCS_READ_0_PARAM:
 		DRM_DEBUG_DRIVER("DCS Read not yet implemented or used\n");
 		break;
 	case MIPI_MAN_DCS_LONG_WRITE:
 		dsi_vc_dcs_write(intel_dsi, vc, data, len);
+	
 		break;
 	};
-
 	data += len;
-
 	return data;
 }
 
 static u8 *mipi_exec_delay(struct intel_dsi *intel_dsi, u8 *data)
 {
+
 	u32 delay = *((u32 *) data);
 	DRM_DEBUG_DRIVER("MIPI: executing delay element\n");
 	usleep_range(delay, delay + 10);
@@ -175,6 +176,7 @@ static char *seq_name[] = {
 	"MIPI_SEQ_DISPLAY_OFF",
 	"MIPI_SEQ_DEASSERT_RESET"
 };
+
 
 static void generic_exec_sequence(struct intel_dsi *intel_dsi, char *sequence)
 {
@@ -327,48 +329,20 @@ bool generic_init(struct intel_dsi_device *dsi)
 		break;
 	}
 
-	/*
-	 * ui(s) = 1/f [f in hz]
-	 * ui(ns) = 10^9/f*10^6 [f in Mhz] -> 10^3/f(Mhz)
-	 *
-	 * LP byte clock = TLPX/8ui
-	 *
-	 * Since txddrclkhs_i is 2xUI, the count values programmed in
-	 * DPHY param register are divided by 2
-	 *
-	 */
-
-	/* in Kbps */
-	ui_num = bitrate;
-	ui_den = NS_MHZ_RATIO;
-
-	tclk_prepare_clkzero = mipi_config->tclk_prepare_clkzero;
-	ths_prepare_hszero = mipi_config->ths_prepare_hszero;
-
 	/* B060 */
 	intel_dsi->lp_byte_clk = ceil_div(tlpx_ns * ui_num, 8 * ui_den);
 
-	/* count values in UI = (ns value) * (bitrate / (2 * 10^6)) */
-	/* prepare count */
-	ths_prepare_ns =
-		(mipi_config->ths_prepare >  mipi_config->tclk_prepare) ?
-				mipi_config->ths_prepare :
-				mipi_config->tclk_prepare;
 
-	prepare_cnt = ceil_div(ths_prepare_ns * ui_num,	ui_den * 2);
+		ths_prepare_ns =
+			(mipi_config->ths_prepare >  mipi_config->tclk_prepare) ?
+					mipi_config->ths_prepare :
+					mipi_config->tclk_prepare;
+		prepare_cnt = ceil_div(ths_prepare_ns * ui_num,	ui_den * 2);
+			exit_zero_cnt = ceil_div(
+						(ths_prepare_hszero - ths_prepare_ns) * ui_num,
+					ui_den * 2
+					);
 
-	/* exit zero count */
-	exit_zero_cnt = ceil_div(
-				(ths_prepare_hszero - ths_prepare_ns) * ui_num,
-				ui_den * 2
-				);
-
-	/*
-	 * Exit zero  is unified val ths_zero and ths_exit
-	 * minimum value for ths_exit = 110ns
-	 * min (exit_zero_cnt * 2) = 110/UI
-	 * exit_zero_cnt = 55/UI
-	 */
 	 if (exit_zero_cnt < (55 * ui_num / ui_den))
 		if ((55 * ui_num) % ui_den)
 			exit_zero_cnt += 1;
@@ -427,37 +401,24 @@ bool generic_init(struct intel_dsi_device *dsi)
 	intel_dsi->hs_to_lp_count += extra_byte_count;
 
 	/* B088 */
-	/* LP -> HS for clock lanes
-	 * LP clk sync + LP11 + LP01 + tclk_prepare + tclk_zero +
-	 *						extra byte count
-	 * 2TPLX + 1TLPX + 1 TPLX(in ns) + prepare_cnt * 2 + clk_zero_cnt *
-	 *					2(in UI) + extra byte count
-	 * In byteclks = (4TLPX + prepare_cnt * 2 + clk_zero_cnt *2 (in UI)) /
-	 *					8 + extra byte count
-	 */
-	intel_dsi->clk_lp_to_hs_count =
-		ceil_div(
-			4 * tlpx_ui + prepare_cnt * 2 +
-			clk_zero_cnt * 2,
-			8);
 
-	intel_dsi->clk_lp_to_hs_count += extra_byte_count;
+		intel_dsi->clk_lp_to_hs_count =
+			ceil_div(
+				4 * tlpx_ui + prepare_cnt * 2 +
+				clk_zero_cnt * 2,
+				8);
 
-	/* HS->LP for Clock Lanes
-	 * Low Power clock synchronisations + 1Tx byteclk + tclk_trail +
-	 *						Extra byte count
-	 * 2TLPX + 8UI + (trail_count*2)(in UI) + Extra byte count
-	 * In byteclks = (2*TLpx(in UI) + trail_count*2 +8)(in UI)/8 +
-	 *						Extra byte count
-	 */
-	intel_dsi->clk_hs_to_lp_count =
-		ceil_div(2 * tlpx_ui + trail_cnt * 2 + 8,
-			8);
-	intel_dsi->clk_hs_to_lp_count += extra_byte_count;
+		intel_dsi->clk_lp_to_hs_count += extra_byte_count;
 
-	DRM_DEBUG_KMS("EOT %s\n", intel_dsi->eotp_pkt ? "ENABLED" : "DISABLED");
-	DRM_DEBUG_KMS("CLOCKSTOP %s\n", intel_dsi->clock_stop ?
+			intel_dsi->clk_hs_to_lp_count =
+				ceil_div(2 * tlpx_ui + trail_cnt * 2 + 8,
+					8);
+			intel_dsi->clk_hs_to_lp_count += extra_byte_count;
+
+			DRM_DEBUG_KMS("EOT %s\n", intel_dsi->eotp_pkt ? "ENABLED" : "DISABLED");
+			DRM_DEBUG_KMS("CLOCKSTOP %s\n", intel_dsi->clock_stop ?
 						"ENABLED" : "DISABLED");
+
 	DRM_DEBUG_KMS("Mode %s\n", intel_dsi->operation_mode ? "COMMAND" : "VIDEO");
 	DRM_DEBUG_KMS("Pixel Format %d\n", intel_dsi->pixel_format);
 	DRM_DEBUG_KMS("TLPX %d\n", intel_dsi->escape_clk_div);
@@ -467,19 +428,17 @@ bool generic_init(struct intel_dsi_device *dsi)
 	DRM_DEBUG_KMS("HS to LP Count 0x%x\n", intel_dsi->hs_to_lp_count);
 	DRM_DEBUG_KMS("LP Byte Clock %d\n", intel_dsi->lp_byte_clk);
 	DRM_DEBUG_KMS("DBI BW Timer 0x%x\n", intel_dsi->bw_timer);
+
 	DRM_DEBUG_KMS("LP to HS Clock Count 0x%x\n", intel_dsi->clk_lp_to_hs_count);
 	DRM_DEBUG_KMS("HS to LP Clock Count 0x%x\n", intel_dsi->clk_hs_to_lp_count);
 	DRM_DEBUG_KMS("BTA %s\n",
 			intel_dsi->video_frmt_cfg_bits & DISABLE_VIDEO_BTA ?
 			"DISABLED" : "ENABLED");
-	DRM_DEBUG_KMS("B060 = 0x%Xx, B080 = 0x%x, B044 = 0x%x, B088 = 0x%x\n",
-			intel_dsi->lp_byte_clk, intel_dsi->dphy_reg, intel_dsi->hs_to_lp_count,
-			(intel_dsi->clk_lp_to_hs_count << LP_HS_SSW_CNT_SHIFT) |
-			(intel_dsi->clk_hs_to_lp_count << HS_LP_PWR_SW_CNT_SHIFT));
 
-	/* delays in VBT are in unit of 100us, so need to convert
-	 * here in ms
-	 * Delay (100us) * 100 /1000 = Delay / 10 (ms) */
+	DRM_DEBUG_KMS("B060 = 0x%Xx, B080 = 0x%x, B044 = 0x%x, B088 = 0x%x\n",
+	intel_dsi->lp_byte_clk, intel_dsi->dphy_reg, intel_dsi->hs_to_lp_count,
+	(intel_dsi->clk_lp_to_hs_count << LP_HS_SSW_CNT_SHIFT) |
+	(intel_dsi->clk_hs_to_lp_count << HS_LP_PWR_SW_CNT_SHIFT));
 	intel_dsi->backlight_off_delay = pps->bl_disable_delay / 10;
 	intel_dsi->backlight_on_delay = pps->bl_enable_delay / 10;
 	intel_dsi->panel_on_delay = pps->panel_on_delay / 10;
@@ -502,17 +461,15 @@ void generic_create_resources(struct intel_dsi_device *dsi) { }
 void generic_dpms(struct intel_dsi_device *dsi, bool enable)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
-
 	DRM_DEBUG_KMS("\n");
-
-	/* Basic code. Might need rework */
-	if (enable) {
-		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_EXIT_SLEEP_MODE);
-		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_ON);
-	} else {
-		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_OFF);
-		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_ENTER_SLEEP_MODE);
-	}
+		/* Basic code. Might need rework */
+		if (enable) {
+			dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_EXIT_SLEEP_MODE);
+			dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_ON);
+		} else {
+			dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_OFF);
+			dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_ENTER_SLEEP_MODE);
+		}
 }
 
 int generic_mode_valid(struct intel_dsi_device *dsi,
@@ -571,6 +528,8 @@ void generic_send_otp_cmds(struct intel_dsi_device *dsi)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_INIT_OTP];
+
+
 	generic_exec_sequence(intel_dsi, sequence);
 }
 
@@ -581,6 +540,7 @@ void generic_enable(struct intel_dsi_device *dsi)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_DISPLAY_ON];
+
 
 	generic_exec_sequence(intel_dsi, sequence);
 }
@@ -593,11 +553,14 @@ void generic_disable(struct intel_dsi_device *dsi)
 
 	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_DISPLAY_OFF];
 
+
 	generic_exec_sequence(intel_dsi, sequence);
 }
 
 enum drm_connector_status generic_detect(struct intel_dsi_device *dsi)
 {
+
+
 	return connector_status_connected;
 }
 

@@ -141,7 +141,12 @@ static bool intel_dsi_compute_config(struct intel_encoder *encoder,
 
 static void intel_dsi_pre_pll_enable(struct intel_encoder *encoder)
 {
+	//struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+	struct drm_device *dev = encoder->base.dev;
+
 	DRM_DEBUG_KMS("\n");
+	if (dev->is_booting)
+		return;
 
 	/* nothing to do here as we do necessary stuff in pre_enable
 	 * to comply to the hw team recommended DSI sequence */
@@ -180,17 +185,6 @@ void intel_dsi_device_ready(struct intel_encoder *encoder)
 #ifdef CONFIG_CRYSTAL_COVE
 	/* Panel Enable */
 	intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x01);
-	if (BYT_CR_CONFIG) {
-		/*  cabc disable */
-		vlv_gpio_nc_write(dev_priv, GPIO_NC_9_PCONF0, 0x2000CC00);
-		vlv_gpio_nc_write(dev_priv, GPIO_NC_9_PAD, 0x00000004);
-
-		/* panel enable */
-		vlv_gpio_nc_write(dev_priv, GPIO_NC_11_PCONF0, 0x2000CC00);
-		vlv_gpio_nc_write(dev_priv, GPIO_NC_11_PAD, 0x00000005);
-		udelay(500);
-	} else
-		intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x01);
 #else
 	/* need to code for BYT-CR for example where things have changed */
 	DRM_ERROR("PANEL Enable to supported yet\n");
@@ -233,8 +227,11 @@ void intel_dsi_device_ready(struct intel_encoder *encoder)
 
 static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 {
+	struct drm_device *dev = encoder->base.dev;
 	DRM_DEBUG_KMS("\n");
 
+	if (dev->is_booting)
+		return;
 	/* put device in ready state */
 	intel_dsi_device_ready(encoder);
 }
@@ -246,14 +243,11 @@ static void intel_dsi_enable(struct intel_encoder *encoder)
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
 	int pipe = intel_crtc->pipe;
-	bool is_dsi;
 	u32 temp;
 
 	DRM_DEBUG_KMS("\n");
-
-	is_dsi = intel_pipe_has_type(encoder->base.crtc, INTEL_OUTPUT_DSI);
-
-	intel_enable_dsi_pll(intel_dsi);
+	if (dev->is_booting)
+		return;
 
 	if (is_cmd_mode(intel_dsi)) {
 		/* XXX: Implement me */
@@ -269,9 +263,6 @@ static void intel_dsi_enable(struct intel_encoder *encoder)
 
 		temp = I915_READ(MIPI_PORT_CTRL(pipe));
 		temp = temp | intel_dsi->port_bits;
-
-		if (is_dsi && intel_crtc->config.dither)
-			temp |= DITHERING_ENABLE;
 		I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
 		usleep_range(2000, 2500);
 	}
@@ -288,7 +279,8 @@ static void intel_dsi_enable(struct intel_encoder *encoder)
 
 static void intel_dsi_disable(struct intel_encoder *encoder)
 {
-	struct drm_device *dev = encoder->base.dev;
+	struct drm_encoder *drm_encoder = &encoder->base;
+	struct drm_device *dev = drm_encoder->dev;
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
@@ -303,6 +295,8 @@ static void intel_dsi_disable(struct intel_encoder *encoder)
 	else
 		usleep_range(intel_dsi->backlight_off_delay * 1000,
 			(intel_dsi->backlight_off_delay * 1000) + 500);
+	if (dev->is_booting)
+		return;
 
 	if (is_cmd_mode(intel_dsi)) {
 		/* XXX Impementation TBD */
@@ -384,13 +378,6 @@ void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
 #ifdef CONFIG_CRYSTAL_COVE
 	/* Disable Panel */
 	intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x00);
-	if (BYT_CR_CONFIG) {
-		/* Disable Panel */
-		vlv_gpio_nc_write(dev_priv, GPIO_NC_11_PCONF0, 0x2000CC00);
-		vlv_gpio_nc_write(dev_priv, GPIO_NC_11_PAD, 0x00000004);
-		udelay(500);
-	} else
-		intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x00);
 #else
 	/* need to code for BYT-CR for example where things have changed */
 	DRM_ERROR("PANEL Disable to supported yet\n");
@@ -401,7 +388,11 @@ void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
 
 static void intel_dsi_post_disable(struct intel_encoder *encoder)
 {
+	struct drm_device *dev = encoder->base.dev;
+
 	DRM_DEBUG_KMS("\n");
+	if (dev->is_booting)
+		return;
 
 	intel_dsi_clear_device_ready(encoder);
 }
@@ -567,8 +558,16 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	int pipe = intel_crtc->pipe;
 	unsigned int bpp = intel_crtc->config.pipe_bpp;
-	struct drm_display_mode *adjusted_mode = &intel_crtc->config.adjusted_mode;
+	struct drm_display_mode *adjusted_mode;
 	u32 val;
+
+	if (dev->is_booting)
+		return;
+
+	if (BYT_CR_CONFIG)
+		adjusted_mode =	intel_dsi->attached_connector->panel.fixed_mode;
+	else
+		adjusted_mode = &intel_crtc->config.adjusted_mode;
 
 	I915_WRITE(MIPI_DEVICE_READY(pipe), 0x0);
 
@@ -684,32 +683,9 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 			DRM_DEBUG_DRIVER("pfit val = %x", val);
 			I915_WRITE(PFIT_CONTROL, val);
 			intel_crtc->base.panning_en = true;
-		} else if (intel_dsi->pfit) {
-			/* Normal scenario, enable panel fitter only if the
-			scaling ratio is > 1 and the input src size < 2kx2k */
-			if ((adjusted_mode->hdisplay != intel_crtc->base.fb->width) ||
-			(adjusted_mode->vdisplay != intel_crtc->base.fb->height)) {
-				if (intel_dsi->pfit == AUTOSCALE)
-					val = PFIT_ENABLE | (intel_crtc->pipe <<
-						PFIT_PIPE_SHIFT) | PFIT_SCALING_AUTO;
-				if (intel_dsi->pfit == PILLARBOX)
-					val = PFIT_ENABLE | (intel_crtc->pipe <<
-						PFIT_PIPE_SHIFT) | PFIT_SCALING_PILLAR;
-				else if (intel_dsi->pfit == LETTERBOX)
-					val = PFIT_ENABLE | (intel_crtc->pipe <<
-						PFIT_PIPE_SHIFT) | PFIT_SCALING_LETTER;
-				I915_WRITE(PFIT_CONTROL, val);
-				intel_crtc->base.panning_en = true;
-				DRM_DEBUG_DRIVER("pfit val = %x", val);
-			} else
-				DRM_DEBUG_DRIVER("Wrong pfit input src config");
 		} else
 			intel_crtc->base.panning_en = false;
-
-	} else
-		DRM_DEBUG_DRIVER("Wrong pfit input src config");
-
-	intel_crtc->config.gmch_pfit.control = val;
+	}
 }
 
 static enum drm_connector_status
@@ -719,6 +695,38 @@ intel_dsi_detect(struct drm_connector *connector, bool force)
 	DRM_DEBUG_KMS("\n");
 
 	return intel_dsi->dev.dev_ops->detect(&intel_dsi->dev);
+}
+
+static struct drm_display_mode *get_mode_12x8(void)
+{
+	struct drm_display_mode *mode = NULL;
+	/* Allocate */
+	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
+	if (!mode) {
+		DRM_DEBUG_KMS("Panasonic panel: No memory\n");
+		return NULL;
+	}
+
+	/* Hardcode 1280x800 */
+	mode->hdisplay = 1280;
+	mode->hsync_start = mode->hdisplay + 110;
+	mode->hsync_end = mode->hsync_start + 38;
+	mode->htotal = mode->hsync_end + 90;
+
+	mode->vdisplay = 800;
+	mode->vsync_start = mode->vdisplay + 15;
+	mode->vsync_end = mode->vsync_start + 10;
+	mode->vtotal = mode->vsync_end + 10;
+
+	mode->vrefresh = 60;
+	mode->clock =  mode->vrefresh * mode->vtotal *
+			mode->htotal / 1000;
+
+	/* Configure */
+	drm_mode_set_name(mode);
+	drm_mode_set_crtcinfo(mode, 0);
+	mode->type |= DRM_MODE_TYPE_PREFERRED;
+	return mode;
 }
 
 static int intel_dsi_get_modes(struct drm_connector *connector)
@@ -734,7 +742,11 @@ static int intel_dsi_get_modes(struct drm_connector *connector)
 		return 0;
 	}
 
-	input_mode = intel_connector->panel.fixed_mode;
+	if (BYT_CR_CONFIG)
+		input_mode = get_mode_12x8();
+	else
+		input_mode = intel_connector->panel.fixed_mode;
+
 	mode = drm_mode_duplicate(connector->dev,
 				  input_mode);
 	if (!mode) {
@@ -782,75 +794,8 @@ static int intel_dsi_set_property(struct drm_connector *connector,
 	return 0;
 }
 
-/* Encoder dpms must, add functionality later */
-void intel_dsi_encoder_dpms(struct drm_encoder *encoder, int mode)
-{
-	struct drm_device *dev = encoder->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
-	struct intel_encoder *intel_encoder = &intel_dsi->base;
-	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
-	int pipe = intel_crtc->pipe;
-	u32 val;
-
-	DRM_DEBUG_KMS("\n");
-
-	if (dev_priv->mipi_fw) {
-		/* IAFW enabled MIPI; we do not need to
-		 * do anything for this dpms call
-		 *
-		 * Next enabling will be done by driver
-		 * so clear the mmipi_fw flag
-		 */
-		dev_priv->mipi_fw = 0;
-		DRM_DEBUG_KMS("FW enabled MIPI nothing to do\n");
-		return;
-	}
-
-	if (mode != DRM_MODE_DPMS_ON)
-		mode = DRM_MODE_DPMS_OFF;
-
-	DRM_DEBUG_DRIVER("DPMS mode = %d\n", mode);
-
-	if (mode == DRM_MODE_DPMS_ON) {
-		intel_dsi_device_ready(intel_encoder);
-
-		/* need to resend OTP as panel off was done in
-		 * DPMS off */
-
-		/* Clock needs to be in LP11 mode before we can send
-		 * commands to panel */
-
-		I915_WRITE(MIPI_DEVICE_READY(pipe), 0x0);
-		I915_WRITE(MIPI_EOT_DISABLE(pipe), CLOCKSTOP);
-
-		val = I915_READ(MIPI_DSI_FUNC_PRG(pipe));
-		val &= ~VID_MODE_FORMAT_MASK;
-		I915_WRITE(MIPI_DSI_FUNC_PRG(pipe), val);
-
-		I915_WRITE(MIPI_DEVICE_READY(pipe), 0x1);
-
-		if (intel_dsi->dev.dev_ops->send_otp_cmds)
-			intel_dsi->dev.dev_ops->send_otp_cmds(&intel_dsi->dev);
-
-		/* Now we need to restore MIPI_DSI_FUNC_PRG to needed value */
-		I915_WRITE(MIPI_DEVICE_READY(pipe), 0x0);
-
-		val = intel_dsi->channel << VID_MODE_CHANNEL_NUMBER_SHIFT |
-		intel_dsi->lane_count << DATA_LANES_PRG_REG_SHIFT |
-		intel_dsi->pixel_format;
-		I915_WRITE(MIPI_DSI_FUNC_PRG(pipe), val);
-
-		I915_WRITE(MIPI_DEVICE_READY(pipe), 0x1);
-	}
-}
-
 static const struct drm_encoder_funcs intel_dsi_funcs = {
 	.destroy = intel_encoder_destroy,
-};
-
-static const struct drm_encoder_helper_funcs intel_dsi_helper_funcs = {
-	.dpms = intel_dsi_encoder_dpms,
 };
 
 static const struct drm_connector_helper_funcs intel_dsi_connector_helper_funcs = {
@@ -1129,7 +1074,6 @@ bool intel_dsi_init(struct drm_device *dev)
 	drm_connector_init(dev, connector, &intel_dsi_connector_funcs,
 			   DRM_MODE_CONNECTOR_DSI);
 
-	drm_encoder_helper_add(encoder, &intel_dsi_helper_funcs);
 	drm_connector_helper_add(connector, &intel_dsi_connector_helper_funcs);
 
 	connector->display_info.subpixel_order = SubPixelHorizontalRGB; /*XXX*/
@@ -1148,7 +1092,10 @@ bool intel_dsi_init(struct drm_device *dev)
 	}
 
 	dev_priv->is_mipi = true;
-	fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
+
+	if (!BYT_CR_CONFIG)
+		fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
+
 	intel_panel_init(&intel_connector->panel, fixed_mode);
 	intel_panel_setup_backlight(connector);
 

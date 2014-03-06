@@ -356,10 +356,10 @@ void sst_do_recovery_mrfld(struct intel_sst_drv *sst)
 	char iram_event[30], dram_event[30], ddr_imr_event[65], event_type[30];
 	char *envp[5];
 	int env_offset = 0;
-	union config_status_reg_mrfld csr;
-	void __iomem *dma_reg0 = sst_drv_ctx->debugfs.dma_reg[0];
-	void __iomem *dma_reg1 = sst_drv_ctx->debugfs.dma_reg[1];
-	int offset = 0x3A0; /* ChEnReg of DMA */
+	//union config_status_reg_mrfld csr;
+	//void __iomem *dma_reg0 = sst_drv_ctx->debugfs.dma_reg[0];
+	//void __iomem *dma_reg1 = sst_drv_ctx->debugfs.dma_reg[1];
+	//int offset = 0x3A0; /* ChEnReg of DMA */
 
 	/*
 	 * setting firmware state as uninit so that the firmware will get
