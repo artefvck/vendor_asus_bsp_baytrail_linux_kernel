@@ -93,6 +93,8 @@ bool auo_m181_init(struct intel_dsi_device *dsi)
 	intel_dsi->send_shutdown = true;
 	intel_dsi->backlight_on_delay = 50;	//sean test
 	intel_dsi->shutdown_pkt_delay = 50;	//sean test
+	
+	intel_dsi->clock_stop = true;	//seantest no continue more
 
 	return true;
 }

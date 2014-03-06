@@ -93,6 +93,8 @@ bool m181_init(struct intel_dsi_device *dsi)
 	intel_dsi->send_shutdown = true;
 	intel_dsi->backlight_on_delay = 134;	//sean test
 	intel_dsi->shutdown_pkt_delay = 134;	//sean test
+	
+	intel_dsi->clock_stop = true;	//seantest no continue more
 
 	return true;
 }
@@ -206,12 +208,6 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x19);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xF7, 0x12);
 	
-		
-	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x08);		
-	dsi_vc_dcs_write_1(intel_dsi, 0, 0xFA, 0x40);		
-	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x11);		
-	dsi_vc_dcs_write_1(intel_dsi, 0, 0xF3, 0x01);
-	
 	//=============Internal setting END ================
 	//msleep(20);	
 	//========== page0 relative ==========
@@ -221,7 +217,7 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
 	
-	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC8, 0x80);
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC8, 0x00);
 	
 	{
 		unsigned char data[] = {0xB1, 0x6C, 0x01};
@@ -272,8 +268,7 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xCA, 0x00);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC0, 0x04);
-	dsi_vc_dcs_write_1(intel_dsi, 0, 0xBE, 0x29);
-	
+
 	{
 		unsigned char data[] = {0xB3, 0x37, 0x37};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
@@ -283,7 +278,7 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
 	{
-		unsigned char data[] = {0xB9, 0x46, 0x46};
+		unsigned char data[] = {0xB9, 0x44, 0x44};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
 	{
@@ -298,7 +293,7 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
 	
-	dsi_vc_dcs_write_1(intel_dsi, 0, 0xEE, 0x01);
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0xEE, 0x02);
 	
 	{
 		unsigned char data[] = {0xEF, 0x09, 0x06, 0x15, 0x18};
@@ -306,64 +301,127 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	}
 	//
 	{
-		unsigned char data[] = {0xB0, 0x00, 0x00, 0x00, 0x24, 0x00 ,0x55};
+		unsigned char data[] = {0xB0, 0x00, 0x00, 0x00, 0x19, 0x00 ,0x31};
+		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
+	}
+
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x06);
+
+	{
+		unsigned char data[] = {0xB0, 0x00, 0x4B, 0x00, 0x63, 0x00 ,0x95};
+		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
+	}
+
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x0C);
+
+	{
+		unsigned char data[] = {0xB0, 0x00, 0xB2, 0x00, 0xF1};
+		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
+	}
+
+	{
+		unsigned char data[] = {0xB1, 0x01, 0x24, 0x01, 0x70, 0x01 ,0xA6};
+		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
+	}
+
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x06);
+
+	{
+		unsigned char data[] = {0xB1, 0x01, 0xFE, 0x02, 0x44, 0x02 ,0x46};
+		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
+	}
+
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x0C);
+
+	{
+		unsigned char data[] = {0xB1, 0x02, 0x96, 0x02, 0xEC};
+		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
+	}
+
+	{
+		unsigned char data[] = {0xB2, 0x03, 0x17, 0x03, 0x47, 0x03 ,0x66};
+		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
+	}
+
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x06);
+
+	{
+		unsigned char data[] = {0xB2, 0x03, 0x8B, 0x03, 0x9D, 0x03 ,0xB8};
+		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
+	}
+
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x0C);
+
+	{
+		unsigned char data[] = {0xB2, 0x03, 0xC5, 0x03, 0xD4};
+		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
+	}
+
+	{
+		unsigned char data[] = {0xB3, 0x03, 0xED, 0x03, 0xFF};
+		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
+	}
+
+	//
+	{
+		unsigned char data[] = {0xBC, 0x00, 0x00, 0x00, 0x19, 0x00 ,0x31};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
 	}
 	
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x06);
 	
 	{
-		unsigned char data[] = {0xB0, 0x00, 0x77, 0x00, 0x94, 0x00 ,0xC0};
+		unsigned char data[] = {0xBC, 0x00, 0x4B, 0x00, 0x63, 0x00 ,0x95};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
 	}
 	
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x0C);
 	
 	{
-		unsigned char data[] = {0xB0, 0x00, 0xE3, 0x01, 0x1A};
+		unsigned char data[] = {0xBC, 0x00, 0xB2, 0x00, 0xF1};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
 	}
 	
 	{
-		unsigned char data[] = {0xB1, 0x01, 0x46, 0x01, 0x88, 0x01 ,0xBC};
+		unsigned char data[] = {0xBD, 0x01, 0x24, 0x01, 0x70, 0x01 ,0xA6};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
 	}
 	
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x06);
 	
 	{
-		unsigned char data[] = {0xB1, 0x02, 0x0B, 0x02, 0x4B, 0x02 ,0x4D};
+		unsigned char data[] = {0xBD, 0x01, 0xFE, 0x02, 0x44, 0x02 ,0x46};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
 	}
 	
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x0C);
 	
 	{
-		unsigned char data[] = {0xB1, 0x02, 0x88, 0x02, 0xC9};
+		unsigned char data[] = {0xBD, 0x02, 0x96, 0x02, 0xEC};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
 	}
 	
 	{
-		unsigned char data[] = {0xB2, 0x02, 0xF3, 0x03, 0x29, 0x03 ,0x4E};
+		unsigned char data[] = {0xBE, 0x03, 0x17, 0x03, 0x47, 0x03 ,0x66};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
 	}
 	
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x06);
 	
 	{
-		unsigned char data[] = {0xB2, 0x03, 0x7D, 0x03, 0x9B, 0x03 ,0xBE};
+		unsigned char data[] = {0xBE, 0x03, 0x8B, 0x03, 0x9D, 0x03 ,0xB8};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
 	}
 	
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x0C);
 	
 	{
-		unsigned char data[] = {0xB2, 0x03, 0xD3, 0x03, 0xE9};
+		unsigned char data[] = {0xBE, 0x03, 0xC5, 0x03, 0xD4};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
 	}
 	
 	{
-		unsigned char data[] = {0xB3, 0x03, 0xFB, 0x03, 0xFF};
+		unsigned char data[] = {0xBF, 0x03, 0xED, 0x03, 0xFF};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
 	}
 	//=================page2 relative END ================
@@ -650,8 +708,8 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xBC, 0x00);
 	
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC0, 0x07);
-	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC4, 0x81);
-	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC5, 0xA3);
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC4, 0x80);
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC5, 0xA4);
 	
 	{
 		unsigned char data[] = {0xC8, 0x05, 0x30};
