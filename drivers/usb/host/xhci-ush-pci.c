@@ -38,7 +38,7 @@
 
 static struct pci_dev	*pci_dev;
 
-static int create_device_files();
+static int create_device_files(struct pci_dev *pdev);
 static void remove_device_files();
 
 static int hsic_enable;
@@ -166,7 +166,7 @@ static int hsic_wakeup_irq_init(void)
 	gpio_direction_input(hsic.wakeup_gpio);
 	retval = request_irq(gpio_to_irq(hsic.wakeup_gpio),
 			hsic_wakeup_gpio_irq,
-			IRQF_SHARED | IRQF_TRIGGER_RISING,
+			IRQF_SHARED | IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND,
 			"hsic_remote_wakeup_request", &pci_dev->dev);
 	if (retval) {
 		dev_err(&pci_dev->dev,
@@ -578,7 +578,12 @@ static void hsic_aux_work(struct work_struct *work)
 		mutex_unlock(&hsic.hsic_mutex);
 		return;
 	}
-	ush_hsic_port_disable();
+
+	if (hsic.port_disconnect == 0)
+		hsic_port_logical_disconnect(hsic.rh_dev,
+				HSIC_USH_PORT);
+	else
+		ush_hsic_port_disable();
 	usleep_range(hsic.reenumeration_delay,
 			hsic.reenumeration_delay + 1000);
 	ush_hsic_port_enable();
@@ -779,27 +784,21 @@ static ssize_t hsic_port_enable_store(struct device *dev,
 		pm_runtime_put(&hsic.rh_dev->dev);
 	}
 
+	if (hsic.port_disconnect == 0)
+		hsic_port_logical_disconnect(hsic.rh_dev,
+				HSIC_USH_PORT);
+	else
+		ush_hsic_port_disable();
+
 	if (org_req) {
 		dev_dbg(dev, "enable hsic\n");
-
-		/* add this due to hcd release
-			 doesn't set hcd to NULL */
-		ush_hsic_port_disable();
-		usleep_range(5000, 6000);
+		msleep(20);
 		ush_hsic_port_enable();
 	} else {
 		dev_dbg(dev, "disable hsic\n");
-		/* add this due to hcd release
-			 doesn't set hcd to NULL */
-		if (hsic.port_disconnect == 0)
-			hsic_port_logical_disconnect(hsic.rh_dev,
-					HSIC_USH_PORT);
-		else {
-			ush_hsic_port_disable();
-			if (hsic.rh_dev) {
-				hsic.autosuspend_enable = 0;
-				usb_enable_autosuspend(hsic.rh_dev);
-			}
+		if (hsic.rh_dev) {
+			hsic.autosuspend_enable = 0;
+			usb_enable_autosuspend(hsic.rh_dev);
 		}
 	}
 	mutex_unlock(&hsic.hsic_mutex);
@@ -987,9 +986,10 @@ static ssize_t hsic_remoteWakeup_store(struct device *dev,
 static DEVICE_ATTR(remoteWakeup, S_IRUGO | S_IWUSR,
 		hsic_remoteWakeup_show, hsic_remoteWakeup_store);
 
-static int create_device_files()
+static int create_device_files(struct pci_dev *pdev)
 {
 	int retval;
+	struct ush_hsic_pdata *hsic_pdata;
 
 	retval = device_create_file(&pci_dev->dev,
 			&dev_attr_registers);
@@ -999,7 +999,10 @@ static int create_device_files()
 		goto dump_registers;
 	}
 
-	hsic.reenumeration_delay = USH_REENUM_DELAY;
+	hsic_pdata = pdev->dev.platform_data;
+	hsic.reenumeration_delay = hsic_pdata->reenum_delay;
+	dev_info(&pdev->dev, "Re-enumeration delay time %d\n",
+				hsic.reenumeration_delay);
 	retval = device_create_file(&pci_dev->dev,
 			&dev_attr_reenumeration_delay);
 	if (retval < 0) {
@@ -1221,7 +1224,7 @@ static int xhci_ush_pci_probe(struct pci_dev *dev,
 	*((struct xhci_hcd **) xhci->shared_hcd->hcd_priv) = xhci;
 
 	if (hsic.hsic_enable_created == 0) {
-		retval = create_device_files();
+		retval = create_device_files(dev);
 		if (retval < 0) {
 			dev_dbg(&dev->dev, "error create device files\n");
 			goto dealloc_usb2_hcd;
@@ -1307,6 +1310,29 @@ static void xhci_ush_pci_remove(struct pci_dev *dev)
 	unregister_pm_notifier(&hsic.hsic_s3_entry_nb);
 
 	kfree(xhci);
+}
+
+/**
+ * xhci_ush_pci_shutdown - shutdown host controller
+ * @dev: USB Host Controller being shutdown
+ */
+static void xhci_ush_pci_shutdown(struct pci_dev *dev)
+{
+	struct usb_hcd		*hcd;
+
+	hcd = pci_get_drvdata(dev);
+	if (!hcd)
+		return;
+
+	if (test_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags) &&
+			hcd->driver->shutdown) {
+		hcd->driver->shutdown(hcd);
+		if (hsic.rh_dev)
+			hsic_port_logical_disconnect(hsic.rh_dev,
+					HSIC_USH_PORT);
+		ush_hsic_port_disable();
+		pci_disable_device(dev);
+	}
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -1580,7 +1606,7 @@ static struct pci_driver xhci_ush_driver = {
 		.pm = &xhci_ush_pm_ops
 	},
 #endif
-	.shutdown =     usb_hcd_pci_shutdown,
+	.shutdown =     xhci_ush_pci_shutdown,
 };
 
 int xhci_register_ush_pci(void)

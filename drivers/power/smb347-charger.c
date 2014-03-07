@@ -30,6 +30,8 @@
 #include <linux/acpi.h>
 #include <linux/acpi_gpio.h>
 #include <linux/wakelock.h>
+#include <linux/regulator/of_regulator.h>
+#include <linux/regulator/consumer.h>
 /*
  * Configuration registers. These are mirrored to volatile RAM and can be
  * written once %CMD_A_ALLOW_WRITE is set in %CMD_A register. They will be
@@ -253,6 +255,8 @@
 #define SMB34X_EXTCON_DCP		"CHARGER_USB_DCP"
 #define SMB34X_EXTCON_CDP		"CHARGER_USB_CDP"
 
+#define REGULATOR_V3P3S		"v3p3s"
+
 static const char *smb34x_extcon_cable[] = {
 	SMB34X_EXTCON_SDP,
 	SMB34X_EXTCON_DCP,
@@ -260,9 +264,10 @@ static const char *smb34x_extcon_cable[] = {
 	NULL,
 };
 
-/* flag for Host mode, used by display driver to save 7mW in S3 */
-bool __otg_connect;
-EXPORT_SYMBOL(__otg_connect);
+static const short smb349_inlim[] = { /* mA */
+	500, 900, 1000, 1100, 1200, 1300, 1500, 1600,
+	1700, 1800, 2000, 2200, 2400, 2500, 3000, 3500
+};
 
 struct smb347_otg_event {
 	struct list_head	node;
@@ -330,6 +335,11 @@ struct smb347_charger {
 	int			cntl_state;
 	int			online;
 	int			present;
+	/*
+	 * regulator v3p3s used by display driver to save 7mW in
+	 * S3 for USB Host
+	 */
+	struct regulator	*regulator_v3p3s;
 #ifdef CONFIG_POWER_SUPPLY_CHARGER
 	struct delayed_work	full_worker;
 #endif
@@ -1201,14 +1211,16 @@ static void smb347_usb_otg_enable(struct usb_phy *phy)
 		smb->a_bus_enable = false;
 		if (smb->drive_vbus) {
 			smb347_otg_disable(smb);
-			__otg_connect = false;
+			if (smb->regulator_v3p3s)
+				regulator_disable(smb->regulator_v3p3s);
 		}
 	} else {
 		dev_info(&smb->client->dev, "OTG Enable");
 		smb->a_bus_enable = true;
 		if (smb->drive_vbus) {
 			smb347_otg_enable(smb);
-			__otg_connect = true;
+			if (smb->regulator_v3p3s)
+				regulator_enable(smb->regulator_v3p3s);
 		}
 	}
 }
@@ -1233,6 +1245,13 @@ static int smb347_hw_init(struct smb347_charger *smb)
 		smb347_write(smb, smb->pdata->char_config_regs[reg_offset],
 			smb->pdata->char_config_regs[reg_offset+1]);
 		reg_offset += 2;
+	}
+
+	/* disable charging to recover from previous errors */
+	ret = smb347_read(smb, CMD_A);
+	if (ret >= 0) {
+		ret &= ~CMD_A_CHG_ENABLED;
+		smb347_write(smb, CMD_A, ret);
 	}
 
 	switch (smb->pdata->otg_control) {
@@ -1520,12 +1539,14 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 			gpio_direction_output(smb->pdata->gpio_mux, 0);
 			if (smb->a_bus_enable) {
 				smb347_otg_enable(smb);
-				__otg_connect = true;
+				if (smb->regulator_v3p3s)
+					regulator_enable(smb->regulator_v3p3s);
 			}
 		} else {
 			smb->drive_vbus = false;
 			smb347_otg_disable(smb);
-			__otg_connect = false;
+			if (smb->regulator_v3p3s)
+				regulator_disable(smb->regulator_v3p3s);
 		}
 		ret = IRQ_HANDLED;
 	}
@@ -1775,15 +1796,9 @@ static int smb347_set_inlmt(struct smb347_charger *smb, int inlmt)
 	if (ret < 0)
 		goto err_inlmt;
 
-	if (inlmt >= ILIM_1800)
-		smb_inlmt = SMB_INLMT_1800;
-	else if (inlmt >= ILIM_1500)
-		smb_inlmt = SMB_INLMT_1500;
-	else if (inlmt >= ILIM_1000)
-		smb_inlmt = SMB_INLMT_1000;
-	else
-		smb_inlmt = SMB_INLMT_500;
-
+	for (smb_inlmt = 0; smb_inlmt < ARRAY_SIZE(smb349_inlim); smb_inlmt++)
+		if (inlmt <= smb349_inlim[smb_inlmt])
+			break;
 
 	ret = smb347_read(smb, CFG_CHARGE_CURRENT);
 	if (ret < 0)
@@ -2289,6 +2304,8 @@ static int smb347_debugfs_show(struct seq_file *s, void *data)
 	seq_printf(s, "==================\n");
 	for (reg = CFG_CHARGE_CURRENT; reg <= CFG_ADDRESS; reg++) {
 		ret = smb347_read(smb, reg);
+		if (ret < 0)
+			return ret;
 		seq_printf(s, "0x%02x:\t0x%02x\n", reg, ret);
 	}
 	seq_printf(s, "\n");
@@ -2296,10 +2313,16 @@ static int smb347_debugfs_show(struct seq_file *s, void *data)
 	seq_printf(s, "Command registers:\n");
 	seq_printf(s, "==================\n");
 	ret = smb347_read(smb, CMD_A);
+	if (ret < 0)
+		return ret;
 	seq_printf(s, "0x%02x:\t0x%02x\n", CMD_A, ret);
 	ret = smb347_read(smb, CMD_B);
+	if (ret < 0)
+		return ret;
 	seq_printf(s, "0x%02x:\t0x%02x\n", CMD_B, ret);
 	ret = smb347_read(smb, CMD_C);
+	if (ret < 0)
+		return ret;
 	seq_printf(s, "0x%02x:\t0x%02x\n", CMD_C, ret);
 	seq_printf(s, "\n");
 
@@ -2307,6 +2330,8 @@ static int smb347_debugfs_show(struct seq_file *s, void *data)
 	seq_printf(s, "===========================\n");
 	for (reg = IRQSTAT_A; reg <= IRQSTAT_F; reg++) {
 		ret = smb347_read(smb, reg);
+		if (ret < 0)
+			return ret;
 		seq_printf(s, "0x%02x:\t0x%02x\n", reg, ret);
 	}
 	seq_printf(s, "\n");
@@ -2315,6 +2340,8 @@ static int smb347_debugfs_show(struct seq_file *s, void *data)
 	seq_printf(s, "=================\n");
 	for (reg = STAT_A; reg <= STAT_E; reg++) {
 		ret = smb347_read(smb, reg);
+		if (ret < 0)
+			return ret;
 		seq_printf(s, "0x%02x:\t0x%02x\n", reg, ret);
 	}
 
@@ -2388,6 +2415,13 @@ static int smb347_probe(struct i2c_client *client,
 
 
 	smb347_dev = smb;
+	if (smb->pdata->use_regulator) {
+		smb->regulator_v3p3s = regulator_get(dev, REGULATOR_V3P3S);
+		if (IS_ERR(smb->regulator_v3p3s)) {
+			dev_warn(&smb->client->dev, "V3P3S  failed");
+			smb->regulator_v3p3s = NULL;
+		}
+	}
 
 	INIT_DELAYED_WORK(&smb->chg_upd_worker, smb347_chg_upd_worker);
 #ifdef CONFIG_POWER_SUPPLY_CHARGER
@@ -2517,6 +2551,10 @@ static int smb347_remove(struct i2c_client *client)
 	if (smb->pdata->use_mains)
 		power_supply_unregister(&smb->mains);
 	wake_lock_destroy(&smb->wakelock);
+
+	if (smb->regulator_v3p3s)
+		regulator_put(smb->regulator_v3p3s);
+
 	return 0;
 }
 

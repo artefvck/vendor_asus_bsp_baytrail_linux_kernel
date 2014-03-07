@@ -382,6 +382,10 @@ int intel_sst_check_device(void)
 
 	pm_runtime_get_sync(sst_drv_ctx->dev);
 	atomic_inc(&sst_drv_ctx->pm_usage_count);
+
+	pr_debug("%s: count is %d now\n", __func__,
+				atomic_read(&sst_drv_ctx->pm_usage_count));
+
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	if (sst_drv_ctx->sst_state == SST_UN_INIT)
 		sst_drv_ctx->sst_state = SST_START_INIT;
@@ -500,18 +504,34 @@ static int sst_cdev_close(unsigned int str_id)
 	int retval;
 	struct stream_info *stream;
 
-	pr_debug("%s: doing rtpm_put\n", __func__);
+	pr_debug("%s: Entry\n", __func__);
 	stream = get_stream_info(str_id);
 	if (!stream)
 		return -EINVAL;
+
+	if (stream->status == STREAM_RESET) {
+		/* silently fail here as we have cleaned the stream */
+		pr_debug("stream in reset state...\n");
+		stream->status = STREAM_UN_INIT;
+
+		retval = 0;
+		goto put;
+	}
+
 	retval = sst_free_stream(str_id);
+put:
 	stream->compr_cb_param = NULL;
 	stream->compr_cb = NULL;
 
-	/* If stream free returns error, put already done in open so skip */
-	/* Do put only in valid free stream case */
-	if (!retval)
+	/* The free_stream will return a error if there is no stream to free,
+	(i.e. the alloc failure case). And in this case the open does a put in
+	the error scenario, so skip in this case.
+		In the close we need to handle put in the success scenario and
+	the timeout error(EBUSY) scenario. */
+	if (!retval || (retval == -EBUSY))
 		sst_pm_runtime_put(sst_drv_ctx);
+
+	pr_debug("%s: End\n", __func__);
 
 	return retval;
 
@@ -597,6 +617,10 @@ static int sst_cdev_set_metadata(unsigned int str_id,
 static int sst_cdev_control(unsigned int cmd, unsigned int str_id)
 {
 	pr_debug("recieved cmd %d on stream %d\n", cmd, str_id);
+
+	if (sst_drv_ctx->sst_state == SST_UN_INIT)
+		return 0;
+
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		return sst_pause_stream(str_id);
@@ -718,21 +742,35 @@ static int sst_close_pcm_stream(unsigned int str_id)
 	struct stream_info *stream;
 	int retval = 0;
 
-	pr_debug("%s: doing rtpm_put\n", __func__);
+	pr_debug("%s: Entry\n", __func__);
 	stream = get_stream_info(str_id);
 	if (!stream)
 		return -EINVAL;
+
+	if (stream->status == STREAM_RESET) {
+		/* silently fail here as we have cleaned the stream */
+		pr_debug("stream in reset state...\n");
+
+		retval = 0;
+		goto put;
+	}
+
 	retval = free_stream_context(str_id);
+put:
 	stream->pcm_substream = NULL;
 	stream->status = STREAM_UN_INIT;
 	stream->period_elapsed = NULL;
 	sst_drv_ctx->stream_cnt--;
 
-	/* If stream free returns error, put already done in open so skip */
-	/* Do put only in valid free stream case */
-	if (!retval)
+	/* The free_stream will return a error if there is no stream to free,
+	(i.e. the alloc failure case). And in this case the open does a put in
+	the error scenario, so skip in this case.
+		In the close we need to handle put in the success scenario and
+	the timeout error(EBUSY) scenario. */
+	if (!retval || (retval == -EBUSY))
 		sst_pm_runtime_put(sst_drv_ctx);
 
+	pr_debug("%s: Exit\n", __func__);
 	return 0;
 }
 
@@ -1004,7 +1042,7 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		ret_val = sst_send_vtsv_data_to_fw(sst_drv_ctx);
 		if (ret_val)
 			pr_err("vtsv data send failed\n");
-		pm_runtime_put(sst_drv_ctx->dev);
+		sst_pm_runtime_put(sst_drv_ctx);
 		break;
 	}
 	default:
