@@ -148,10 +148,17 @@ static struct KXTJ2_platform_data kxtj2_pdata = {
     .power_on = NULL,
     .power_off = NULL,
 };
-static struct i2c_board_info kxtj2_board_info = {
-    I2C_BOARD_INFO(NAME, KXTJ2_I2C_ADDRESS),
-    .irq = 0,
-    .platform_data = &kxtj2_pdata,
+static struct i2c_board_info kxtj2_board_info[] = {
+	{
+    		I2C_BOARD_INFO(NAME, 0x0e),
+    		.irq = 0,
+    		.platform_data = &kxtj2_pdata,
+	},
+	{
+    		I2C_BOARD_INFO(NAME, 0x0f),
+    		.irq = 0,
+    		.platform_data = &kxtj2_pdata,
+	},
 };
 static int kxtj2_i2c_read(struct kxtj2_data *tj2, u8 addr, u8 *data, int len)
 {
@@ -558,7 +565,7 @@ static ssize_t kxtj2_enable_store(struct device *dev,
         return count;
 }
 
-static ssize_t kxtj2_rawdata_for_mag_show(struct device *dev, struct device_attribute *devattr, char *buf)
+static ssize_t kxtj2_value_show(struct device *dev, struct device_attribute *devattr, char *buf)
 {       
         struct i2c_clinet * client = to_i2c_client(dev);
         struct kxtj2_data * tj2 = i2c_get_clientdata(client);
@@ -576,7 +583,15 @@ static ssize_t kxtj2_rawdata_for_mag_show(struct device *dev, struct device_attr
 }
 
 #ifdef ENABLE_CALIBRATION_INTERFACE
-static ssize_t kxtj2_calibration_enable_store(struct device *dev, struct device_attribute *devattr, char *buf, ssize_t count)
+static ssize_t kxtj2_offset_enable_show(struct device *dev, struct device_attribute *devattr, char *buf)
+{
+        struct i2c_clinet * client = to_i2c_client(dev);
+        struct kxtj2_data * tj2 = i2c_get_clientdata(client);
+
+	return sprintf(buf, "%d", atomic_read(&tj2->cal_enable));
+}
+
+static ssize_t kxtj2_offset_enable_store(struct device *dev, struct device_attribute *devattr, char *buf, ssize_t count)
 {
         struct i2c_clinet * client = to_i2c_client(dev);
         struct kxtj2_data * tj2 = i2c_get_clientdata(client);
@@ -589,7 +604,7 @@ static ssize_t kxtj2_calibration_enable_store(struct device *dev, struct device_
 	return count;
 }
 
-static ssize_t kxtj2_calibration_data_store(struct device *dev, struct device_attribute *devattr, char *buf, ssize_t count)
+static ssize_t kxtj2_offset_store(struct device *dev, struct device_attribute *devattr, char *buf, ssize_t count)
 {
         struct i2c_clinet * client = to_i2c_client(dev);
         struct kxtj2_data * tj2 = i2c_get_clientdata(client);
@@ -609,7 +624,7 @@ static ssize_t kxtj2_calibration_data_store(struct device *dev, struct device_at
 	return count;
 }
 
-static ssize_t kxtj2_rawdata_for_cal_show(struct device *dev, struct device_attribute *devattr, char *buf)
+static ssize_t kxtj2_original_value_show(struct device *dev, struct device_attribute *devattr, char *buf)
 {       
         struct i2c_clinet * client = to_i2c_client(dev);
 	struct kxtj2_data * tj2 = i2c_get_clientdata(client);
@@ -625,16 +640,16 @@ static ssize_t kxtj2_rawdata_for_cal_show(struct device *dev, struct device_attr
 static DEVICE_ATTR(poll, S_IRUGO|S_IWUSR, kxtj2_get_poll, kxtj2_set_poll);
 static DEVICE_ATTR(delay, S_IRUGO|S_IWUSR, kxtj2_delay_show, kxtj2_delay_store);
 static DEVICE_ATTR(enable, S_IRGRP|S_IWGRP|S_IRUSR|S_IWUSR,kxtj2_enable_show,kxtj2_enable_store);
-static DEVICE_ATTR(rawdata_for_mag, S_IRUGO, kxtj2_rawdata_for_mag_show, NULL);
+static DEVICE_ATTR(rawdata_for_mag, S_IRUGO, kxtj2_value_show, NULL);
 
 #ifdef ENABLE_CALIBRATION_INTERFACE
-static DEVICE_ATTR(cal_data, S_IWUGO, NULL, kxtj2_calibration_data_store);
-static DEVICE_ATTR(cal_enable, S_IWUGO, NULL, kxtj2_calibration_enable_store);
-static DEVICE_ATTR(rawdata_for_cal, S_IRUGO, kxtj2_rawdata_for_cal_show, NULL);
+static DEVICE_ATTR(cal_data, S_IWUGO, NULL, kxtj2_offset_store);
+static DEVICE_ATTR(cal_enable, S_IWUGO | S_IRUGO, kxtj2_offset_enable_show, kxtj2_offset_enable_store);
+static DEVICE_ATTR(rawdata_for_cal, S_IRUGO, kxtj2_original_value_show, NULL);
 #endif
 
 static struct attribute *kxtj2_attributes[] = {
-	&dev_attr_poll.attr,
+	//&dev_attr_poll.attr,
         &dev_attr_enable.attr,
         &dev_attr_rawdata_for_mag.attr,
 
@@ -759,6 +774,45 @@ out:
 #ifdef SENSOR_FACTORY
 static const struct file_operations kxtj2_proc_ops;
 #endif
+
+static int kxtj2_create_attr_files(struct i2c_client * client)
+{
+	struct class *gsensor_class;
+	struct device *kxtj2_device;
+	
+	/* create a new class 'gsensor' in sysfs */
+	gsensor_class = class_create(THIS_MODULE, "gsensor");
+	if( IS_ERR(gsensor_class) )	{
+		printk(KERN_ERR"kxtj2 create sysfs class 'gsensor' failed\n");
+		return -1;
+	}
+
+	kxtj2_device = device_create(gsensor_class, NULL, 0, NULL,"kionix");
+	if( NULL == kxtj2_device )	{
+		printk(KERN_ERR"kxtj2 create sysfs device kionix failed\n");
+		class_destroy(gsensor_class);
+                return -2;
+	}
+
+	//err = sysfs_create_group(&client->dev.kobj, &kxtj2_attribute_group);
+	//err = sysfs_create_group(&kxtj2_device->kobj, &kxtj2_attribute_group);
+        if ( sysfs_create_group(&client->dev.kobj, &kxtj2_attribute_group) )	{
+		printk(KERN_ERR"kxtj2 create sysfs device attribtes failed\n");
+		class_destroy(gsensor_class);
+		device_destroy(kxtj2_device, 0);
+		return -3;
+	}
+
+	if( sysfs_create_link(&kxtj2_device->kobj, &client->dev.kobj, "kxtj2100") )	{
+		printk(KERN_ERR"kxtj2 create device kobject failed\n");
+		class_destroy(gsensor_class);
+		device_destroy(kxtj2_device, 0);
+		sysfs_remove_group(&client->dev.kobj, &kxtj2_attribute_group);
+                return -4;
+	}
+	return 0;
+}
+
 static int kxtj2_probe(struct i2c_client *client,
 				 const struct i2c_device_id *id)
 {
@@ -771,9 +825,6 @@ static int kxtj2_probe(struct i2c_client *client,
             client->irq = 0;
         }
 
-       /* struct i2c_adapter *adapter = i2c_get_adapter(KXTJ2_I2C_ADAPTER);
-        i2c_new_device(adapter, &kxtj2_board_info);
-        i2c_put_adapter(adapter);*/
 	if (!i2c_check_functionality(client->adapter,
 				I2C_FUNC_I2C | I2C_FUNC_SMBUS_BYTE_DATA)) {
 		dev_err(&client->dev, "client is not i2c capable\n");
@@ -840,12 +891,10 @@ static int kxtj2_probe(struct i2c_client *client,
 		if (err)
 			goto err_pdata_exit;
 
-		err = sysfs_create_group(&client->dev.kobj, &kxtj2_attribute_group);
-                if (err) {
-                        dev_err(&client->dev, "sysfs create failed: %d\n", err);
-                        goto err_destroy_polled_dev;
+		if( kxtj2_create_attr_files(client) )
+			goto err_destroy_polled_dev;
+			
 
-		}
 	}
 
 	atomic_set(&tj2->enable, 0);
@@ -888,6 +937,8 @@ err_free_mem:
 static int kxtj2_remove(struct i2c_client *client)
 {
 	struct kxtj2_data *tj2 = i2c_get_clientdata(client);
+
+	sysfs_remove_group(&client->dev.kobj, &kxtj2_attribute_group);
 
 	if (client->irq) {
 		sysfs_remove_group(&client->dev.kobj, &kxtj2_attribute_group);
@@ -993,19 +1044,17 @@ static struct i2c_driver kxtj2_driver = {
 		.name	= NAME,
 		.owner	= THIS_MODULE,
 		.pm	= &kxtj2_pm_ops,
-        //        .acpi_match_table = ACPI_PTR(kxtj2_acpi_match),
+        //.acpi_match_table = ACPI_PTR(kxtj2_acpi_match),
 	},
 	.probe		= kxtj2_probe,
 	.remove		= kxtj2_remove,
 	.id_table	= kxtj2_id,
-        .attach_adapter = kxtj2_attach,
+        //.attach_adapter = kxtj2_attach,
 };
 static int __init kxtj2_init(void)
 {
-printk("__init kxtj2_init\n");
-/*struct i2c_adapter *adapter = i2c_get_adapter(KXTJ2_I2C_ADAPTER);
-        i2c_new_device(adapter, &kxtj2_board_info);
-        i2c_put_adapter(adapter);*/
+	printk("__init kxtj2_init\n");
+	i2c_register_board_info(KXTJ2_I2C_ADAPTER, kxtj2_board_info, ARRAY_SIZE(kxtj2_board_info));
 	return i2c_add_driver(&kxtj2_driver);
 }
 
@@ -1014,7 +1063,6 @@ static void __exit kxtj2_exit(void)
 	pr_info("AKM compass driver: release.");
 	i2c_del_driver(&kxtj2_driver);
 }
-//module_i2c_driver(kxtj2_driver);
 
 module_init(kxtj2_init);
 module_exit(kxtj2_exit);
