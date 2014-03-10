@@ -84,6 +84,10 @@ static struct rt5640_init_reg init_list[] = {
 	{RT5640_PRIV_DATA, 0x6115},
 	{RT5640_PRIV_INDEX, 0x0023},	/*PR23 = 0804'h */
 	{RT5640_PRIV_DATA, 0x0804},
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+	{RT5640_PRIV_INDEX	, 0x006e},//PR6e = 3319'h
+	{RT5640_PRIV_DATA	, 0x3319},
+#endif
 	/*playback */
 	{RT5640_STO_DAC_MIXER, 0x0404},	/*Dig inf 1 -> Sto DAC mixer -> DACL */
 	{RT5640_OUT_L3_MIXER, 0x01fe},	/*DACL1 -> OUTMIXL */
@@ -112,7 +116,11 @@ static struct rt5640_init_reg init_list[] = {
 /*	{RT5640_I2S1_SDP	, 0xD000},//change IIS1 and IIS2*/
 	/*record */
 	{RT5640_IN1_IN2, 0x5080},	/*IN1 boost 40db and differential mode */
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+	{RT5640_IN3_IN4, 0x0400},	/*IN2 boost 40db and signal ended mode */
+#else
 	{RT5640_IN3_IN4, 0x0000},	/*IN2 boost 40db and signal ended mode */
+#endif
 /*	{RT5640_REC_L2_MIXER	, 0x007d},//Mic1 -> RECMIXL*/
 /*	{RT5640_REC_R2_MIXER	, 0x007d},//Mic1 -> RECMIXR*/
 	{RT5640_REC_L2_MIXER, 0x007d},	/*Mic1 -> RECMIXL */

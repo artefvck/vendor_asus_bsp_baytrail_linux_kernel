@@ -588,10 +588,62 @@ static int platform_clock_control(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static int Int_Mic_event(struct snd_soc_dapm_widget *w,
+			    struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_dapm_context *dapm = w->dapm;
+	struct snd_soc_card *card = dapm->card;
+	struct snd_soc_codec *codec;
+
+	codec = byt_get_codec(card);
+	if (SND_SOC_DAPM_EVENT_ON(event)) {
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1fa7);
+		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x20ce);
+		snd_soc_write(codec, RT5640_DRC_AGC_1, 0xc206);
+#endif
+	}else if(SND_SOC_DAPM_EVENT_OFF(event))
+	{
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1f00);
+		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x0000);
+		snd_soc_write(codec, RT5640_DRC_AGC_1, 0x2206);
+#endif
+	}
+	
+	return 0;
+}
+
+static int Headset_Mic_event(struct snd_soc_dapm_widget *w,
+			    struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_dapm_context *dapm = w->dapm;
+	struct snd_soc_card *card = dapm->card;
+	struct snd_soc_codec *codec;
+
+	codec = byt_get_codec(card);
+	if (SND_SOC_DAPM_EVENT_ON(event)) {
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1fa4);
+		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x20ce);
+		snd_soc_write(codec, RT5640_DRC_AGC_1, 0xc206);
+#endif
+	}else if(SND_SOC_DAPM_EVENT_OFF(event))
+	{
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1f00);
+		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x0000);
+		snd_soc_write(codec, RT5640_DRC_AGC_1, 0x2206);
+#endif
+	}
+	
+	return 0;
+}
+
 static const struct snd_soc_dapm_widget byt_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone", NULL),
-	SND_SOC_DAPM_MIC("Headset Mic", NULL),
-	SND_SOC_DAPM_MIC("Int Mic", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic", Headset_Mic_event),
+	SND_SOC_DAPM_MIC("Int Mic", Int_Mic_event),
 	SND_SOC_DAPM_SPK("Ext Spk", NULL),
 	SND_SOC_DAPM_SUPPLY("Platform Clock", SND_SOC_NOPM, 0, 0,
 			platform_clock_control, SND_SOC_DAPM_PRE_PMU|
