@@ -44,6 +44,13 @@
 
 #include <linux/proc_fs.h>
 
+#define DEBUG 1
+#if DEBUG
+	#define sean_debug(x...) printk(x)
+#else
+	#define sean_debug(x...) do {} while(0)
+#endif
+
 /* the sub-encoders aka panel drivers */
 static const struct intel_dsi_device intel_dsi_devices[] = {
 	{
@@ -845,12 +852,12 @@ static ssize_t panel_type_proc_read(struct file *filp, char __user *buffer, size
 	if(panel_type)
 	{
 		desc += sprintf(buff + desc,"%s\n",cx);
-		printk("[panel] panel_type_proc_read--1--\n");
+		sean_debug("%s:----sean test----panel_type_proc_read----%d\n", __func__,__LINE__);
 	}
 	else
 	{
 		desc += sprintf(buff + desc,"%s\n",c);
-		printk("[panel] panel_type_proc_read--2--\n");
+		sean_debug("%s:----sean test----panel_type_proc_read----%d\n", __func__,__LINE__);
 	}
 
 	ret = simple_read_from_buffer(buffer,count,ppos,buff,desc);
@@ -865,7 +872,7 @@ static struct file_operations panel_type_proc_ops = {
 
 static void create_panel_type_proc_file(void)
 {
-    printk("[panel] create_me176c_panel_type_proc_file\n");
+    sean_debug("%s:----sean test----create_me176c_panel_type_proc_file----%d\n", __func__,__LINE__);
     panel_type_proc_file = proc_create(PANEL_TYPE_PROC_FILE, 0666,NULL, &panel_type_proc_ops);
     if(!panel_type_proc_file)
 	{
@@ -897,28 +904,32 @@ static ssize_t panel_id_proc_read(struct file *filp, char __user *buffer, size_t
 		return -ENOMEM;
 	}
 
-    printk("[panel] panel_id_proc_read--1--\n");
+    sean_debug("%s:----sean test----panel_id_proc_read----%d\n", __func__,__LINE__);
 
 	err = gpio_request(68, "LCM_ID");
 	if (err){
-		printk("[panel] panel_id_proc_read--2--\n");
+		sean_debug("%s:----sean test----panel_id_proc_read----%d\n", __func__,__LINE__);
 	}
 	gpio_direction_input(68);
 	lcm_id = gpio_get_value(68);
 
+	gpio_free(68);
+
 	if(lcm_id)
 	{
 		desc += sprintf(buff + desc,"%s\n",auo);
-		printk("[panel] panel_id_proc_read--3--\n");
+		sean_debug("%s:----sean test----panel_id_proc_read----%d\n", __func__,__LINE__);
 	}
 	else
 	{
 		desc += sprintf(buff + desc,"%s\n",inn);
-		printk("[panel] panel_id_proc_read--4--\n");
+		sean_debug("%s:----sean test----panel_id_proc_read----%d\n", __func__,__LINE__);
 	}
 
 	ret = simple_read_from_buffer(buffer,count,ppos,buff,desc);
-    return ret;
+
+	kfree(buff);
+   return ret;
 }
 
 static struct file_operations panel_id_proc_ops = {
@@ -928,7 +939,7 @@ static struct file_operations panel_id_proc_ops = {
 
 static void create_panel_id_proc_file(void)
 {
-    printk("[panel] create_panelID_proc_file\n");
+    sean_debug("%s:----sean test----create_panelID_proc_file----\n", __func__);
     panel_id_proc_file = proc_create(PANEL_ID_PROC_FILE, 0666,NULL, &panel_id_proc_ops);
     if(!panel_id_proc_file)
 	{
@@ -1002,41 +1013,59 @@ bool intel_dsi_init(struct drm_device *dev)
 	{
 #ifdef CONFIG_PRO_ME176_PANEL
 		dev_priv->mipi_panel_id = MIPI_DSI_NOV_M176_PANEL_ID;
-		printk("----sean test----select 176 panel id:%d----\n",dev_priv->mipi_panel_id);
+		sean_debug("%s:----sean test----select 176 panel id:%d----\n", __func__,dev_priv->mipi_panel_id);
 
 		create_panel_type_proc_file();//sean_lu ++++ for ME176C panel_type_proc_create
 #endif
 
 #ifdef CONFIG_PRO_ME181_PANEL
 
-		//sean ++
+		//sean ++++
 		int err = 0;
 		int lcm_id = 1;
+		int gpio_panel_id = 0;
+		int gpio_lcm_id = 68;
 		int fact_panel_id = 6;
-		//sean --
-		//sean_lu ++++
-		printk("----sean test----m181_init i915_init----\n");
-		err = gpio_request(68, "LCM_ID");
+
+		sean_debug("%s:----sean test----m181_init i915_init----\n", __func__);
+		err = gpio_request(gpio_lcm_id, "LCM_ID");	//GPIO_S0[68] /LCM_ID
 		if (err){
-			printk("----sean test----m181_panel_selected----\n");
+			printk("----sean test----GPIO_LCM_ID request failed----\n");
 		}
 		
-		gpio_direction_input(68);
+		gpio_panel_id = acpi_get_gpio("\\_SB.GPO2", 29); //Get GPIO_S5[29]
+
+		sean_debug("%s:----sean test----gpio_panel_id:%d----\n", __func__,gpio_panel_id);
 		
-		lcm_id = gpio_get_value(68);
+		err = gpio_request(gpio_panel_id, "PANEL_ID");	//GPIO_S5[29] /PANEL_ID
+
+		if (err){
+			printk("----sean test----GPIO_PANEL_ID request failed----\n");
+		}
+
+		gpio_direction_input(gpio_lcm_id);
+		gpio_direction_output(gpio_panel_id,0);
+
+		lcm_id = gpio_get_value(gpio_lcm_id);
+
+		sean_debug("%s:----sean test----m181_lcm_id:%d----\n", __func__,lcm_id);
 		
-		printk("----sean test----m181_lcm_id:%d----\n",lcm_id);
-		
+		gpio_free(gpio_lcm_id);
+
 		if(lcm_id)
 		{
 			fact_panel_id = MIPI_DSI_AUO_M181_PANEL_ID;
+			gpio_set_value(gpio_panel_id,0);
 		}
 		else
 		{
 			fact_panel_id = MIPI_DSI_INNOLUX_M181_PANEL_ID;
+			gpio_set_value(gpio_panel_id,1);
 		}
 		
-		printk("----sean test----m181_lcm_id:%d----\n",fact_panel_id);
+		gpio_free(gpio_panel_id);
+
+		sean_debug("%s:----sean test----fact_panel_id:%d----\n", __func__,fact_panel_id);
 		dev_priv->mipi_panel_id = fact_panel_id;
 		//sean_lu ----
 		//dev_priv->mipi_panel_id = i915_mipi_panel_id; //sean --
@@ -1051,7 +1080,8 @@ bool intel_dsi_init(struct drm_device *dev)
 	
 //	dev_priv->mipi_panel_id = 6; //pbtest
 //	dev_priv->mipi_panel_id = MIPI_DSI_GENERIC_PANEL_ID;
-	printk("---mipi_panel_id=%d---\n",dev_priv->mipi_panel_id);
+
+	sean_debug("%s:----sean test----mipi_panel_id=%d----\n", __func__,dev_priv->mipi_panel_id);
 	for (i = 0; i < ARRAY_SIZE(intel_dsi_devices); i++) {
 		dsi = &intel_dsi_devices[i];
 		if (dsi->panel_id == dev_priv->mipi_panel_id) {
