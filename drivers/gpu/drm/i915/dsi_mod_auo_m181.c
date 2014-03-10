@@ -44,11 +44,17 @@
 #include <linux/gpio.h>			
 #include <linux/mfd/intel_mid_pmic.h>
 
+#define DEBUG 1
+#if DEBUG
+	#define sean_debug(x...) printk(x)
+#else
+	#define sean_debug(x...) do {} while(0)
+#endif
 
 static void auo_m181_get_panel_info(int pipe, struct drm_connector *connector)
 {
 	DRM_DEBUG_KMS("\n");
-	printk("----sean test----m181_auo_panel_get_info----\n");
+	sean_debug("%s:----sean test----m181_auo_panel_get_info----\n", __func__);
 	if (!connector)
 		return;
 
@@ -65,7 +71,8 @@ bool auo_m181_init(struct intel_dsi_device *dsi)
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	DRM_DEBUG_KMS("\n");
-	printk("----sean test----m181_auo_panel_init----\n");
+	sean_debug("%s:----sean test----m181_auo_panel_init----\n", __func__);
+
 //	intel_dsi->hs = true;
 	intel_dsi->hs = 1;
 	intel_dsi->channel = 0;
@@ -107,7 +114,7 @@ void auo_m181_dpms(struct intel_dsi_device *dsi, bool enable)
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	DRM_DEBUG_KMS("\n");
-	printk("----sean test----m181_auo_dpms----\n");
+	sean_debug("----sean test----m181_auo_dpms----\n");
 	if (enable) {
 		
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_EXIT_SLEEP_MODE);
@@ -139,7 +146,7 @@ void auo_m181_panel_reset(struct intel_dsi_device *dsi)
 {
 	/*
 	int err;
-	printk("----sean test_reset----\n");
+	sean_debug("----sean test_reset----\n");
 
 	err = gpio_request(69, "sd_pwr_en");
 	if (err){
@@ -152,13 +159,15 @@ void auo_m181_panel_reset(struct intel_dsi_device *dsi)
 	usleep_range(10000,15000);
 	gpio_set_value(69, 1);
 
+	gpio_free(69);
+
     msleep(300);
 */
 }
 
 void auo_m181_disable_panel_power(struct intel_dsi_device *dsi)
 {
-    printk("----sean test----m181_auo_panel_disable_power----\n");
+    sean_debug("%s:----sean test----auo_m181_disable_panel_power----\n", __func__);
     intel_mid_pmic_setb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 
     intel_mid_pmic_writeb(0x52,0);//PANEL_EN
     msleep(500);
@@ -170,12 +179,12 @@ void auo_m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 	int err;
 	DRM_DEBUG_KMS("\n");
-	printk("----sean test----m181_send_otp_cmds----\n");
+	sean_debug("%s:----sean test----m181_send_otp_cmds----%d\n", __func__,__LINE__);
 	msleep(40);	//sean test
 
 	err = gpio_request(69, "sd_pwr_en1");
 	if (err){
-		printk("----sean test----m181_panel_reset----\n");
+		printk("%s:----sean test----m181_panel_reset----\n",__func__);
 	}
 	//reset 
 	gpio_direction_output(69, 1);
@@ -185,12 +194,14 @@ void auo_m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	gpio_set_value(69, 1);
 	msleep(20);
 
-	DRM_DEBUG_KMS("----sean test----m181_send_otp_cmds----2----\n");
+	gpio_free(69);
+
+	sean_debug("%s:----sean test----m181_send_otp_cmds----%d\n", __func__,__LINE__);
 	intel_dsi->hs = 0 ;
 	msleep(30);		
 
 	//========== Internal setting ==========
-	DRM_DEBUG_KMS("----sean test----m181_send_otp_cmds----3----\n");
+	sean_debug("%s:----sean test----m181_send_otp_cmds----%d\n", __func__,__LINE__);
 
 	{
 		unsigned char data[] = {0xF0, 0x5A, 0x5A};
@@ -218,7 +229,7 @@ void auo_m181_enable(struct intel_dsi_device *dsi)
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	//DRM_DEBUG_KMS("\n");
-	printk("----sean test----m181_auo_panel_enable----\n");
+	sean_debug("----sean test----m181_auo_panel_enable----\n");
 
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);			//sean test /sleep out
 	//msleep(120);
@@ -232,7 +243,7 @@ void auo_m181_disable(struct intel_dsi_device *dsi)
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	DRM_DEBUG_KMS("\n");
-	printk("----sean test----m181_auo_panel_disable----\n");
+	sean_debug("----sean test----m181_auo_panel_disable----\n");
 	//========== power off setting ==========
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);			//sean test /display off
 	msleep(20);
@@ -246,12 +257,12 @@ void auo_m181_disable(struct intel_dsi_device *dsi)
 	msleep(80);
 	//================= END ==================
 	* */
-	printk("----zzsimon test----m181_auo_panel_disable----\n");
+	sean_debug("%s:----sean test----auo_m181_disable----\n", __func__);
 }
 
 enum drm_connector_status auo_m181_detect(struct intel_dsi_device *dsi)
 {
-	printk("----sean test----m181_auo_detect---\n");
+	sean_debug("%s:----sean test----auo_m181_detect----\n", __func__);
 	return connector_status_connected;
 }
 
@@ -263,7 +274,7 @@ bool auo_m181_get_hw_state(struct intel_dsi_device *dev)
 struct drm_display_mode *auo_m181_get_modes(struct intel_dsi_device *dsi)
 {
 	struct drm_display_mode *mode;
-	printk("----sean test----m181_auo_panel_get_modes----\n");
+	sean_debug("%s:----sean test----auo_m181_get_modes----\n", __func__);
 	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
 	if (!mode)
 		return NULL;
