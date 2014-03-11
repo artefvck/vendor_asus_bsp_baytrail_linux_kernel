@@ -509,12 +509,12 @@ parse_record:
 		 */
 		len = fat_parse_short(sb, de, bufname, 0);
 		if (len == 0)
-		{
-			//continue;
-			/* Compare shortname */
-			if (fat_name_match(sbi, name, name_len, bufname, len))
-				goto found;
-		}
+			continue;
+
+		/* Compare shortname */
+		if (fat_name_match(sbi, name, name_len, bufname, len))
+			goto found;
+
 		if (nr_slots) {
 			void *longname = unicode + FAT_MAX_UNI_CHARS;
 			int size = PATH_MAX - FAT_MAX_UNI_SIZE;
