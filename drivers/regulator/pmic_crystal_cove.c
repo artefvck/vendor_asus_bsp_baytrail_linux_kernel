@@ -38,11 +38,19 @@
 #define ON			1
 #define OFF			0
 
+//<ASUS-Oscar140311++>
+//const u16 reg_addr_offset[] = {
+//	V2P85SCNT_ADDR, V2P85SXCNT_ADDR, V3P3SCNT_ADDR,
+//	V1P8SCNT_ADDR, V1P8SXCNT_ADDR, VSYS_SCNT_ADDR
+//};
+//const u8 initial_state[] = {1, 1, 1, 1, 1, 1};
+
 const u16 reg_addr_offset[] = {
-	V2P85SCNT_ADDR, V2P85SXCNT_ADDR, V3P3SCNT_ADDR,
-	V1P8SCNT_ADDR, V1P8SXCNT_ADDR, VSYS_SCNT_ADDR
+	V2P85SCNT_ADDR, V3P3SCNT_ADDR,
+	V1P8SCNT_ADDR, VSYS_SCNT_ADDR
 };
-const u8 initial_state[] = {1, 1, 1, 1, 1, 1};
+const u8 initial_state[] = {1, 1, 1, 1};
+//<ASUS-Oscar140311-->
 
 static ATOMIC_NOTIFIER_HEAD(vrf_notifier);
 
