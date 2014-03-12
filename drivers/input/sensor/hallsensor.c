@@ -11,16 +11,14 @@
 #include <linux/workqueue.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
-#include <linux/wakelock.h>
 #include <asm/intel-mid.h>
 #include <linux/earlysuspend.h>
 #include <linux/timer.h>
 #include <linux/mfd/intel_mid_pmic.h>
 #include <asm/intel_scu_pmic.h>
 #include <asm/intel_vlv2.h>
-//+++for ER2
 #include <linux/acpi_gpio.h>
-//---
+#include <linux/semaphore.h>
 #define MIRQLVL1 0x0e
 #define GPIO1P0CTLO 0x3b
 #define GPIO1P0CTLI 0x43
@@ -45,13 +43,12 @@
 #define UNMASK 1
 #define HALL_GPIO 1
 #define HALL_PMIC 2
-#define HALL_DEBUG
+//#define HALL_DEBUG
 #ifdef HALL_DEBUG
 #define p_debug(format, ...) printk(format, ## __VA_ARGS__)
 #else
 #define p_debug(format, ...) do {} while (0)
 #endif
-
 
 #define DRIVER_NAME "hall_sensor"
 enum {
@@ -75,22 +72,16 @@ enum {
 
 static struct kobject *hall_sensor_kobj;
 static struct platform_device *pdev;
-static struct input_device_id mID[] = {
-        { .driver_info = 1 },		//scan all device to match hall sensor
-        { },
-};
 static int lid_probe(struct platform_device *pdev);
 static int lid_suspend(struct platform_device *pdev, pm_message_t state) ;
 
 static struct hall_sensor_str {
-
  	int irq_pmic ;
 	int irq_gpio ;
 	int status ;
 	int gpio ;
 	int enable ; 
-	spinlock_t mHallSensorLock ;
-	struct wake_lock wake_lock ;
+	struct semaphore sema ;
 	struct input_dev *lid_indev ;
 }* hall_sensor_dev ;
 static struct resource hall_resources[] = {
@@ -101,20 +92,7 @@ static struct resource hall_resources[] = {
 		.flags = IORESOURCE_IRQ,
 	},
 };
-/*
-static int board_id ;
-static int board_id_gpio ;
-#define ER1 0
-#define ER2 1
-*/
-/*
-static int get_board_id()
-{
-	if((intel_mid_pmic_readb(HALL_ID_CTLI)&0x01) > 0)return board_id = ER2 ;
-	else 
-		return board_id = ER1 ;
-}
-*/
+
 void set_pmic_hall_high()
 {
 	intel_mid_pmic_writeb(GPIO1P0CTLO,0x5e) ;
@@ -132,16 +110,8 @@ void lid_event(struct input_handle *handle, unsigned int type, unsigned int code
 		p_debug("\n[%s]lid_event!type== ev_sw && code ==sw_lid\n",
 			DRIVER_NAME);
 		//if sw ==1 && status==1 OR sw==0 && status == 0
-		p_debug("\n[%s]lid_event!lid_indev->sw=%lx h,hall_sensor_dev->status=%lx h,test_bit(code, hall_sensor_dev->lid_indev->sw)=%x h,!!test_bit(code, hall_sensor_dev->lid_indev->sw)=%x h,\n",
-			DRIVER_NAME,*(hall_sensor_dev->lid_indev->sw),
-			hall_sensor_dev->status,test_bit(code, hall_sensor_dev->lid_indev->sw),
-			!!test_bit(code, hall_sensor_dev->lid_indev->sw));
 	if(!!test_bit(code, hall_sensor_dev->lid_indev->sw) != !hall_sensor_dev->status){
-		p_debug("\n[%s]lid_event!lid_indev->sw=%lx h,\n",
-			DRIVER_NAME,hall_sensor_dev->lid_indev->sw);
        __change_bit(code,  hall_sensor_dev->lid_indev->sw);
-	   p_debug("\n[%s]lid_event!lid_indev->sw=%lx h,\n",
-		   DRIVER_NAME,hall_sensor_dev->lid_indev->sw);
     	p_debug("[%s] reset dev->sw(!hall_sensor_dev->status)=%d \n", DRIVER_NAME,!hall_sensor_dev->status);
 	}//end if
 	}//end if
@@ -168,7 +138,6 @@ void _set_pmic_hall_ioctlreg()
 {
 //	GPIO1P0CTLO WR
 //	GPIO1P0CTLI WR
-//	intel_mid_pmic_writeb(GPIO1P0CTLO,0x54) ;
 	intel_mid_pmic_writeb(GPIO1P0CTLO,0x5e) ;
 	intel_mid_pmic_writeb(GPIO1P0CTLI,0x0e) ;
 }
@@ -188,8 +157,6 @@ void _set_irq_mask_hall(int state)
 {
 	int mask =0x01 ;
 	//	MGPIO1IRQS0  WR
-	int data =0;
-	
  	switch(state){
 	case MASK :
 		intel_scu_ipc_update_register(MGPIO1P0IRQS0,mask,0);
@@ -209,24 +176,7 @@ void hall_set_pmic_reg()
 	_set_pmic_hall_ioctlreg();
 	_set_irq_mask_hall(UNMASK);
 }
-/*
-static ssize_t show_action_status(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	p_debug("\n[%s]show_pmic_action_status!\n",DRIVER_NAME);
-	if(!hall_sensor_dev)
-		return sprintf(buf, "Hall sensor does not exist!\n");
-	switch(board_id)
-	{
-	case ER1 :
-		return sprintf(buf, "%d\n", (hall_get_din()>0)?1:0);
-		break ;
-	case ER2 :
-		return sprintf(buf, "%d\n", (gpio_get_value(hall_sensor_dev->gpio)>0)?1:0);
-		break ;
-	}
-}
-*/
+
 static ssize_t show_action_status(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -259,24 +209,22 @@ static ssize_t store_hall_sensor_enable(struct device *dev,
 		return count;
 	}
 	else {
-		unsigned long flags;
-		spin_lock_irqsave(&hall_sensor_dev->mHallSensorLock, flags);
-		p_debug("[%s] store_hall_sensor_enable->after spin_lock_irqsave\n", DRIVER_NAME);
+		down(&hall_sensor_dev->sema) ;
 		if (hall_sensor_dev->enable==0){
 			enable_irq(hall_sensor_dev->irq_pmic);
+			enable_irq(hall_sensor_dev->irq_gpio);
 			hall_sensor_dev->enable=1;
 			p_debug("\n[%s]store_hall_sensor_enable!hall_sensor_Dev->enable=%d\n",
 				DRIVER_NAME,hall_sensor_dev->enable);
 		}
-		else if (hall_sensor_dev->enable==1){		
+		else if (hall_sensor_dev->enable==1){	
 			disable_irq(hall_sensor_dev->irq_pmic);
+			disable_irq(hall_sensor_dev->irq_gpio);
 			hall_sensor_dev->enable=0;
 			p_debug("\n[%s]store_hall_sensor_enable!hall_sensor_Dev->enable=%d\n",
 				DRIVER_NAME,hall_sensor_dev->enable);
 		}
-		p_debug("[%s] store_hall_sensor_enable->before spin_unlock_irqrestore\n", DRIVER_NAME);
-		spin_unlock_irqrestore(&hall_sensor_dev->mHallSensorLock, flags);
-		p_debug("[%s] store_hall_sensor_enable->after spin_unlock_irqrestore\n", DRIVER_NAME);
+		up(&hall_sensor_dev->sema) ;
 	}
 	return count;
 }
@@ -335,43 +283,27 @@ exit:
 
 static void lid_report_function(int type)
 {
-    unsigned long flags;
 	p_debug("[%s] lid_report_function\n", DRIVER_NAME);
 //	msleep(50);
-//	spin_lock_irqsave(&hall_sensor_dev->mHallSensorLock, flags);
 	hall_sensor_dev->status = (((gpio_get_value(hall_sensor_dev->gpio)>0)&&(hall_get_din()>0))?1:0);
 
 	input_report_switch(hall_sensor_dev->lid_indev,
 		SW_LID,!(hall_sensor_dev->status)) ;
 	input_sync(hall_sensor_dev->lid_indev) ;
-/*
-	switch(type)
-	{
-	case HALL_PMIC :
-		break ;
-	case HALL_GPIO :
-//		wake_unlock(&hall_sensor_dev->wake_lock) ;
-		break ;
-	}
-*/
 }
 static irqreturn_t hall_pmic_interrupt_handler(int irq, void *dev_id)
 {
 	p_debug("[%s] hal_pmic_interrupt_handler->GPIO report value = %d\n", DRIVER_NAME, hall_get_din());
 
-	//wake_lock(&hall_sensor_dev->wake_lock) ;
 	lid_report_function(HALL_PMIC);
 	return IRQ_HANDLED;
 }
-//+++for ER2
 static irqreturn_t hall_gpio_interrupt_handler(int irq, void *dev_id)
 {
 	p_debug("[%s] hal_sensor_interrupt_handler-> GPIO report value = %d\n", DRIVER_NAME, gpio_get_value(hall_sensor_dev->gpio));
-//	wake_lock(&hall_sensor_dev->wake_lock) ;
 	lid_report_function(HALL_GPIO);
 	return IRQ_HANDLED;
 }
-//---
 static int set_irq_hall_sensor(void)
 {
 	int rc = 0 ;	
@@ -393,7 +325,7 @@ static int set_irq_hall_sensor(void)
 		}
 		enable_irq_wake(hall_sensor_dev->irq_pmic);
 		//enable_irq(hall_sensor_dev->irq_pmic) ;
-		//for ER2,hall<-->gpio
+
 		//gpio = acpi_get_gpio(\\_SB.GPO0, 5);                           
 		// 若是GPIO_S5_5則為 (\\_SB.GPO2, 5)
 		hall_sensor_dev->gpio = acpi_get_gpio("\\_SB.GPO2", 12); 
@@ -408,17 +340,11 @@ static int set_irq_hall_sensor(void)
 		//para0:pin no,para1:name set for the pin
 		gpio_request(hall_sensor_dev->gpio,"hall_sensor_gpio");
 		//set direction
-	
-		//gpio_direction_output(hall_sensor_dev->gpio,0);
-	//	gpio_set_value(hall_sensor_dev->gpio,0) ;
 		gpio_direction_input(hall_sensor_dev->gpio);
 		hall_sensor_dev->irq_gpio = gpio_to_irq(hall_sensor_dev->gpio);
 		//---
 		p_debug("\n[%s]hall_sensor_probe!hall_sensor_dev->irq_gpio:%d\n",
 			DRIVER_NAME,hall_sensor_dev->irq_gpio);	
-		//for ER1,hall<-->pmic
-		//apply for irq,register interrupt handler function
-		//+++for ER2,hall<-->gpio
 //		disable_irq(hall_sensor_dev->irq_gpio) ;
 		rc = request_threaded_irq(hall_sensor_dev->irq_gpio,
 		NULL,
@@ -507,7 +433,6 @@ static int lid_suspend(struct platform_device *pdev, pm_message_t state)
 }
 static int lid_probe(struct platform_device *pdev){
 	int ret =0;
-	int data=0 ;
 	p_debug("\n[%s]lid_probe!\n",DRIVER_NAME);
 	
 	hall_set_pmic_reg();
@@ -531,7 +456,7 @@ static int lid_probe(struct platform_device *pdev){
 		p_debug("\n[%s]hall_sensor_probe!sys_create_group() succeed\n",DRIVER_NAME);
 	}
 	
-			//Memory allocation
+	//Memory allocation
 	hall_sensor_dev = kzalloc(sizeof (struct hall_sensor_str), GFP_KERNEL);
 	if (!hall_sensor_dev) {
 		p_debug("[%s] Memory allocation fails for hall sensor\n", DRIVER_NAME);
@@ -541,7 +466,7 @@ static int lid_probe(struct platform_device *pdev){
 	else{
 		p_debug("\n[%s]hall_sensor_init!kzalloc succeed\n",DRIVER_NAME);
 	}
-	spin_lock_init(&hall_sensor_dev->mHallSensorLock);
+	sema_init(&hall_sensor_dev->sema,1) ;
 	hall_sensor_dev->enable = 1;	
 	//create input_dev
 	hall_sensor_dev->lid_indev = NULL;
@@ -559,8 +484,6 @@ static int lid_probe(struct platform_device *pdev){
 		p_debug("[%s]set_irq_hall_sensor->successfully.\n", DRIVER_NAME);
 	}
 
-	wake_lock_init(&hall_sensor_dev->wake_lock,WAKE_LOCK_SUSPEND,
-			"lid_suspend_blocker") ;
 	return 0;
 /*
 		free_irq(hall_sensor_dev->irq_pmic, hall_sensor_dev);	
@@ -618,11 +541,9 @@ static void __exit hall_sensor_exit(void)
 	kobject_put(hall_sensor_kobj);
 	platform_driver_unregister(&lid_platform_driver);
 	platform_device_unregister(pdev);
-	wake_lock_destroy(&hall_sensor_dev->wake_lock);
 }
 late_initcall(hall_sensor_init);
 //module_init(hall_sensor_init);
-
 module_exit(hall_sensor_exit);
 
 
