@@ -2135,12 +2135,33 @@ static	ssize_t gt_hw_version_show ( struct device *dev,struct device_attribute *
     }
     return scnprintf (buf, PAGE_SIZE,  "%d\n", version_info ) ; 
 }
-																  
-																  
+	
+static ssize_t gt_irq_disable(struct device *dev,struct device_attribute *attr, char *buf)		
+{
+	u16 version_info;
+    s32 ret = -1;
+    struct goodix_ts_data *ts = dev_get_drvdata(dev);
+    gtp_irq_disable(ts);
+    return scnprintf (buf, PAGE_SIZE,  "disable goodix mxt-touch success!\n" ) ; 
+}													  
+
+static ssize_t gt_irq_enable(struct device *dev,struct device_attribute *attr, char *buf)		
+{
+	u16 version_info;
+    s32 ret = -1;
+    struct goodix_ts_data *ts = dev_get_drvdata(dev);
+    gtp_irq_enable(ts);
+    return scnprintf (buf, PAGE_SIZE,  "enable goodix mxt-touch success!\n" ) ; 
+}															  
+									  
 static	DEVICE_ATTR (red_hw_version, S_IRUGO, gt_hw_version_show, NULL) ;
+static DEVICE_ATTR(irq_disable, S_IRUGO, gt_irq_disable, NULL);
+static DEVICE_ATTR(irq_enable, S_IRUGO, gt_irq_enable, NULL);
 
 static struct attribute *gt_attrs[] = {
     &dev_attr_red_hw_version.attr,
+    &dev_attr_irq_disable,
+    &dev_attr_irq_enable,
     NULL
 };
 
