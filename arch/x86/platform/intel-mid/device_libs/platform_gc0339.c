@@ -114,7 +114,7 @@ static int gc0339_gpio_init()
 			return ret;
 		}
 		camera_reset = pin;
-		ret = gpio_direction_output(pin, 1);
+		ret = gpio_direction_output(pin, 0);
 		if (ret) {
 			pr_err("%s: failed to set gpio(pin %d) direction\n",
 				__func__, pin);
