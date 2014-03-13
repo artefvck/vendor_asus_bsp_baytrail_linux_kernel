@@ -402,7 +402,7 @@ struct gt9xx_short_info
 
 #define MYBIG_ENDIAN                1
 #define MYLITLE_ENDIAN              0
-#define _BEYOND_REC_MAX             32*24 // record beyond infomation max num
+#define _BEYOND_REC_MAX           31*17//180:  32*24 // record beyond infomation max num
 
 #define	_BEYOND_MAX_LIMIT           0x0001
 #define _BEYOND_MIN_LIMIT           0x0002

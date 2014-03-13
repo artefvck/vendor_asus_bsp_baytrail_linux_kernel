@@ -1,7 +1,7 @@
 #include "176_openshort.h"
 
-#define DRIVER_NUM 32
-#define SENSOR_NUM 24
+#define DRIVER_NUM 31
+#define SENSOR_NUM 17
 #define mul 100000
 u32 accord_limit_Jtouch=22000;   //accord_limit for Jtouch
 u32 accord_limit_Ofilm=22000;    //accord_limit for Ofilm
