@@ -1566,7 +1566,7 @@ static void mmc_power_up(struct mmc_host *host)
 	 * This delay should be sufficient to allow the power supply
 	 * to reach the minimum voltage.
 	 */
-	usleep_range(10000, 11000);
+	usleep_range(50000, 55000);
 
 	host->ios.clock = host->f_init;
 
