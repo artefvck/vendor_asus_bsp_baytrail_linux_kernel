@@ -31,6 +31,11 @@
 #include "i915_trace.h"
 #include "intel_drv.h"
 
+#include <linux/lnw_gpio.h>
+#include <linux/acpi_gpio.h>
+#include <linux/acpi.h>
+#include <linux/gpio.h>
+
 /*
  * DPST (Display Power Savings Technology) is a power savings features
  * which reduces the backlight while enhancing the image such that the
@@ -205,6 +210,12 @@ i915_dpst_init(struct drm_device *dev,
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	struct drm_crtc *crtc;
 	struct drm_display_mode *mode = NULL;
+
+#ifdef CONFIG_PRO_ME181_PANEL
+	int err = 0;
+	int lcm_id = 0;
+#endif
+
 	u32 blm_hist_guard, gb_val;
 
 	/* Get information about current display mode */
@@ -234,7 +245,32 @@ i915_dpst_init(struct drm_device *dev,
 	I915_WRITE(BLC_HIST_GUARD, blm_hist_guard);
 
 	/* Enable histogram interrupts */
+
+#ifdef CONFIG_PRO_ME181_PANEL
+	err = gpio_request(68, "LCM_ID");
+	if (err){
+		printk("%s:----sean test----%d\n", __func__,__LINE__);
+	}
+	gpio_direction_input(68);
+	lcm_id = gpio_get_value(68);
+
+	gpio_free(68);
+
+	if(lcm_id)
+	{
+		i915_dpst_enable_hist_interrupt(dev);
+		printk("%s:----sean test----%d\n", __func__,__LINE__);
+	}
+	else
+	{
+		i915_dpst_disable_hist_interrupt(dev);
+		printk("%s:----sean test----%d\n", __func__,__LINE__);
+	}
+	//i915_dpst_enable_hist_interrupt(dev);
+#else
 	i915_dpst_enable_hist_interrupt(dev);
+#endif
+
 
 	return 0;
 }
