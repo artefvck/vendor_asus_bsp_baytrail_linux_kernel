@@ -36,6 +36,11 @@
 #include <linux/pwm.h>
 #include <linux/platform_data/lp855x.h>
 
+#include <linux/lnw_gpio.h>
+#include <linux/acpi_gpio.h>
+#include <linux/acpi.h>
+#include <linux/gpio.h>
+
 #define PCI_LBPC 0xf4 /* legacy/combination backlight modes */
 
 void
@@ -513,8 +518,22 @@ void intel_panel_actually_set_backlight(struct drm_device *dev, u32 level)
 
 void intel_panel_actually_set_mipi_backlight(struct drm_device *dev, u32 level)
 {
+
 #ifdef CONFIG_CRYSTAL_COVE
+	int err = 0;
+	int lcm_id = 0;
 	u32 max = intel_panel_get_max_backlight(dev);
+
+	err = gpio_request(68, "LCM_ID");
+	if (err){
+		printk("%s:----sean test----%d\n", __func__,__LINE__);
+	}
+	gpio_direction_input(68);
+	lcm_id = gpio_get_value(68);
+
+	gpio_free(68);
+
+
 
 	if (BYT_CR_CONFIG) {
 		/* FixMe: if level is zero still a pulse is observed consuming
@@ -522,8 +541,26 @@ void intel_panel_actually_set_mipi_backlight(struct drm_device *dev, u32 level)
 		disable pwm and enabled it again if brightness changes */
 		lpio_bl_write_bits(0, LPIO_PWM_CTRL, (0xff - level), 0xFF);
 		lpio_bl_update(0, LPIO_PWM_CTRL);
-	} else
-		intel_mid_pmic_writeb(0x4E, level*0xff/max);
+	} else{
+		//intel_mid_pmic_writeb(0x4E, level*0xff/max);
+#ifdef CONFIG_PRO_ME181_PANEL
+		if(lcm_id)
+		{
+			intel_mid_pmic_writeb(0x4E, level*0xff/max);
+			printk("%s:----sean test----%d\n", __func__,__LINE__);
+		}
+		else
+		{
+			level = level*0xff/max;
+			level = (level+45)*(level+45) / (300*300/204); //max is 80%
+			intel_mid_pmic_writeb(0x4E, level);
+			printk("%s:----sean test----%d\n", __func__,__LINE__);
+		}
+#else
+	intel_mid_pmic_writeb(0x4E, level*0xff/max);
+
+#endif
+	}
 #else
 	DRM_ERROR("Non PMIC MIPI Backlight control is not supported yet\n");
 #endif
