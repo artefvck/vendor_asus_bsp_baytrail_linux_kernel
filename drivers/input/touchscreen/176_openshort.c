@@ -131,7 +131,8 @@ static struct gt9xx_open_info *touchpad_sum;
 
 #define _MIN_ERROR_NUM      (sample_set_num * 9 / 10)
                     
-static char *result_lines[32 * 24 + 20]; // [200];
+//static char *result_lines[32 * 24 + 20]; // [200];
+static char *result_lines[31 * 17 +20];//for 176
 static char tmp_info_line[80];
 static u32 RsltIndex = 0;
 
@@ -142,7 +143,8 @@ static void append_info_line(void)
         result_lines[RsltIndex] = (char *)kzalloc(strlen(tmp_info_line), GFP_KERNEL);
         memcpy(result_lines[RsltIndex], tmp_info_line, strlen(tmp_info_line));
     }
-    if (RsltIndex != (32 * 24 + 19)) //199)
+//    if (RsltIndex != (32 * 24 + 19)) //199)
+       if (RsltIndex != (31 * 17 + 19))
         ++RsltIndex;
     else {
         kfree(result_lines[RsltIndex]);
