@@ -2671,7 +2671,7 @@ static int bma2x2_set_mode(struct i2c_client *client, unsigned char mode)
 	unsigned char data1, data2;
 	int ret = 0;
 	struct bma2x2_data *bma2x2 = i2c_get_clientdata(client);
-
+#if 0
 	mutex_lock(&bma2x2->mode_mutex);
 	if (BMA2X2_MODE_SUSPEND == mode) {
 		if (bma2x2->ref_count > 0) {
@@ -2689,7 +2689,7 @@ static int bma2x2_set_mode(struct i2c_client *client, unsigned char mode)
 		}
 	}
 	mutex_unlock(&bma2x2->mode_mutex);
-
+#endif
 	if (mode < 6) {
 		comres = bma2x2_smbus_read_byte(client, BMA2X2_MODE_CTRL_REG,
 				&data1);
