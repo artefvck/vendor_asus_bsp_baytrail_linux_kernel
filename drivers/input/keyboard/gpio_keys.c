@@ -406,16 +406,30 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 	unsigned int type = button->type ?: EV_KEY;
 	int state =
 		(gpio_keys_getval(button->gpio) ? 1 : 0) ^ button->active_low;
-
+    static int last_state=-1;  //add by lambert
 	if (type == EV_ABS) {
 		if (state)
 			input_event(input, type, button->code, button->value);
-	} else {
+	} else {  //modified by lambert
+	    if(type == EV_KEY){
+		   if(button->code == KEY_POWER){
+			 if(state!=last_state){
+		        last_state=state;
+		        input_event(input, type, button->code, !!state);
+				printk("PRESS KEY_POWER %d\n",state);
+			 } else {
+			    printk("state=%d,last_sate equals current_state,do not send event\n",state);
+			 	}
+		   } else {
+			   input_event(input, type, button->code, !!state);
+		   	}
+	    }
+	    else
 		input_event(input, type, button->code, !!state);
 	}
 
-	if((type == EV_KEY) && (button->code == KEY_POWER))
-		printk("PRESS KEY_POWER %d\n",state);
+	//if((type == EV_KEY) && (button->code == KEY_POWER))
+	//	printk("PRESS KEY_POWER %d\n",state);
 	input_sync(input);
 }
 
