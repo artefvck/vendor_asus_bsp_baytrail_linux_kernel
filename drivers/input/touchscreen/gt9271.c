@@ -2143,19 +2143,81 @@ static	ssize_t gt_hw_version_show ( struct device *dev,struct device_attribute *
 
 static ssize_t gt_irq_disable(struct device *dev,struct device_attribute *attr, char *buf)		
 {
-	u16 version_info;
-    s32 ret = -1;
     struct goodix_ts_data *ts = dev_get_drvdata(dev);
-    gtp_irq_disable(ts);
+    s8 ret = -1;    
+//    ts = container_of(h, struct goodix_ts_data, early_suspend);
+    
+    GTP_DEBUG_FUNC();
+
+	#if GTP_ESD_PROTECT
+		gtp_esd_switch(ts->client, SWITCH_OFF);
+	#endif
+		ts->gtp_is_suspend = 1;
+		
+	#if GTP_SLIDE_WAKEUP
+		ret = gtp_enter_doze(ts);
+	#else
+		if (ts->use_irq)
+		{
+			gtp_irq_disable(ts);
+		}
+		else
+		{
+			hrtimer_cancel(&ts->timer);
+		}
+		ret = gtp_enter_sleep(ts);
+	#endif 
+		if (ret < 0)
+		{
+			GTP_ERROR("GTP early suspend failed.");
+		}
+		// to avoid waking up while not sleeping
+		//  delay 48 + 10ms to ensure reliability    
+		msleep(58);   
     return scnprintf (buf, PAGE_SIZE,  "disable goodix mxt-touch success!\n" ) ; 
 }													  
 
 static ssize_t gt_irq_enable(struct device *dev,struct device_attribute *attr, char *buf)		
 {
-	u16 version_info;
-    s32 ret = -1;
-    struct goodix_ts_data *ts = dev_get_drvdata(dev);
-    gtp_irq_enable(ts);
+	struct goodix_ts_data *ts = dev_get_drvdata(dev);
+	s8 ret = -1;
+//    ts = container_of(h, struct goodix_ts_data, early_suspend);
+    
+    GTP_DEBUG_FUNC();
+
+    ret = gtp_wakeup_sleep(ts);
+
+#if GTP_SLIDE_WAKEUP
+    doze_status = DOZE_DISABLED;
+#endif
+
+    if (ret < 0)
+    {
+        GTP_ERROR("GTP later resume failed.");
+    }
+#if (GTP_COMPATIBLE_MODE)
+    if (CHIP_TYPE_GT9F == ts->chip_type)
+    {
+        // do nothing
+    }
+    else
+#endif
+    {
+        gtp_send_cfg(ts->client);
+    }
+
+    if (ts->use_irq)
+    {
+        gtp_irq_enable(ts);
+    }
+    else
+    {
+        hrtimer_start(&ts->timer, ktime_set(1, 0), HRTIMER_MODE_REL);
+    }
+    ts->gtp_is_suspend = 0;
+#if GTP_ESD_PROTECT
+    gtp_esd_switch(ts->client, SWITCH_ON);
+#endif
     return scnprintf (buf, PAGE_SIZE,  "enable goodix mxt-touch success!\n" ) ; 
 }
 													  
