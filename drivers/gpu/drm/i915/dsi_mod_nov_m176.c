@@ -39,15 +39,23 @@
 #include "intel_dsi_cmd.h"
 #include "dsi_mod_nov_m176.h"
 #include <linux/lnw_gpio.h>
-#include <linux/acpi_gpio.h>	//pbtest
-#include <linux/acpi.h>			//pbtest
-#include <linux/gpio.h>			//pbtest
-#include <linux/mfd/intel_mid_pmic.h>		//pbtest
+#include <linux/acpi_gpio.h>
+#include <linux/acpi.h>
+#include <linux/gpio.h>
+#include <linux/mfd/intel_mid_pmic.h>
+
+#define DEBUG 1
+#if DEBUG
+	#define sean_debug(x...) printk(x)
+#else
+	#define sean_debug(x...) do {} while(0)
+#endif
+
 static void m176_get_panel_info(int pipe,
 				struct drm_connector *connector)
 {
 	DRM_DEBUG_KMS("\n");
-	printk("----pbtest----m176_get_panel_info----\n");
+	sean_debug("%s:----sean test----m176_get_panel_info----\n", __func__);
 	if (!connector)
 		return;
 
@@ -65,11 +73,11 @@ bool m176_init(struct intel_dsi_device *dsi)
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	DRM_DEBUG_KMS("\n");
-	printk("----pbtest----m176_init----\n");
+	sean_debug("%s:----sean test----m176_init----\n", __func__);
 	intel_dsi->hs = 1;
 	intel_dsi->channel = 0;
 	intel_dsi->lane_count = 4;
-//	intel_dsi->eot_disable = 1;
+	//intel_dsi->eot_disable = 1;
 	intel_dsi->eotp_pkt = 0;
 	intel_dsi->clock_stop = true;	//pbtest no continue more
 	//intel_dsi->dsi_clock_freq = 513;
@@ -87,7 +95,7 @@ bool m176_init(struct intel_dsi_device *dsi)
 	intel_dsi->dphy_reg = 0x200F370B;		//pbtest
 
 	intel_dsi->backlight_off_delay = 20;
-	intel_dsi->backlight_on_delay = 20;		//pbtest
+	intel_dsi->backlight_on_delay = 134;		//sean test t8 > 8 frames 8 * 16.67
 	intel_dsi->send_shutdown = true;
 	intel_dsi->shutdown_pkt_delay = 20;
 
@@ -101,7 +109,7 @@ void m176_dpms(struct intel_dsi_device *dsi, bool enable)
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	DRM_DEBUG_KMS("\n");
-	printk("----pbtest----m176_dpms----\n");
+	sean_debug("%s:----sean test----m176_dpms----\n", __func__);
 	if (enable) {
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_EXIT_SLEEP_MODE);
 
@@ -127,43 +135,53 @@ bool m176_mode_fixup(struct intel_dsi_device *dsi,
 		    struct drm_display_mode *adjusted_mode) {
 	return true;
 }
+
 void  m176_disable_panel_power(struct intel_dsi_device *dsi)
 {
 
+    int err;
+    err = gpio_request(69, "sd_pwr_en1");
+	if (err){
+		printk("%s:----sean test----m176_panel_request fail----\n",__func__);
+	}
 
-	printk("----pbtest----m176_disable_panel_power----\n");
+	msleep(134);	//sean test t8 > 8 frames 8 * 16.67
 
+	gpio_direction_output(69, 0);
+	gpio_set_value(69, 0);	//RESX low
+	gpio_free(69);
+	msleep(20);	//sean test t12 >= 0
 
-    intel_mid_pmic_setb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 pbtest ??
-//    intel_mid_pmic_writeb(0x51,0);//BACKLIGHT_EN
+	sean_debug("%s:----sean test----m176_disable_panel_power----\n", __func__);
+
+    intel_mid_pmic_setb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 pbtest
+	//intel_mid_pmic_writeb(0x51,0);//BACKLIGHT_EN
     intel_mid_pmic_writeb(0x52,0);//PANEL_EN
 
     msleep(500);
 
 }
+
 void m176_panel_reset(struct intel_dsi_device *dsi)
 {
-
-//	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
-//	struct drm_device *dev = intel_dsi->base.base.dev;
-//	struct drm_i915_private *dev_priv = dev->dev_private;
-
+	/*
 	int err;
-	printk("----pbtest----m176_panel_reset----\n");
+	sean_debug("%s:----sean test----m176_panel_reset----\n", __func__);
 
-   err = gpio_request(69, "sd_pwr_en");
-			if (err){
-				DRM_DEBUG_KMS("----pbtest----m176_panel_reset----10000----\n");
+	err = gpio_request(69, "sd_pwr_en");
+	if (err){
+		printk("%s:----sean test----m176_panel_request fail----\n",__func__);
 	}
 
-		gpio_direction_output(69, 1);
-		usleep_range(10000,15000);
-		gpio_set_value(69, 0);
-		usleep_range(10000,15000);
-		gpio_set_value(69, 1);
+	gpio_direction_output(69, 1);
+	usleep_range(10000,15000);
+	gpio_set_value(69, 0);
+	usleep_range(10000,15000);
+	gpio_set_value(69, 1);
+	gpio_free(69);
 
-    msleep(300);
-
+    msleep(20);	//sean test t7 >= 10
+    * */
 }
 
 
@@ -173,38 +191,35 @@ void m176_send_otp_cmds(struct intel_dsi_device *dsi)
 
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
-//	struct drm_device *dev = intel_dsi->base.base.dev;
-//	struct drm_i915_private *dev_priv = dev->dev_private;
-//	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
-//	int reset_inno =-1;
 	int err;
 	DRM_DEBUG_KMS("\n");
-	printk("----pbtest----m176_send_otp_cmds----\n");
-	//add reset function
-	msleep(40);			//pbtest t4
+	sean_debug("%s:----sean test----m176_send_otp_cmds----%d\n", __func__,__LINE__);
 
 	err = gpio_request(69, "sd_pwr_en1");
-			if (err){
-				printk("----pbtest----m176_panel_reset----10000----\n");
+	if (err){
+		printk("%s:----sean test----m176_panel_request fail----\n",__func__);
 
-			}
-	gpio_direction_output(69, 1);
-	usleep_range(10000,15000);
-	gpio_set_value(69, 0);
-	usleep_range(10000,15000);
+	}
+
+	gpio_direction_output(69, 0);	// sean 2 low pulse
 	gpio_set_value(69, 1);
+	usleep_range(1000,5000);
+	gpio_set_value(69, 0);
+	usleep_range(1000,5000); //sean test t7
+	gpio_set_value(69, 1);
+	gpio_free(69);
 	msleep(20);
 
-	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmds----2----\n");
+	sean_debug("%s:----sean test----m176_send_otp_cmds----%d\n", __func__,__LINE__);
 	intel_dsi->hs = 0 ;
-	msleep(30);		//pbtest t5>20
+	msleep(30);		//sean test t5 > 20
 
 	{
 		unsigned char data[] = {0xFF, 0xAA, 0x55, 0xA5, 0x80};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
 	}
 	//========== Internal setting ==========
-	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmdstttt----\n");
+	sean_debug("%s:----sean test----m176_send_otp_cmds----%d\n", __func__,__LINE__);
 
 	{
 		unsigned char data[] = {0x6F, 0x11, 0x00};
@@ -216,8 +231,7 @@ void m176_send_otp_cmds(struct intel_dsi_device *dsi)
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
 
-
-	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmdstttt--2--\n");
+	sean_debug("%s:----sean test----m176_send_otp_cmds----%d\n", __func__,__LINE__);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x06);
 
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xF7, 0xA0);
@@ -228,12 +242,12 @@ void m176_send_otp_cmds(struct intel_dsi_device *dsi)
 
 
 	//========== page0 relative ==========
-	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmdstttt--3--\n");
+	sean_debug("%s:----sean test----m176_send_otp_cmds----%d\n", __func__,__LINE__);
 	{
 		unsigned char data[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmdstttt--4--\n");
+	sean_debug("%s:----sean test----m176_send_otp_cmds----%d\n", __func__,__LINE__);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC8, 0x80);
 	{
 		unsigned char data[] = {0xB1, 0x6C, 0x01};
@@ -693,11 +707,8 @@ void m176_send_otp_cmds(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE7, 0x02);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE9, 0x02);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xED, 0x33);
-	DRM_DEBUG_KMS("----pbtest----m176_send_otp_cmdstttt--5--\n");
-	msleep(120);
-	//dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);			//pbtest ??
-	//msleep(120);
-	//dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);			//pbtest ??
+	sean_debug("%s:----sean test----m176_send_otp_cmds----%d\n", __func__,__LINE__);
+
 
 
 }
@@ -708,9 +719,10 @@ void m176_enable(struct intel_dsi_device *dsi)
 
 	DRM_DEBUG_KMS("\n");
 
-	dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);
-	msleep(120);
-	dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x11); //sleep out
+	msleep(10);
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);	//display on
+	msleep(10);
 }
 
 void m176_disable(struct intel_dsi_device *dsi)
@@ -719,15 +731,14 @@ void m176_disable(struct intel_dsi_device *dsi)
 
 	DRM_DEBUG_KMS("\n");
 
-	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);
-	msleep(20);
-	dsi_vc_dcs_write_0(intel_dsi, 0, 0x10);
-	msleep(80);
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);	//display off
+	msleep(10);
+	dsi_vc_dcs_write_0(intel_dsi, 0, 0x10);	//sleep in
 }
 
 enum drm_connector_status m176_detect(struct intel_dsi_device *dsi)
 {
-	printk("----pbtest----m176_detect----\n");
+	sean_debug("%s:----sean test----m176_detect----\n",__func__);
 	return connector_status_connected;
 }
 
@@ -739,7 +750,7 @@ bool m176_get_hw_state(struct intel_dsi_device *dev)
 struct drm_display_mode *m176_get_modes(struct intel_dsi_device *dsi)
 {
 	struct drm_display_mode *mode;
-	printk("----pbtest----m176_get_modes----\n");
+	sean_debug("%s:----sean test----m176_get_modes----\n",__func__);
 	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
 	if (!mode)
 		return NULL;
