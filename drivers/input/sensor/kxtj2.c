@@ -643,8 +643,8 @@ static DEVICE_ATTR(enable, S_IRGRP|S_IWGRP|S_IRUSR|S_IWUSR,kxtj2_enable_show,kxt
 static DEVICE_ATTR(rawdata_for_mag, S_IRUGO, kxtj2_value_show, NULL);
 
 #ifdef ENABLE_CALIBRATION_INTERFACE
-static DEVICE_ATTR(cal_data, S_IWUGO, NULL, kxtj2_offset_store);
-static DEVICE_ATTR(cal_enable, S_IWUGO | S_IRUGO, kxtj2_offset_enable_show, kxtj2_offset_enable_store);
+static DEVICE_ATTR(cal_data, S_IWUSR | S_IWGRP, NULL, kxtj2_offset_store);
+static DEVICE_ATTR(cal_enable, S_IWUSR | S_IWGRP | S_IRUGO, kxtj2_offset_enable_show, kxtj2_offset_enable_store);
 static DEVICE_ATTR(rawdata_for_cal, S_IRUGO, kxtj2_original_value_show, NULL);
 #endif
 
