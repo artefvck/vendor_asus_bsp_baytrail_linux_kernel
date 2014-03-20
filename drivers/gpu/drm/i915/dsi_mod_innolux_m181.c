@@ -93,7 +93,7 @@ bool m181_init(struct intel_dsi_device *dsi)
 	intel_dsi->video_frmt_cfg_bits = DISABLE_VIDEO_BTA;
 	intel_dsi->dphy_reg = 0x3710390B; //sean test
 
-	intel_dsi->backlight_off_delay = 134;	//keep data more than 8 frames in 60HZ
+	intel_dsi->backlight_off_delay = 20;	//keep data more than 8 frames in 60HZ
 	intel_dsi->send_shutdown = true;
 	intel_dsi->backlight_on_delay = 134;	//sean test
 	intel_dsi->shutdown_pkt_delay = 134;	//sean test
@@ -138,6 +138,7 @@ bool m181_mode_fixup(struct intel_dsi_device *dsi,
 
 void m181_panel_reset(struct intel_dsi_device *dsi)
 {
+	/*
 	int err;
 	sean_debug("%s:----sean test----m181_panel_reset----\n", __func__);
 
@@ -154,15 +155,29 @@ void m181_panel_reset(struct intel_dsi_device *dsi)
 
 	gpio_free(69);
     msleep(300);
+    * */
 
 }
 
 void m181_disable_panel_power(struct intel_dsi_device *dsi)
 {
+    int err;
+    err = gpio_request(69, "sd_pwr_en1");
+	if (err){
+		printk("%s:----sean test----m176_panel_request fail----\n",__func__);
+	}
+
+	msleep(110);	//sean test t15 >= 100
+
+	gpio_direction_output(69, 0);
+	gpio_set_value(69, 0);	//RESX low
+	gpio_free(69);
+	msleep(10);	//sean test t12 >= 0
+
     sean_debug("%s:----sean test----m181_innolux_panel_disable_power----\n", __func__);
     intel_mid_pmic_setb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 
     intel_mid_pmic_writeb(0x52,0);//PANEL_EN
-    msleep(500);
+    msleep(160);	//sean test t9 >= 150
 }
 
 void m181_send_otp_cmds(struct intel_dsi_device *dsi)
@@ -172,25 +187,23 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	int err;
 	DRM_DEBUG_KMS("\n");
 	sean_debug("%s:----sean test----m181_innolux_send_otp_cmds----%d\n", __func__,__LINE__);
-	msleep(40);			//sean test
 
 	err = gpio_request(69, "sd_pwr_en1");
 	if (err){
 		printk("%s----sean test----gpio_requset_fail----\n",__func__);
 	}	
-	//reset
-	gpio_direction_output(69, 1);
-	usleep_range(10000,15000);
-	gpio_set_value(69, 0);
-	usleep_range(10000,15000);
-	gpio_set_value(69, 1);
-	msleep(20);
 
+	gpio_direction_output(69, 0);	// sean 2 low pulse
+	gpio_set_value(69, 1);
+	usleep_range(1000,5000);
+	gpio_set_value(69, 0);
+	usleep_range(1000,5000); //sean test t7 >= 10
+	gpio_set_value(69, 1);
 	gpio_free(69);
+	msleep(30);	//sean test t5 >= 20
 
 	sean_debug("%s:----sean test----m181_innolux_send_otp_cmds----%d\n", __func__,__LINE__);
 	intel_dsi->hs = 0 ;
-	msleep(30);		
 
 	//========== Internal setting ==========
 	sean_debug("%s:----sean test----m181_innolux_send_otp_cmds----%d\n", __func__,__LINE__);
@@ -215,7 +228,6 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xF7, 0x12);
 	
 	//=============Internal setting END ================
-	//msleep(20);	
 	//========== page0 relative ==========
 	sean_debug("%s:----sean test----m181_innolux_send_otp_cmds----%d\n", __func__,__LINE__);
 	{
@@ -249,7 +261,6 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
 	//=================page0 relative END ================
-	//msleep(20);
 	//========== page1 relative ==========
 	{
 		unsigned char data[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x01};
@@ -292,7 +303,6 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
 	//=================page1 relative END ================
-	//msleep(20);
 	//========== page2 relative ==========
 	{
 		unsigned char data[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x02};
@@ -369,8 +379,6 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	}
 	
 	//=================page2 relative END ================
-	//msleep(20);
-	
 	//========== GOA relative ==========
 	//========== page6 relative:GOUT Mapping,VGLO select ==========
 	{
@@ -698,11 +706,11 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	//====================Normal Display================
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x35);			//sean test 
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);			//sean test /sleep out
-	msleep(140);									//keep data more than 8 frames in 60HZ:134
+	msleep(10);
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);			//sean test /display on
 	//=======================END========================
 	sean_debug("%s:----sean test----m181_innolux_send_otp_cmds----%d\n", __func__,__LINE__);
-	msleep(120);
+	msleep(10);
 }
 
 void m181_enable(struct intel_dsi_device *dsi)
@@ -726,15 +734,15 @@ void m181_disable(struct intel_dsi_device *dsi)
 	sean_debug("%s:----sean test----m181_innolux_panel_disable----\n", __func__);
 	//========== power off setting ==========
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);			//sean test /display off
-	msleep(20);
+	msleep(10);
 	
 	{
 		unsigned char data[] = {0xC3, 0x40, 0x00,0x20};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 4);	//sean test /disable power IC
 	}
-	msleep(120);
+	msleep(10);
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x10);			//sean test /sleep in
-	msleep(80);
+	msleep(10);
 	//================= END ==================
 }
 
