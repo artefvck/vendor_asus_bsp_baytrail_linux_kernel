@@ -156,6 +156,7 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 			msleep(60);
 		}
 #endif
+		hm2056_set_gpio(1,1);
 		if(camera_power_down >= 0){
 			gpio_set_value(camera_power_down, 1);
 			//msleep(2);
@@ -175,8 +176,10 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 			msleep(2);
 		}
         //gpio_set_value(camera_vcm_power_down, 0);
+		hm2056_set_gpio(1,0);
 
 		if(PCBVersion==-1 || PCBVersion==0){
+			hm2056_free_gpio();
 			if (camera_reset >= 0){
 				gpio_free(camera_reset);
 				camera_reset = -1;
@@ -190,7 +193,7 @@ static int ar0543_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 			}
 		}
     }
-		
+
 	ar0543_i2c_gpio_set_alt(flag);
 	return 0;
 }

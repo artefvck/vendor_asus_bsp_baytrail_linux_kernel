@@ -1967,7 +1967,7 @@ int ug31xx_get_proc_kbo_start(struct file *filp, char __user *buffer, size_t cou
   ssize_t ret = 0;
   char *buff;
 
-  buff = kmalloc(10,GFP_KERNEL);
+  buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
 
@@ -1995,7 +1995,7 @@ int ug31xx_get_proc_kbo_result(struct file *filp, char __user *buffer, size_t co
   ssize_t ret = 0;
   char *buff;
 
-  buff = kmalloc(10,GFP_KERNEL);
+  buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
 
@@ -2015,7 +2015,7 @@ int ug31xx_get_proc_kbo_stop(struct file *filp, char __user *buffer, size_t coun
   ssize_t ret = 0;
   char *buff;
 
-  buff = kmalloc(10,GFP_KERNEL);
+  buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
 
