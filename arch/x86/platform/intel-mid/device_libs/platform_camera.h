@@ -44,7 +44,8 @@ extern const struct intel_v4l2_subdev_id v4l2_ids[] __attribute__((weak));
 #define CAMERA_1_PWDN    (VV_NGPIO_SCORE + 22)	//2M_CAM2_PWRDWN    GPIONC_22
 //Asus LewLiu 2013 1218 0920-
 
-
+extern int hm2056_set_gpio(int RearOrFront, int flag);
+extern void hm2056_free_gpio();
 extern int camera_sensor_gpio(int gpio, char *name, int dir, int value);
 extern int camera_sensor_csi(struct v4l2_subdev *sd, u32 port,
 			u32 lanes, u32 format, u32 bayer_order, int flag);

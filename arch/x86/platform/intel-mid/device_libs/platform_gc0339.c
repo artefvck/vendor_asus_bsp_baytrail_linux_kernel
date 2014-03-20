@@ -174,6 +174,7 @@ static int gc0339_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 	gc0339_gpio_init();
 
 	if (flag){
+		hm2056_set_gpio(0,1);
 		//pull low power down first
 		if (camera_power_down >= 0){
 			gpio_set_value(camera_power_down, 0);
@@ -202,6 +203,7 @@ static int gc0339_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 			printk("<<< camera_reset = 0\n");
 			msleep(10);
 		}
+		hm2056_set_gpio(0,0);
 /*
 		if (camera_reset >= 0){
 			gpio_free(camera_reset);

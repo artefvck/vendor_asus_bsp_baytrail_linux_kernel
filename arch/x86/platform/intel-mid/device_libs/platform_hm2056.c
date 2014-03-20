@@ -140,6 +140,39 @@ static int hm2056_gpio_init()
 	return ret;
 }
 
+int hm2056_set_gpio(int RearOrFront, int flag)
+{
+	int ret = 0;
+
+    if (camera_power_down < 0) {
+		if(RearOrFront==1){//Front
+			ret = camera_sensor_gpio(CAMERA_1_PWDN, NULL, GPIOF_DIR_OUT, 0);
+		}else if(RearOrFront==0){//Rear
+			ret = camera_sensor_gpio(CAMERA_0_PWDN, NULL, GPIOF_DIR_OUT, 0);
+		}
+        if (ret < 0){
+            printk("camera_power_down not available.\n");
+            return ret;
+        }
+        camera_power_down = ret;
+    }
+
+	gpio_set_value(camera_power_down, flag);
+    printk("<< camera_power_down:%d flag:%d\n", camera_power_down, flag);
+
+	return ret;
+}
+
+void hm2056_free_gpio()
+{
+	printk("%s: camera_power_down(%d)\n",__func__,camera_power_down);
+
+	if (camera_power_down >= 0){
+		gpio_free(camera_power_down);
+		camera_power_down = -1;
+		mdelay(1);
+	}
+}
 static int hm2056_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 {
     printk("%s: ++\n",__func__);
@@ -162,8 +195,12 @@ static int hm2056_gpio_ctrl(struct v4l2_subdev *sd, int flag)
     }
     else{
 		if (camera_power_down >= 0){
-	        gpio_set_value(camera_power_down, 1);
-	        printk("<<< camera_power_down = 1\n");
+			//<ASUS-Oscar140319+>  leakage protection for hw request
+	        //gpio_set_value(camera_power_down, 1);
+	        //printk("<<< camera_power_down = 1\n");
+	        gpio_set_value(camera_power_down, 0);
+	        printk("<<< camera_power_down = 0\n");
+			//<ASUS-Oscar140319->  leakage protection for hw request
 		}
 		if (camera_reset >= 0){
 	        mdelay(10);
