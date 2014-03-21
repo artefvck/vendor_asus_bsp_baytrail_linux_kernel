@@ -1326,6 +1326,7 @@ static void remove_audio_debug_proc_file(void)
 #endif //#ifdef CONFIG_PROC_FS
 //terry_tao@asus.com-- Audio debug mode
 
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
 static int get_Board_Type(void)
 {
 	int gpio0p6;
@@ -1336,6 +1337,7 @@ static int get_Board_Type(void)
 	//gpio0p5_v2 = intel_mid_pmic_readb(0x38) & 0x01;//PMIC GPIO0P5 CTLI
 	return gpio0p6;
 }
+#endif
 
 static void PMIC_enable_codec(void)
 {
