@@ -677,6 +677,9 @@ static void kxtj2_poll(struct input_polled_dev *dev)
 	struct kxtj2_data *tj2 = dev->private;
 	unsigned int poll_interval = dev->poll_interval;
 
+        if( atomic_read(&tj2->enable) == 0 )
+		return 0;
+
 	kxtj2_report_acceleration_data(tj2);
 
 	if (poll_interval != tj2->last_poll_interval) {
