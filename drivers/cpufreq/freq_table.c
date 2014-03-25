@@ -30,11 +30,11 @@ int cpufreq_frequency_table_cpuinfo(struct cpufreq_policy *policy,
 	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++) {
 		unsigned int freq = table[i].frequency;
 		if (freq == CPUFREQ_ENTRY_INVALID) {
-			printk("table entry %u is invalid, skipping\n", i);
+			pr_debug("table entry %u is invalid, skipping\n", i);
 
 			continue;
 		}
-		printk("table entry %u: %u kHz, %u index\n",
+		pr_debug("table entry %u: %u kHz, %u index\n",
 					i, freq, table[i].index);
 		if (freq < min_freq)
 			min_freq = freq;
@@ -60,7 +60,7 @@ int cpufreq_frequency_table_verify(struct cpufreq_policy *policy,
 	unsigned int i;
 	unsigned int count = 0;
 
-	printk("request for verification of policy (%u - %u kHz) for cpu %u\n",
+	pr_debug("request for verification of policy (%u - %u kHz) for cpu %u\n",
 					policy->min, policy->max, policy->cpu);
 
 	cpufreq_verify_within_limits(policy, policy->cpuinfo.min_freq,
@@ -82,7 +82,7 @@ int cpufreq_frequency_table_verify(struct cpufreq_policy *policy,
 	cpufreq_verify_within_limits(policy, policy->cpuinfo.min_freq,
 				     policy->cpuinfo.max_freq);
 
-	printk("verification lead to (%u - %u kHz) for cpu %u\n",
+	pr_debug("verification lead to (%u - %u kHz) for cpu %u\n",
 				policy->min, policy->max, policy->cpu);
 
 	return 0;
@@ -209,21 +209,21 @@ EXPORT_SYMBOL_GPL(cpufreq_freq_attr_scaling_available_freqs);
 void cpufreq_frequency_table_get_attr(struct cpufreq_frequency_table *table,
 				      unsigned int cpu)
 {
-	printk("setting show_table for cpu %u to %p\n", cpu, table);
+	pr_debug("setting show_table for cpu %u to %p\n", cpu, table);
 	per_cpu(cpufreq_show_table, cpu) = table;
 }
 EXPORT_SYMBOL_GPL(cpufreq_frequency_table_get_attr);
 
 void cpufreq_frequency_table_put_attr(unsigned int cpu)
 {
-	printk("clearing show_table for cpu %u\n", cpu);
+	pr_debug("clearing show_table for cpu %u\n", cpu);
 	per_cpu(cpufreq_show_table, cpu) = NULL;
 }
 EXPORT_SYMBOL_GPL(cpufreq_frequency_table_put_attr);
 
 void cpufreq_frequency_table_update_policy_cpu(struct cpufreq_policy *policy)
 {
-	printk("Updating show_table for new_cpu %u from last_cpu %u\n",
+	pr_debug("Updating show_table for new_cpu %u from last_cpu %u\n",
 			policy->cpu, policy->last_cpu);
 	per_cpu(cpufreq_show_table, policy->cpu) = per_cpu(cpufreq_show_table,
 			policy->last_cpu);

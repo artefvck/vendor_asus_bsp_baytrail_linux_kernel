@@ -186,7 +186,12 @@ void intel_dsi_device_ready(struct intel_encoder *encoder)
 
 #ifdef CONFIG_CRYSTAL_COVE
 	/* Panel Enable */
+	intel_mid_pmic_writeb(0x3C,0x21);//GPIOxxxCTLO GPIO1P1 1.8v
+	printk("%s:----sean test----intel_dsi_device_ready SET PANEL 1.8V high----%d\n", __func__,__LINE__);
+	msleep(10);
 	intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x01);
+	printk("%s:----sean test----intel_dsi_device_ready SET PMIC_PANEL_EN 3.3V high----\n",__func__);
+
 	if (BYT_CR_CONFIG) {
 		/*  cabc disable */
 		vlv_gpio_nc_write(dev_priv, GPIO_NC_9_PCONF0, 0x2000CC00);
@@ -197,7 +202,8 @@ void intel_dsi_device_ready(struct intel_encoder *encoder)
 		vlv_gpio_nc_write(dev_priv, GPIO_NC_11_PAD, 0x00000005);
 		udelay(500);
 	} else
-		intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x01);
+		//intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x01);
+		//printk("%s:----sean test----intel_dsi_device_ready----%d\n", __func__,__LINE__);
 #else
 	/* need to code for BYT-CR for example where things have changed */
 	DRM_ERROR("PANEL Enable to supported yet\n");
@@ -390,14 +396,16 @@ void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
 
 #ifdef CONFIG_CRYSTAL_COVE
 	/* Disable Panel */
-	intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x00);
+	//intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x00);
+	printk("%s:----sean test----intel_dsi_clear_device_ready__set PMIC_PANEL_EN low----\n",__func__);
+	printk("%s:----sean test----auo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,intel_mid_pmic_readb(0x52));
 	if (BYT_CR_CONFIG) {
 		/* Disable Panel */
 		vlv_gpio_nc_write(dev_priv, GPIO_NC_11_PCONF0, 0x2000CC00);
 		vlv_gpio_nc_write(dev_priv, GPIO_NC_11_PAD, 0x00000004);
 		udelay(500);
 	} else
-		intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x00);
+		//intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x00);
 #else
 	/* need to code for BYT-CR for example where things have changed */
 	DRM_ERROR("PANEL Disable to supported yet\n");
