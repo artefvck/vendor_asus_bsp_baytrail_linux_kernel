@@ -73,6 +73,8 @@ typedef struct MeasDataInternalST {
   _meas_u8_ reg0B;
   _meas_u8_ reg50;
   _meas_u8_ reg51;
+  _meas_u8_ reg9B;
+  _meas_u8_ reg9E;
 } ALIGNED_ATTRIBUTE MeasDataInternalType;
 
 #ifndef UG31XX_SHELL_ALGORITHM
@@ -493,8 +495,6 @@ _meas_s32_ CalibrateAdc2Code(MeasDataInternalType *obj, _meas_s32_ code)
   return (tmp32);
 }
 
-#define IT_IDEAL_CODE_25      (24310)
-#define IT_IDEAL_CODE_80      (28612)
 #define IT_IDEAL_CODE_DELTA   (IT_IDEAL_CODE_80 - IT_IDEAL_CODE_25)
 
 /**
@@ -1017,7 +1017,8 @@ void ConvertCharge(MeasDataInternalType *obj)
  */
 void TimeTick(MeasDataInternalType *obj)
 {
-  if(MEAS_IN_SUSPEND_MODE(obj->info->status) == _UPI_TRUE_)
+  if((MEAS_IN_SUSPEND_MODE(obj->info->status) == _UPI_TRUE_) ||
+     (MEAS_LEAVE_SUSPEND_MODE(obj->info->status) == _UPI_TRUE_))
   {    
     /// [AT-PM] : Prevent adc conversion count overflow ; 06/11/2013
     if(obj->codeCounter < obj->info->lastCounter)
@@ -1033,7 +1034,15 @@ void TimeTick(MeasDataInternalType *obj)
     }
     /// [AT-PM] : Use conversion count to estimate delta time ; 06/11/2013
     obj->info->deltaTime = obj->info->deltaTime*obj->info->adc1ConvertTime/TIME_CONVERT_TIME_TO_MSEC;
-    UG31_LOGE("[%s]: In internal suspend mode, deltaTime = %d\n", __func__, (int)obj->info->deltaTime);
+    UG31_LOGE("[%s]: In internal suspend mode, deltaTime = %d\n", __func__, 
+              (int)obj->info->deltaTime);
+    if(MEAS_LEAVE_SUSPEND_MODE(obj->info->status) == _UPI_TRUE_)
+    {
+      obj->info->status = obj->info->status & (~MEAS_STATUS_LAST_IN_SUSPEND_MODE);
+      obj->info->lastTimeTick = GetTickCount();
+      UG31_LOGE("[%s]: Leave internal suspend mode, lastTimeTick = %d\n", __func__,
+                obj->info->lastTimeTick);
+    }
     return;
   }
 
@@ -1044,8 +1053,24 @@ void TimeTick(MeasDataInternalType *obj)
   {
     UG31_LOGE("[%s]: OVERFLOW -> %d < %d\n", __func__, 
               (int)obj->currTime, (int)obj->info->lastTimeTick);
-    obj->info->deltaTime = obj->currTime;
     obj->info->lastTimeTick = obj->currTime;
+
+    /// [AT-PM] : Use adc conversion count to count delta time ; 03/04/2014
+    if(obj->codeCounter < obj->info->lastCounter)
+    {
+      /// [AT-PM] : Prevent adc conversion count overflow ; 06/11/2013
+      obj->info->deltaTime = (_meas_u32_)obj->codeCounter;
+      UG31_LOGE("[%s]: Counter and jiffies overflow, counter = %d\n", __func__, 
+                (int)obj->codeCounter);
+    }
+    else
+    {
+      obj->info->deltaTime = (_meas_u32_)obj->codeCounter;
+      obj->info->deltaTime = obj->info->deltaTime - obj->info->lastCounter;
+    }
+    /// [AT-PM] : Use conversion count to estimate delta time ; 06/11/2013
+    obj->info->deltaTime = obj->info->deltaTime*obj->info->adc1ConvertTime/TIME_CONVERT_TIME_TO_MSEC;
+    UG31_LOGE("[%s]: Jiffies overflow, deltaTime = %d\n", __func__, (int)obj->info->deltaTime);
     return;
   }
 
@@ -1054,6 +1079,89 @@ void TimeTick(MeasDataInternalType *obj)
   UG31_LOGN("[%s]: Delta Time = %d - %d = %d\n", __func__,
             (int)obj->currTime, (int)obj->info->lastTimeTick, (int)obj->info->deltaTime);
   obj->info->lastTimeTick = obj->currTime;  
+}
+
+#define MAX_READ_REGISTER_RETRY     (5)
+
+/**
+ * @brief ReadVoltBat3Code
+ *
+ *  Read register with debug for LA
+ *
+ * @return  NULL
+ */
+void ReadVoltBat3Code(void)
+{
+  _meas_u8_ buf[2];
+  buf[0] = 0;
+  buf[1] = 0;
+  API_I2C_Read(NORMAL_REGISTER,
+                           UG31XX_I2C_HIGH_SPEED_MODE,
+                           UG31XX_I2C_TEM_BITS_MODE,
+                           REG_VBAT3_LOW,
+                           2,
+                           (unsigned char *)&buf[0]);
+  UG31_LOGE("[UPI] %s vbat3(%x%x)\n", __func__,
+          buf[1], buf[0]);
+}
+
+/**
+ * @brief _ReadRegister
+ *
+ *  Read register with double buffer
+ *
+ * @para  addr  register address
+ * @para  size  data size in byte
+ * @para  rdata address of data to be stored
+ * @return  NULL
+ */
+void _ReadRegister(_meas_u8_ addr, _meas_u8_ size, _meas_u8_ *rdata)
+{
+  _meas_u8_ buf[2];
+  _meas_u8_ cnt;
+
+  API_I2C_Read(NORMAL_REGISTER,
+               UG31XX_I2C_HIGH_SPEED_MODE,
+               UG31XX_I2C_TEM_BITS_MODE,
+               addr,
+               size,
+               (unsigned char *)rdata);
+  
+  cnt = 0;
+  while(1)
+  {
+    buf[0] = 0;
+    buf[1] = 0;
+    API_I2C_Read(NORMAL_REGISTER,
+                 UG31XX_I2C_HIGH_SPEED_MODE,
+                 UG31XX_I2C_TEM_BITS_MODE,
+                 addr,
+                 size,
+                 (unsigned char *)&buf[0]);
+
+    if((buf[0] == *rdata) &&
+       (buf[1] == *(rdata + 1)))
+    {
+      break;
+    }
+    UG31_LOGE("[%s]: re-read i2c %x%x -> %x != %x%x (%d)\n", __func__,
+              addr,
+              *(rdata+1),
+              *rdata,
+              buf[1],
+              buf[0]);
+    
+    upi_memcpy(rdata, &buf[0], size);
+
+    cnt = cnt + 1;
+    if(cnt > MAX_READ_REGISTER_RETRY)
+    {
+      UG31_LOGE("[%s]: read i2c %x fail (%d)\n", __func__,
+                addr,
+                cnt);
+      break;
+    }
+  }
 }
 
 /**
@@ -1067,60 +1175,39 @@ void TimeTick(MeasDataInternalType *obj)
 void ReadRegister(MeasDataInternalType *obj)
 {
   /// [AT-PM] : Read VBat1Ave ; 01/27/2013
-  API_I2C_Read(NORMAL_REGISTER, 
-               UG31XX_I2C_HIGH_SPEED_MODE, 
-               UG31XX_I2C_TEM_BITS_MODE, 
-               REG_AVE_VBAT1_LOW, 
-               REG_AVE_VBAT1_HIGH - REG_AVE_VBAT1_LOW + 1, 
-               (unsigned char *)&obj->codeBat1);
+  _ReadRegister(REG_AVE_VBAT1_LOW,
+                REG_AVE_VBAT1_HIGH - REG_AVE_VBAT1_LOW + 1, 
+                (unsigned char *)&obj->codeBat1);
 
   /// [AT-PM] : Read CurrentAve ; 01/27/2013
-  API_I2C_Read(NORMAL_REGISTER, 
-               UG31XX_I2C_HIGH_SPEED_MODE, 
-               UG31XX_I2C_TEM_BITS_MODE, 
-               REG_AVE_CURRENT_LOW, 
-               REG_AVE_CURRENT_HIGH - REG_AVE_CURRENT_LOW + 1, 
-               (unsigned char *)&obj->codeCurrent);
+  _ReadRegister(REG_AVE_CURRENT_LOW, 
+                REG_AVE_CURRENT_HIGH - REG_AVE_CURRENT_LOW + 1, 
+                (unsigned char *)&obj->codeCurrent);
 
   /// [AT-PM] : Read ITAve ; 01/27/2013
-  API_I2C_Read(NORMAL_REGISTER, 
-               UG31XX_I2C_HIGH_SPEED_MODE, 
-               UG31XX_I2C_TEM_BITS_MODE, 
-               REG_AVE_IT_LOW, 
-               REG_AVE_IT_HIGH - REG_AVE_IT_LOW + 1, 
-               (unsigned char *)&obj->codeIntTemperature);
+  _ReadRegister(REG_AVE_IT_LOW, 
+                REG_AVE_IT_HIGH - REG_AVE_IT_LOW + 1, 
+                (unsigned char *)&obj->codeIntTemperature);
 
   /// [AT-PM] : Read ETAve ; 01/27/2013
-  API_I2C_Read(NORMAL_REGISTER, 
-               UG31XX_I2C_HIGH_SPEED_MODE, 
-               UG31XX_I2C_TEM_BITS_MODE, 
-               REG_AVE_ET_LOW, 
-               REG_AVE_ET_HIGH - REG_AVE_ET_LOW + 1, 
-               (unsigned char *)&obj->codeExtTemperature);
+  _ReadRegister(REG_AVE_ET_LOW, 
+                REG_AVE_ET_HIGH - REG_AVE_ET_LOW + 1, 
+                (unsigned char *)&obj->codeExtTemperature);
 
   /// [AT-PM] : Read Charge ; 01/27/2013
-  API_I2C_Read(NORMAL_REGISTER, 
-               UG31XX_I2C_HIGH_SPEED_MODE, 
-               UG31XX_I2C_TEM_BITS_MODE, 
-               REG_CHARGE_LOW, 
-               REG_CHARGE_HIGH - REG_CHARGE_LOW + 1, 
-               (unsigned char *)&obj->codeCharge);
+  _ReadRegister(REG_CHARGE_LOW, 
+                REG_CHARGE_HIGH - REG_CHARGE_LOW + 1, 
+                (unsigned char *)&obj->codeCharge);
 
   /// [AT-PM] : Read Counter ; 01/27/2013
-  API_I2C_Read(NORMAL_REGISTER, 
-               UG31XX_I2C_HIGH_SPEED_MODE, 
-               UG31XX_I2C_TEM_BITS_MODE, 
-               REG_COUNTER_LOW, 
-               REG_COUNTER_HIGH - REG_COUNTER_LOW + 1, 
-               (unsigned char *)&obj->codeCounter);
+  _ReadRegister(REG_COUNTER_LOW, 
+                REG_COUNTER_HIGH - REG_COUNTER_LOW + 1, 
+                (unsigned char *)&obj->codeCounter);
 
   /// [AT-PM] : Read Offset ; 01/27/2013
-  API_I2C_Read(NORMAL_REGISTER, 
-               UG31XX_I2C_HIGH_SPEED_MODE, 
-               UG31XX_I2C_TEM_BITS_MODE, 
-               REG_ADC1_OFFSET_LOW, 
-               REG_ADC1_OFFSET_HIGH - REG_ADC1_OFFSET_LOW + 1, 
-               (unsigned char *)&obj->ccOffset);
+  _ReadRegister(REG_ADC1_OFFSET_LOW, 
+                REG_ADC1_OFFSET_HIGH - REG_ADC1_OFFSET_LOW + 1, 
+                (unsigned char *)&obj->ccOffset);
 
   /// [AT-PM] : Read register for debugging ; 02/27/2014
   API_I2C_Read(NORMAL_REGISTER, 
@@ -1512,7 +1599,7 @@ static CheckAdcCode CheckAdcCodeRoutine[] = {
 MEAS_RTN_CODE FetchAdcCode(MeasDataInternalType *obj)
 {
   _meas_u8_ retry;
-  MEAS_RTN_CODE rtn;
+  MEAS_RTN_CODE rtn = MEAS_RTN_ADC_ABNORMAL;
   _meas_u8_ idx;
   
   /// [AT-PM] : Read ADC code ; 01/27/2013
@@ -1562,6 +1649,10 @@ MEAS_RTN_CODE FetchAdcCode(MeasDataInternalType *obj)
     retry = retry + 1;
   }
 
+  if(rtn == MEAS_RTN_ADC_ABNORMAL)
+  {
+    ReadVoltBat3Code();
+  }
   obj->info->codeBat1BeforeCal = obj->codeBat1;
   obj->info->codeCurrentBeforeCal = obj->codeCurrent;
   obj->info->codeIntTemperatureBeforeCal = obj->codeIntTemperature;
@@ -1845,14 +1936,20 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
 
   /// [AT-PM] : Get ADC code ; 06/04/2013
   rtn = FetchAdcCode(obj);
-  UG31_LOGE("[%s]: (%d-%d) V=%d, I=%d, IT=%d, ET=%d, CH=%d, CT=%d, %02x%02x %02x%02x%02x%02x %02x%02x%02x %02x%02x %02x%02x\n", __func__, 
-            select, obj->info->fetchRetryCnt, obj->codeBat1, obj->codeCurrent, 
-            obj->codeIntTemperature, obj->codeExtTemperature, obj->codeCharge, obj->codeCounter,
-            obj->reg14, obj->reg9C,
-            obj->regC5, obj->regC6, obj->regC7, obj->regC8,
-            obj->regC9, obj->regCA, obj->regCB,
-            obj->reg0A, obj->reg0B,
-            obj->reg50, obj->reg51);
+
+
+  
+  UG31_LOGE("[%s]: (%d-%d) V=%d, I=%d, IT=%d, ET=%d, CH=%d, CT=%d, %02x%02x %02x%02x%02x%02x %02x%02x%02x %02x%02x %02x%02x %02x%02x\n", __func__, 
+              select, obj->info->fetchRetryCnt, obj->codeBat1, obj->codeCurrent, 
+              obj->codeIntTemperature, obj->codeExtTemperature, obj->codeCharge, obj->codeCounter,
+              obj->reg14, obj->reg9C,
+              obj->regC5, obj->regC6, obj->regC7, obj->regC8,
+              obj->regC9, obj->regCA, obj->regCB,
+              obj->reg0A, obj->reg0B,
+              obj->reg50, obj->reg51,
+              obj->reg9B, obj->reg9E);
+
+
   if(rtn != MEAS_RTN_PASS)
   {
     #ifdef  UG31XX_SHELL_ALGORITHM
@@ -1925,7 +2022,7 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
   {
     ConvertBat1(obj);
 
-    if(select == MEAS_SEL_INITIAL)
+    if((select == MEAS_SEL_INITIAL) || (MEAS_IN_SUSPEND_MODE(obj->info->status) == _UPI_TRUE_))
     {
       obj->info->bat1VoltageAvg = obj->info->bat1Voltage;
     }
@@ -1944,7 +2041,7 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
   {
     ConvertCurrent(obj);
 
-    if(select == MEAS_SEL_INITIAL)
+    if((select == MEAS_SEL_INITIAL) || (MEAS_IN_SUSPEND_MODE(obj->info->status) == _UPI_TRUE_))
     {
       obj->info->currAvg = obj->info->curr;
     }
@@ -2109,6 +2206,19 @@ _meas_u32_ UpiGetMeasurementMemorySize(void)
   #endif  ///< end of UG31XX_SHELL_ALGORITHM
 
   return (totalSize);
+}
+
+/**
+ * @brief UpiPrintMeasurementVersion
+ *
+ *  Print measurement module version
+ *
+ * @return  NULL
+ */
+void UpiPrintMeasurementVersion(void)
+{
+  UG31_LOGE("[%s]: %s\n", __func__,
+            MEASUREMENT_VERSION);
 }
 
 

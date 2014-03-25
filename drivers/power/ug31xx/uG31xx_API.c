@@ -25,11 +25,11 @@ _upi_bool_ MPK_active = _UPI_FALSE_;
 
 #if defined (uG31xx_OS_WINDOWS)
 
-  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 486 $"))
+  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 507 $"))
 
 #else
 
-  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 486 $")
+  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 507 $")
 
 #endif
 
@@ -365,6 +365,7 @@ GGSTATUS upiGG_ReadDeviceInfo(char *pObj, GG_DEVICE_INFO* pExtDeviceInfo)
   
   #endif  ///< end of uG31xx_BOOT_LOADER
   rtn = UpiMeasurement(&pUg31xx->measData, MEAS_SEL_ALL);
+  UpiAdcStatus(&pUg31xx->sysData);
   if(rtn != MEAS_RTN_PASS)
   {
     return ((GGSTATUS)(rtn + UG_MEAS_FAIL));
@@ -390,8 +391,6 @@ GGSTATUS upiGG_ReadDeviceInfo(char *pObj, GG_DEVICE_INFO* pExtDeviceInfo)
 
   pUg31xx->sysData.otpData = &pUg31xx->otpData;
 	UpiCalculateOscFreq(&pUg31xx->sysData);
-
-  UpiAdcStatus(&pUg31xx->sysData);
   
 	upi_memcpy(pExtDeviceInfo, &pUg31xx->deviceInfo, sizeof(GG_DEVICE_INFO));
 
@@ -435,6 +434,7 @@ GGSTATUS upiGG_ReadDeviceInfo(char *pObj, GG_DEVICE_INFO* pExtDeviceInfo)
     {
       pUg31xx->sysData.fccFromIC = 0;
     }
+    pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
     UpiSaveBatInfoTOIC(&pUg31xx->sysData);
     pUg31xx->sysData.fccFromIC = pUg31xx->batteryInfo.LMD;
     
@@ -549,9 +549,9 @@ _upi_u32_ CountTotalTime(_upi_u32_ savedTimeTag)
 	} 				
   else
   {
-    totalTime = currentTime;
+    totalTime = 0;
   }
-	UG31_LOGI("[%s]current time/save Time/totalTime = %d/%d/%d \n",
+	UG31_LOGE("[%s]current time/save Time/totalTime = %d/%d/%d \n",
 							__func__,
 							currentTime,
 							savedTimeTag,
@@ -594,9 +594,13 @@ void CheckInitCapacityFromCC(struct ug31xx_data *pUg31xx)
   }
 }
 
-#define MAX_DELTA_RSOC_THRESHOLD_FOR_WAKEUP     (10)
-#define MIN_DELTA_RSOC_THRESHOLD_FOR_WAKEUP     (-10)
-#define MAX_DELTA_TIME_THRESHOLD_FOR_WAKEUP     (MS_IN_A_DAY*1)
+#define MAX_DELTA_RSOC_THRESHOLD_FOR_WAKEUP     (20)
+#define MIN_DELTA_RSOC_THRESHOLD_FOR_WAKEUP     (-20)
+#ifdef  WAKEUP_TIME_THRD_1_HOUR
+#define MAX_DELTA_TIME_THRESHOLD_FOR_WAKEUP     (MS_IN_A_DAY/24)
+#else   ///< else of WAKEUP_TIME_THRD_1_HOUR
+#define MAX_DELTA_TIME_THRESHOLD_FOR_WAKEUP     (MS_IN_A_DAY)
+#endif  ///< end of WAKEUP_TIME_THRD_1_HOUR
 #define MAX_DELTA_RSOC_THRESHOLD_FOR_TABLE      (10)
 #define MIN_DELTA_RSOC_THRESHOLD_FOR_TABLE      (-10)
 
@@ -627,13 +631,13 @@ void CmpCapData(struct ug31xx_data *pUg31xx, _upi_bool_ initial)
       if((deltaQC <= MAX_DELTA_RSOC_THRESHOLD_FOR_TABLE) && (deltaQC >= MIN_DELTA_RSOC_THRESHOLD_FOR_TABLE))
       {
         pUg31xx->capData.rsoc = (_cap_u8_)pUg31xx->sysData.rsocFromICBackup;
-        
+        UG31_LOGE("[%s]: Use data from IC = %d\n", __func__, pUg31xx->sysData.rsocFromICBackup);
       }
       pUg31xx->capData.fcc = pUg31xx->sysData.fccFromIC;
       tmp32 = (_upi_s32_)pUg31xx->capData.fcc;
       tmp32 = tmp32*pUg31xx->capData.rsoc/CONST_PERCENTAGE;
       pUg31xx->capData.rm = (_cap_u16_)tmp32;
-      UG31_LOGI("[%s]: Coulomb counter is not available -> Use data from table (%d/%d = %d)\n", __func__,
+      UG31_LOGE("[%s]: Coulomb counter is not available -> Use data from table (%d/%d = %d)\n", __func__,
                 pUg31xx->capData.rm, pUg31xx->capData.fcc, pUg31xx->capData.rsoc);
     }
     else
@@ -645,7 +649,7 @@ void CmpCapData(struct ug31xx_data *pUg31xx, _upi_bool_ initial)
       pUg31xx->capData.rm = (_cap_u16_)pUg31xx->sysData.rmFromIC;
       pUg31xx->capData.fcc = (_cap_u16_)pUg31xx->sysData.fccFromIC;
       pUg31xx->capData.rsoc = (_cap_u8_)pUg31xx->sysData.rsocFromIC;
-      UG31_LOGI("[%s]: Use data from coulomb counter (%d/%d = %d)\n", __func__,
+      UG31_LOGE("[%s]: Use data from coulomb counter (%d/%d = %d)\n", __func__,
                 pUg31xx->capData.rm, pUg31xx->capData.fcc, pUg31xx->capData.rsoc);
     }
   }
@@ -658,8 +662,8 @@ void CmpCapData(struct ug31xx_data *pUg31xx, _upi_bool_ initial)
     pUg31xx->capData.rm = (_cap_u16_)pUg31xx->sysData.rmFromIC;
     pUg31xx->capData.fcc = (_cap_u16_)pUg31xx->sysData.fccFromIC;
     pUg31xx->capData.rsoc = (_cap_u8_)pUg31xx->sysData.rsocFromIC;
-    UG31_LOGI("[%s]: Use data from coulomb counter (%d/%d = %d)\n", __func__,
-              pUg31xx->capData.rm, pUg31xx->capData.fcc, pUg31xx->capData.rsoc);
+    UG31_LOGE("[%s]: Within %d mSec -> Use data from coulomb counter (%d/%d = %d)\n", __func__,
+              MAX_DELTA_TIME_THRESHOLD_FOR_WAKEUP, pUg31xx->capData.rm, pUg31xx->capData.fcc, pUg31xx->capData.rsoc);
   }
 }
 
@@ -829,6 +833,11 @@ GGSTATUS upiGG_Initial(char **pObj, GGBX_FILE_HEADER *pGGBXBuf, unsigned char Fo
   _upi_u32_ totalTime;
   GG_BATTERY_INFO batInfoBefore;
   _sys_u8_ *ptr;
+  _meas_u16_ tmpVolt;
+  _meas_s16_ tmpCurr;
+  _meas_s16_ tmpStepCap;
+  _meas_u32_ tmpDeltaTime;
+  
   #ifdef  __TEST_CHARGER_STOP_CHARGING__
     _upi_u16_ tmp16;
   #endif  ///< end of __TEST_CHARGER_STOP_CHARGING__
@@ -923,7 +932,7 @@ GGSTATUS upiGG_Initial(char **pObj, GGBX_FILE_HEADER *pGGBXBuf, unsigned char Fo
 
     if(ForceReset == 0)
     {
-      firstPowerOn = UpiCheckICActive();
+      firstPowerOn = UpiCheckICActive(&pUg31xx->sysData);
     }
     else
     {
@@ -1060,8 +1069,34 @@ GGSTATUS upiGG_Initial(char **pObj, GGBX_FILE_HEADER *pGGBXBuf, unsigned char Fo
     UpiMeasAlarmThreshold(&pUg31xx->measData);
     UpiInitAlarm(&pUg31xx->sysData);
   }
-  UG31_LOGI("[%s]: Current Status = %d mV / %d mA / %d-%d-%d 0.1oC\n", __func__, 
-              pUg31xx->measData.bat1Voltage, pUg31xx->measData.curr, pUg31xx->measData.intTemperature, pUg31xx->measData.extTemperature, pUg31xx->measData.instExtTemperature);
+  UG31_LOGE("[%s]: Current Status 1 = %d mV / %d mA / %d-%d-%d 0.1oC / %d\n", __func__, 
+              pUg31xx->measData.bat1Voltage, pUg31xx->measData.curr, pUg31xx->measData.intTemperature, pUg31xx->measData.extTemperature, pUg31xx->measData.instExtTemperature, pUg31xx->measData.stepCap);
+
+  tmpVolt = pUg31xx->measData.bat1Voltage/2;
+  tmpCurr = pUg31xx->measData.curr/2;
+  tmpStepCap = pUg31xx->measData.stepCap;
+  tmpDeltaTime = pUg31xx->measData.deltaTime;
+
+  SleepMiniSecond(500);
+
+  rtnMeas = UpiMeasurement(&pUg31xx->measData, MEAS_SEL_ALL);
+  if(rtnMeas != MEAS_RTN_PASS)
+  {
+    return ((GGSTATUS)(rtnMeas + UG_MEAS_FAIL));
+  }
+
+  tmpVolt = tmpVolt + pUg31xx->measData.bat1Voltage/2;
+  tmpCurr = tmpCurr + pUg31xx->measData.curr/2;
+  tmpStepCap = tmpStepCap + pUg31xx->measData.stepCap;
+  tmpDeltaTime = tmpDeltaTime + pUg31xx->measData.deltaTime;
+
+  pUg31xx->measData.bat1Voltage = tmpVolt;
+  pUg31xx->measData.curr = tmpCurr;
+  pUg31xx->measData.stepCap = tmpStepCap;
+  pUg31xx->measData.deltaTime = tmpDeltaTime;
+
+  UG31_LOGE("[%s]: Current Status 2 = %d mV / %d mA / %d-%d-%d 0.1oC / %d\n", __func__,
+            pUg31xx->measData.bat1Voltage, pUg31xx->measData.curr, pUg31xx->measData.intTemperature, pUg31xx->measData.extTemperature, pUg31xx->measData.instExtTemperature, pUg31xx->measData.stepCap);
   pUg31xx->measData.extTemperature = pUg31xx->measData.intTemperature;
   pUg31xx->measData.instExtTemperature = pUg31xx->measData.intTemperature;
 
@@ -1123,6 +1158,7 @@ GGSTATUS upiGG_Initial(char **pObj, GGBX_FILE_HEADER *pGGBXBuf, unsigned char Fo
   pUg31xx->sysData.adc1ConvTime = pUg31xx->measData.adc1ConvertTime;
   pUg31xx->sysData.ccOffset = (_sys_s8_)pUg31xx->measData.ccOffsetAdj;
   pUg31xx->sysData.standbyDsgRatio = (_sys_u8_)pUg31xx->capData.standbyDsgRatio;
+  pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
   UpiSaveBatInfoTOIC(&pUg31xx->sysData);
 
   /// [AT-PM] : Initialize buffer for suspend / resume data ; 11/07/2013
@@ -1168,7 +1204,7 @@ GGSTATUS upiGG_MpkActiveGG(char **pObj,const wchar_t* GGBFilename,const wchar_t*
 		return UG_I2C_INIT_FAIL;
 	}
 
-  first_poweron = UpiCheckICActive();
+  first_poweron = UpiCheckICActive(&pUg31xx->sysData);
   if(first_poweron == _UPI_TRUE_)
   {
     // Initial I2C and Open HID
@@ -1249,8 +1285,21 @@ GGSTATUS upiGG_PreSuspend(char *pObj)
   pUg31xx->sysData.voltage = pUg31xx->measData.bat1Voltage;
   pUg31xx->sysData.curr = (_sys_s16_)pUg31xx->measData.curr;
   UpiUpdateBatInfoFromIC(&pUg31xx->sysData, (_sys_s16_) pUg31xx->measData.stepCap);
+
+  pUg31xx->batteryInfo.NAC = pUg31xx->sysData.rmFromIC;
+  pUg31xx->batteryInfo.LMD = pUg31xx->sysData.fccFromIC;
+  pUg31xx->batteryInfo.RSOC = pUg31xx->sysData.rsocFromIC;
+  pUg31xx->capData.rm = (_cap_u16_)pUg31xx->batteryInfo.NAC;
+  pUg31xx->capData.fcc = (_cap_u16_)pUg31xx->batteryInfo.LMD;
+  pUg31xx->capData.rsoc = (_cap_u8_)pUg31xx->batteryInfo.RSOC;
+  UG31_LOGI("[%s]: %d / %d = %d\n", __func__, 
+            pUg31xx->batteryInfo.NAC, 
+            pUg31xx->batteryInfo.LMD, 
+            pUg31xx->batteryInfo.RSOC);
+
   pUg31xx->sysData.ccOffset = (_sys_s8_)pUg31xx->measData.ccOffsetAdj;
   pUg31xx->sysData.standbyDsgRatio = (_sys_u8_)pUg31xx->capData.standbyDsgRatio;
+  pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
   UpiSaveBatInfoTOIC(&pUg31xx->sysData);
   return(Status);
 }
@@ -1338,6 +1387,7 @@ void upiGG_ShellUpdateCC(char *pObj)
   pUg31xx->sysData.deltaCapFromIC = pUg31xx->measData.lastDeltaCap;
   pUg31xx->sysData.adc1ConvTime = pUg31xx->measData.adc1ConvertTime;
   pUg31xx->sysData.ccOffset = (_sys_s8_)pUg31xx->measData.ccOffsetAdj;
+  pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
   UpiSaveBatInfoTOIC(&pUg31xx->sysData);
 }
 
@@ -1412,6 +1462,7 @@ void upiGG_ReadCapacity(char *pObj, GG_CAPACITY *pExtCapacity)
   pUg31xx->sysData.adc1ConvTime = pUg31xx->measData.adc1ConvertTime;
   pUg31xx->sysData.ccOffset = (_sys_s8_)pUg31xx->measData.ccOffsetAdj;
   pUg31xx->sysData.standbyDsgRatio = (_sys_u8_)pUg31xx->capData.standbyDsgRatio;
+  pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
   UpiSaveBatInfoTOIC(&pUg31xx->sysData);
   /// [FC] : Save table to IC ; 05/30/2013
   if(Ug31SaveDataEnable == _UPI_TRUE_)
@@ -1501,6 +1552,7 @@ GGSTATUS upiGG_Wakeup(char *pObj, _upi_bool_ dc_in_before)
   pUg31xx->sysData.adc1ConvTime = pUg31xx->measData.adc1ConvertTime;
   pUg31xx->sysData.ccOffset = (_sys_s8_)pUg31xx->measData.ccOffsetAdj;
   pUg31xx->sysData.standbyDsgRatio = (_sys_u8_)pUg31xx->capData.standbyDsgRatio;
+  pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
   UpiSaveBatInfoTOIC(&pUg31xx->sysData);
   
   return (Status);
@@ -2757,6 +2809,7 @@ static BackupFileReloadRsocThrdType BackupFileReloadRsocThrdTable[] = {
       if((tmp16 < BackupFileReloadRsocThrdTable[idx].max) &&
          (tmp16 > BackupFileReloadRsocThrdTable[idx].min))
       {
+        pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
         UpiSaveBatInfoTOIC(&pUg31xx->sysData);
         pUg31xx->capData.rm = (_cap_u16_)pUg31xx->sysData.rmFromIC;
         pUg31xx->capData.fcc = (_cap_u16_)pUg31xx->sysData.fccFromIC;
@@ -2940,6 +2993,14 @@ void upiGG_InternalSuspendMode(char *pObj, _upi_bool_ inSuspend)
 	pUg31xx = (struct ug31xx_data *)pObj;
 
   /// [AT-PM] : Set for measurement module ; 12/10/2013
+  if(MEAS_IN_SUSPEND_MODE(pUg31xx->measData.status) == _UPI_TRUE_)
+  {
+    pUg31xx->measData.status = pUg31xx->measData.status | MEAS_STATUS_LAST_IN_SUSPEND_MODE;
+  }
+  else
+  {
+    pUg31xx->measData.status = pUg31xx->measData.status & (~MEAS_STATUS_LAST_IN_SUSPEND_MODE);
+  }
   if(inSuspend == _UPI_TRUE_)
   {
     pUg31xx->measData.status = pUg31xx->measData.status | MEAS_STATUS_IN_SUSPEND_MODE;
@@ -3081,6 +3142,7 @@ void upiGG_InternalSuspendMode(char *pObj, _upi_bool_ inSuspend)
   pUg31xx->sysData.adc1ConvTime = pUg31xx->measData.adc1ConvertTime;
   pUg31xx->sysData.ccOffset = (_sys_s8_)pUg31xx->measData.ccOffsetAdj;
   pUg31xx->sysData.standbyDsgRatio = (_sys_u8_)pUg31xx->capData.standbyDsgRatio;
+  pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
   UpiSaveBatInfoTOIC(&pUg31xx->sysData);
 
 	dumpInfo(pUg31xx);
@@ -3634,7 +3696,7 @@ void upiGG_SetCapacity(char *pObj, _upi_u8_ target)
   pUg31xx->batteryInfo.NAC = (_upi_u16_)pUg31xx->capData.rm;
   pUg31xx->batteryInfo.LMD = (_upi_u16_)pUg31xx->capData.fcc;
   pUg31xx->batteryInfo.RSOC = (_upi_u16_)pUg31xx->capData.rsoc;
-  UG31_LOGI("[%s]: %d / %d = %d\n", __func__, pUg31xx->batteryInfo.NAC, pUg31xx->batteryInfo.LMD, pUg31xx->batteryInfo.RSOC, target);
+  UG31_LOGI("[%s]: %d / %d = %d ; %d\n", __func__, pUg31xx->batteryInfo.NAC, pUg31xx->batteryInfo.LMD, pUg31xx->batteryInfo.RSOC, target);
 }
 
 #ifndef uG31xx_OS_WINDOWS
@@ -3902,6 +3964,88 @@ struct ug31xx_uboot_interface ug31xx_uboot_module = {
 
 #ifdef  ANDROID_SHELL_ALGORITHM
 
+#define EXTERNAL_PROGRAM_PATH       ("/sdcard/upi_fg")
+#define EXTERNAL_PROGRAM_KEY_START  (0x9306)
+#define EXTERNAL_PROGRAM_KEY_END    (0x8837)
+
+typedef struct UpiLibExtProgInterfaceST {
+  int rm;
+  int fcc;
+  int rsoc;
+} __attribute__((packed)) UpiLibExtProgInterfaceType;
+
+/**
+ * @brief upi_lib_exec_external_program
+ *
+ *  Execute external program
+ *
+ * @para  pObj  address of struct ug31xx_data
+ * @return  NULL
+ */
+void upi_lib_exec_external_program(struct ug31xx_data *pObj)
+{
+  UpiLibExtProgInterfaceType extProgData;
+  unsigned int tmpKey;
+  FILE *fp;
+
+  /// [AT-PM] : Open file from external program ; 03/17/2014
+  fp = NULL;
+  fp = fopen(EXTERNAL_PROGRAM_PATH, "rt");
+  if(fp == NULL)
+  {
+    return;
+  }
+
+  /// [AT-PM] : Get start key ; 03/17/2014
+  fscanf(fp, "%x", &tmpKey);
+  if(tmpKey != EXTERNAL_PROGRAM_KEY_START)
+  {
+    UG31_LOGE("[%s]: Start key check fail (%x)\n", __func__,
+              tmpKey);
+    return;
+  }
+
+  /// [AT-PM] : Get capacity data ; 03/17/2014
+  fscanf(fp, "%d,%d,%d", &extProgData.rm, &extProgData.fcc, &extProgData.rsoc);
+
+  /// [AT-PM] : Get end key ; 03/17/2014
+  fscanf(fp, "%x", &tmpKey);
+  if(tmpKey != EXTERNAL_PROGRAM_KEY_END)
+  {
+    UG31_LOGE("[%s]: End key check fail (%x)\n", __func__,
+              tmpKey);
+    return;
+  }
+
+  /// [AT-PM] : Use data from external program ; 03/16/2014
+  pObj->capData.rm = (_cap_u16_)extProgData.rm;
+  pObj->capData.fcc = (_cap_u16_)extProgData.fcc;
+  pObj->capData.rsoc = (_cap_u16_)extProgData.rsoc;
+  UG31_LOGE("[%s]: %d / %d = %d\n", __func__, 
+            pObj->capData.rm, 
+            pObj->capData.fcc, 
+            pObj->capData.rsoc);
+}
+
+/**
+ * @brief upi_lib_print_obj_version
+ *
+ *  Print obj version in log
+ *
+ * @return  NULL
+ */
+void upi_lib_print_obj_version(void)
+{
+  UG31_LOGE("[%s]: %s\n", __func__,
+            UG31XX_API_VERSION);
+
+  UpiPrintBackupVersion();
+  UpiPrintCapacityVersion();
+  UpiPrintMeasurementVersion();
+  UpiPrintOtpVersion();
+  UpiPrintSystemVersion();
+}
+
 /**
  * @brief upi_lib_debug_switch
  *
@@ -3941,6 +4085,8 @@ void upi_lib_update_capacity(char *obj)
     pUg31xx->measData.deltaTimeDaemon = pUg31xx->measData.deltaTime;
   }
   upiGG_ShellUpdateCapacity(obj);
+
+  upi_lib_exec_external_program(pUg31xx);
 }
 
 /**
@@ -4205,7 +4351,7 @@ int lkm_initial(char *ggb, unsigned char cable)
   ug31xx->Options = (_upi_u8_)lkm_options;
 
   /// [AT-PM] : Check 0% RSOC ; 01/14/2014
-  if((ug31xx->measData.bat1Voltage > ug31xx->cellParameter.edv1Voltage) &&
+  if((ug31xx->measData.curr > 0) &&
      (cable == UG31XX_CABLE_IN) &&
      (ug31xx->batteryInfo.RSOC == 0))
   {
@@ -4490,6 +4636,8 @@ int lkm_shutdown(void)
   return ((rtn == UG_READ_DEVICE_INFO_SUCCESS) ? 0 : -1);
 }
 
+#define UPI_POLLING_TIME_INIT_THRD      (15)
+
 /**
  * @brief lkm_update
  *
@@ -4514,11 +4662,22 @@ int lkm_update(char user_space_response)
   upiGG_DebugSwitch(LKM_OPTIONS_DEBUG_LEVEL(lkm_options));
   upiGG_ReverseCurrent(lkm_gauge, ((lkm_options & LKM_OPTIONS_ENABLE_REVERSE_CURRENT) ? _UPI_TRUE_ : _UPI_FALSE_));
 
-  rtn = lkm_update_procedure((user_space_response == UG31XX_USER_SPACE_RESPONSE) ? _UPI_TRUE_ : _UPI_FALSE_);
-  
-  /// [AT-PM] : Check backup file if RSOC is changed ; 05/16/2013
   ug31xx = (struct ug31xx_data *)lkm_gauge;
   oldRsoc = (int)ug31xx->batteryInfo.RSOC;
+  rtn = lkm_update_procedure((user_space_response == UG31XX_USER_SPACE_RESPONSE) ? _UPI_TRUE_ : _UPI_FALSE_);
+  
+  /// [AT-PM] : Check 0% RSOC ; 01/14/2014
+  if((lkm_polling_init_cnt < UPI_POLLING_TIME_INIT_THRD) &&
+     (ug31xx->measData.curr > 0) &&
+     (MEAS_CABLE_OUT(ug31xx->measData.status) == _UPI_FALSE_) &&
+     (ug31xx->batteryInfo.RSOC == 0))
+  {
+    upiGG_SetCapacity(lkm_gauge, 1);
+    UG31_LOGI("[%s]: Force to 1%%. (%d)\n", __func__,
+               lkm_polling_init_cnt);
+  }
+
+  /// [AT-PM] : Check backup file if RSOC is changed ; 05/16/2013
   if(oldRsoc != ((int)ug31xx->batteryInfo.RSOC))
   {
     lkm_chk_backup_file_interval = LKM_CHECK_BACKUP_FILE_INTERVAL;
@@ -4539,10 +4698,14 @@ int lkm_reset(char *ggb)
 {
   GGSTATUS rtn;
   struct ug31xx_data *ug31xx;
+  _upi_u16_ rsoc;
 
   upiGG_DebugSwitch(LKM_OPTIONS_DEBUG_LEVEL(lkm_options));
 
   lkm_last_update_time_tag = GetSysTickCount();
+
+  ug31xx = (struct ug31xx_data *)lkm_gauge;
+  rsoc = ug31xx->batteryInfo.RSOC;
 
   upiGG_UnInitial(&lkm_gauge);
   rtn = upiGG_Initial(&lkm_gauge, (GGBX_FILE_HEADER *)ggb, _UPI_TRUE_);
@@ -4550,6 +4713,8 @@ int lkm_reset(char *ggb)
   ug31xx = (struct ug31xx_data *)lkm_gauge;
   ug31xx->Options = (_upi_u8_)lkm_options;
 
+  upiGG_SetCapacity(lkm_gauge, (_upi_u8_)rsoc);
+    
   lkm_set_version(ug31xx);
   
   lkm_alarm_status = 0;
@@ -4736,7 +4901,6 @@ char* lkm_get_version(void)
 #define UPI_POLLING_TIME_NEAR_UT_THRD   (50)
 #define UPI_POLLING_TIME_OT_THRD        (500)
 #define UPI_POLLING_TIME_UT_THRD        (0)
-#define UPI_POLLING_TIME_INIT_THRD      (15)
 
 _upi_s32_ polling_time_algorithm(void)
 {
@@ -5014,7 +5178,6 @@ int lkm_chk_backup_file(void)
 }
 
 #define LKM_SET_CHARGER_FULL_STEP_THRESHOLD (95)
-#define LKM_SET_CHARGER_FULL_STEP_VOLTAGE   (99)
 
 /**
  * @brief lkm_set_charger_full
@@ -5027,7 +5190,7 @@ int lkm_chk_backup_file(void)
 int lkm_set_charger_full(char is_full)
 {
   struct ug31xx_data *ug31xx;
-  _upi_u32_ tmp32;
+  _upi_u8_ soc;
 
   ug31xx = (struct ug31xx_data *)lkm_gauge;
 
@@ -5051,74 +5214,21 @@ int lkm_set_charger_full(char is_full)
   ug31xx->batteryInfo.LMD = (_upi_u16_)ug31xx->capData.fcc;
   ug31xx->batteryInfo.RSOC = (_upi_u16_)ug31xx->capData.rsoc;
 
-  /// [AT-PM] : Minimum voltage for charger detect full is 99% x TP Voltage ; 01/28/2014
-  tmp32 = (_upi_u32_)ug31xx->cellParameter.TPVoltage;
-  tmp32 = tmp32*LKM_SET_CHARGER_FULL_STEP_VOLTAGE/CONST_PERCENTAGE;
-  
-  if((is_full == UG31XX_CHARGER_DETECTS_FULL_STEP) &&
-     (ug31xx->capData.predictRsoc < LKM_SET_CHARGER_FULL_STEP_THRESHOLD) &&
-     (ug31xx->measData.bat1Voltage < tmp32))
-  {
-    if(ug31xx->cellParameter.alarmEnable & CELL_PARAMETER_ALARM_EN_UET)
-    {
-      if(ug31xx->measData.extTemperature <= ug31xx->cellParameter.uetAlarm)
-      {
-        UG31_LOGE("[%s]: (%d) %d < %d -> No full status with UET and keep %d (T:%d)\n", __func__, 
-                  is_full, ug31xx->capData.predictRsoc, LKM_SET_CHARGER_FULL_STEP_THRESHOLD,
-                  ug31xx->batteryInfo.RSOC, ug31xx->measData.extTemperature);
-        return (0);
-      }
-    }
-    else if(ug31xx->cellParameter.alarmEnable & CELL_PARAMETER_ALARM_EN_OET)
-    {
-      if(ug31xx->measData.extTemperature >= ug31xx->cellParameter.oetAlarm)
-      {
-        UG31_LOGE("[%s]: (%d) %d < %d -> No full status with OET and keep %d (T:%d)\n", __func__, 
-                  is_full, ug31xx->capData.predictRsoc, LKM_SET_CHARGER_FULL_STEP_THRESHOLD,
-                  ug31xx->batteryInfo.RSOC, ug31xx->measData.extTemperature);
-        return (0);
-      }
-    }
-    else
-    {
-      UG31_LOGE("[%s]: (%d) %d < %d -> No full status and keep %d (T:%d)\n", __func__, 
-                is_full, ug31xx->capData.predictRsoc, LKM_SET_CHARGER_FULL_STEP_THRESHOLD,
-                ug31xx->batteryInfo.RSOC, ug31xx->measData.extTemperature);
-      return (0);
-    }
-  }
+  /// [AT-PM] : Get current soc ; 03/20/2014
+  soc = UpiGetOcvSoc(&ug31xx->capData, ug31xx->measData.bat1Voltage);
 
-  if((is_full == UG31XX_CHARGER_DETECTS_FULL_CHECK) &&
-     (ug31xx->capData.predictRsoc < LKM_SET_CHARGER_FULL_STEP_THRESHOLD) &&
-     (ug31xx->measData.bat1Voltage < tmp32))
+  /// [AT-PM] : Check full charge threshold ; 03/20/2014
+  if(((is_full == UG31XX_CHARGER_DETECTS_FULL_STEP) || 
+      (is_full == UG31XX_CHARGER_DETECTS_FULL_CHECK)) &&
+     (soc < LKM_SET_CHARGER_FULL_STEP_THRESHOLD))
   {
-    if(ug31xx->cellParameter.alarmEnable & CELL_PARAMETER_ALARM_EN_UET)
-    {
-      if(ug31xx->measData.extTemperature <= ug31xx->cellParameter.uetAlarm)
-      {
-        UG31_LOGE("[%s]: (%d) %d < %d -> No full status with UET and keep %d (T:%d)\n", __func__, 
-                  is_full, ug31xx->capData.predictRsoc, LKM_SET_CHARGER_FULL_STEP_THRESHOLD,
-                  ug31xx->batteryInfo.RSOC, ug31xx->measData.extTemperature);
-        return (0);
-      }
-    }
-    else if(ug31xx->cellParameter.alarmEnable & CELL_PARAMETER_ALARM_EN_OET)
-    {
-      if(ug31xx->measData.extTemperature >= ug31xx->cellParameter.oetAlarm)
-      {
-        UG31_LOGE("[%s]: (%d) %d < %d -> No full status with OET and keep %d (T:%d)\n", __func__, 
-                  is_full, ug31xx->capData.predictRsoc, LKM_SET_CHARGER_FULL_STEP_THRESHOLD,
-                  ug31xx->batteryInfo.RSOC, ug31xx->measData.extTemperature);
-        return (0);
-      }
-    }
-    else
-    {
-      UG31_LOGE("[%s]: (%d) %d < %d -> No full status and keep %d (T:%d)\n", __func__, 
-                is_full, ug31xx->capData.predictRsoc, LKM_SET_CHARGER_FULL_STEP_THRESHOLD,
-                ug31xx->batteryInfo.RSOC, ug31xx->measData.extTemperature);
-      return (0);
-    }
+    UG31_LOGE("[%s]: (%d) %d < %d -> No full status and keep %d (T:%d)\n", __func__, 
+              is_full, 
+              soc, 
+              LKM_SET_CHARGER_FULL_STEP_THRESHOLD,
+              ug31xx->batteryInfo.RSOC, 
+              ug31xx->measData.extTemperature);
+    return (0);
   }
   
   UpiSetChargerFull(&ug31xx->capData, _UPI_TRUE_);
@@ -5148,6 +5258,7 @@ int lkm_set_charger_full(char is_full)
   ug31xx->sysData.adc1ConvTime = ug31xx->measData.adc1ConvertTime;
   ug31xx->sysData.ccOffset = (_sys_s8_)ug31xx->measData.ccOffsetAdj;
   ug31xx->sysData.standbyDsgRatio = (_sys_u8_)ug31xx->capData.standbyDsgRatio;
+  ug31xx->sysData.voltage = (_sys_u16_)ug31xx->measData.bat1Voltage;
   UpiSaveBatInfoTOIC(&ug31xx->sysData);
 
   ug31xx->batteryInfo.NAC = (_upi_u16_)ug31xx->capData.rm;
@@ -5375,6 +5486,7 @@ int lkm_change_to_pri_batt(char *ggb, char pri_batt)
     ug31xx->sysData.adc1ConvTime = ug31xx->measData.adc1ConvertTime;
     ug31xx->sysData.ccOffset = (_sys_s8_)ug31xx->measData.ccOffsetAdj;
     ug31xx->sysData.standbyDsgRatio = (_sys_u8_)ug31xx->capData.standbyDsgRatio;
+    ug31xx->sysData.voltage = (_sys_u16_)ug31xx->measData.bat1Voltage;
     UpiSaveBatInfoTOIC(&ug31xx->sysData);
     /// Load table
     UpiLoadTableFromIC((_sys_u8_ *)ug31xx->capData.encriptTable);
@@ -6349,6 +6461,7 @@ int lkm_backup_pointer(void)
   backup_measData = ug31xx->backupData.measData;
   UG31_LOGN("[%s]: cap_ggbParameter, cap_ggbTable, cap_measurement = %d, %d, %d\n", __func__, 
             cap_ggbParameter, cap_ggbTable, cap_measurement);
+  return (0);
 }
 
 /**
@@ -6377,6 +6490,7 @@ int lkm_restore_pointer(void)
   ug31xx->backupData.measData = backup_measData;
   UG31_LOGN("[%s]: cap_ggbParameter, cap_ggbTable, cap_measurement = %d, %d, %d\n", __func__, 
             ug31xx->capData.ggbParameter, ug31xx->capData.ggbTable, ug31xx->capData.measurement);
+  return (0);
 }
 
 struct ug31xx_module_interface ug31_module = {

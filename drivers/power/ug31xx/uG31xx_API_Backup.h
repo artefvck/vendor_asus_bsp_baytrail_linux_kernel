@@ -4,7 +4,7 @@
  *  Header of uG31xx_API_Backup.cpp
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 14 $
+ * @revision  $Revision: 53 $
  */
 
 #define BACKUP_BOOL_TRUE      (1)
@@ -157,4 +157,13 @@ extern _backup_u32_ UpiGetBackupMemorySize(void);
  * @return  NULL
  */
 extern void UpiBackupVoltage(BackupDataType *data);
+
+/**
+ * @brief UpiPrintBackupVersion
+ *
+ *  Print backup module version
+ *
+ * @return  NULL
+ */
+extern void UpiPrintBackupVersion(void);
 
