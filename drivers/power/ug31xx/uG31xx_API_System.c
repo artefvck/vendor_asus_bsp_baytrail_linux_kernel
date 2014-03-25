@@ -11,7 +11,7 @@
  *  uG31xx system control
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 488 $
+ * @revision  $Revision: 492 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,7 +19,7 @@
 
 #if defined(uG31xx_OS_WINDOWS)
 
-#define SYSTEM_VERSION      (_T("System $Rev: 488 $"))
+#define SYSTEM_VERSION      (_T("System $Rev: 492 $"))
 
 _upi_bool_ ReadGGBFileToCellDataAndInitSetting(SystemDataType *obj)
 {
@@ -54,7 +54,7 @@ _upi_bool_ ReadGGBFileToCellDataAndInitSetting(SystemDataType *obj)
 
 #else   ///< else of defined(uG31xx_OS_WINDOWS)
 
-#define SYSTEM_VERSION      ("System $Rev: 488 $")
+#define SYSTEM_VERSION      ("System $Rev: 492 $")
 
 _upi_bool_ ReadGGBXFileToCellDataAndInitSetting(SystemDataType *obj)
 {
@@ -151,6 +151,43 @@ void SetupAdcChopFunction(SystemDataType *data)
 }
 
 /**
+ * @brief CheckAdcChopFunction
+ *
+ *  Check ADC chop function
+ *
+ * @para  data  address of SystemDataType
+ * @return  _UPI_TRUE_ if pass
+ */
+_sys_bool_ CheckAdcChopFunction(SystemDataType *data)
+{
+  _sys_u8_ buf;
+
+  API_I2C_Read(SECURITY,
+               UG31XX_I2C_HIGH_SPEED_MODE,
+               UG31XX_I2C_TEM_BITS_MODE,
+               REG_FW_CTRL,
+               1,
+               &buf);
+  return ((buf == data->ggbParameter->chopCtrl) ? _UPI_TRUE_ : _UPI_FALSE_);
+}
+
+static _sys_u8_ adc1QueueInit[] = 
+{
+  SET_A_CURRENT | SET_B_CURRENT | SET_C_CURRENT | SET_D_ET,
+  SET_E_ET | SET_F_ET | SET_G_IT | SET_H_IT,
+  SET_I_IT | SET_J_CURRENT | SET_K_CURRENT | SET_L_CURRENT,
+  SET_M_CURRENT | SET_N_CURRENT | SET_O_CURRENT | SET_P_CURRENT,
+};
+
+static _sys_u8_ adc1QueueNormal[] =
+{
+  SET_A_IT | SET_B_IT | SET_C_ET | SET_D_ET,
+  SET_E_CURRENT | SET_F_CURRENT | SET_G_CURRENT | SET_H_CURRENT,
+  SET_I_CURRENT | SET_J_CURRENT | SET_K_CURRENT | SET_L_CURRENT,
+  SET_M_CURRENT | SET_N_CURRENT | SET_O_CURRENT | SET_P_CURRENT,
+};
+
+/**
  * @brief SetupAdc1Queue
  *
  *  Setup ADC1 conversion queue
@@ -160,20 +197,72 @@ void SetupAdcChopFunction(SystemDataType *data)
  */
 void SetupAdc1Queue(SystemDataType *data)
 {
-  _sys_u8_ adcQueue[4];
-
-  adcQueue[0] = SET_A_CURRENT | SET_B_CURRENT | SET_C_CURRENT | SET_D_ET;
-  adcQueue[1] = SET_E_ET | SET_F_ET | SET_G_IT | SET_H_IT;
-  adcQueue[2] = SET_I_IT | SET_J_CURRENT | SET_K_CURRENT | SET_L_CURRENT;
-  adcQueue[3] = SET_M_CURRENT | SET_N_CURRENT | SET_O_CURRENT | SET_P_CURRENT;
-
  	API_I2C_Write(SECURITY, 
                 UG31XX_I2C_HIGH_SPEED_MODE, 
                 UG31XX_I2C_TEM_BITS_MODE, 
                 REG_ADC_CTR_A, 
                 4, 
-                &adcQueue[0]);
+                &adc1QueueInit[0]);
 }
+
+/**
+ * @brief CheckAdc1Queue
+ *
+ *  Check ADC1 conversion queue
+ *
+ * @para  data  address of SystemDataType
+ * @return  _UPI_TRUE_ if pass
+ */
+_sys_bool_ CheckAdc1Queue(SystemDataType *data)
+{
+  _sys_u8_ adcQueue[4];
+
+  API_I2C_Read(SECURITY, 
+               UG31XX_I2C_HIGH_SPEED_MODE, 
+               UG31XX_I2C_TEM_BITS_MODE, 
+               REG_ADC_CTR_A, 
+               4, 
+               &adcQueue[0]);
+
+  if(adcQueue[0] != adc1QueueNormal[0])
+  {
+    return (_UPI_FALSE_);
+  }
+  if(adcQueue[1] != adc1QueueNormal[1])
+  {
+    return (_UPI_FALSE_);
+  }
+  if(adcQueue[2] != adc1QueueNormal[2])
+  {
+    return (_UPI_FALSE_);
+  }
+  if(adcQueue[3] != adc1QueueNormal[3])
+  {
+    return (_UPI_FALSE_);
+  }
+  return (_UPI_TRUE_);
+}
+
+static _sys_u8_ adc2Queue1[] =  ///< [AT-PM] : 1 cell application ; 03/07/2014
+{
+  SET_V1_VBAT1 | SET_V2_VBAT1 | SET_V3_VBAT1 | SET_V4_VBAT1,
+  SET_V5_VBAT1 | SET_V6_VBAT1 | SET_V7_VBAT1 | SET_V8_VBAT1,
+  SET_V9_VBAT1 | SET_V10_VBAT1 | SET_V11_VBAT1 | SET_V12_VBAT1,
+};
+
+static _sys_u8_ adc2Queue2[] =  ///< [AT-PM] : 2 cell application ; 03/07/2014
+{
+  SET_V1_VBAT1 | SET_V2_VBAT1 | SET_V3_VBAT2 | SET_V4_VBAT2,
+  SET_V5_VBAT1 | SET_V6_VBAT1 | SET_V7_VBAT2 | SET_V8_VBAT2,
+  SET_V9_VBAT1 | SET_V10_VBAT1 | SET_V11_VBAT2 | SET_V12_VBAT2,
+};
+
+static _sys_u8_ adc2Queue3[] =  ///< [AT-PM] : 3 cell application ; 03/07/2014
+{
+  SET_V1_VBAT1 | SET_V2_VBAT1 | SET_V3_VBAT2 | SET_V4_VBAT2,
+  SET_V5_VBAT3 | SET_V6_VBAT3 | SET_V7_VBAT1 | SET_V8_VBAT1,
+  SET_V9_VBAT2 | SET_V10_VBAT2 | SET_V11_VBAT3 | SET_V12_VBAT3,
+};
 
 /**
  * @brief SetupAdc2Queue
@@ -185,35 +274,83 @@ void SetupAdc1Queue(SystemDataType *data)
  */
 void SetupAdc2Quene(SystemDataType *data)
 {
-  _sys_u8_ adc2Queue[3];
+  _sys_u8_ *adc2Queue;
   
-  /// [AT-PM] : Set sell type ; 01/31/2013
+  /// [AT-PM] : Set cell type ; 01/31/2013
   if(data->cellNum == 1)
   {
-    adc2Queue[0] = SET_V1_VBAT1 | SET_V2_VBAT1 | SET_V3_VBAT1 | SET_V4_VBAT1;
-    adc2Queue[1] = SET_V5_VBAT1 | SET_V6_VBAT1 | SET_V7_VBAT1 | SET_V8_VBAT1;
-    adc2Queue[2] = SET_V9_VBAT1 | SET_V10_VBAT1 | SET_V11_VBAT1 | SET_V12_VBAT1;
+    adc2Queue = &adc2Queue1[0];
   }
   else if(data->cellNum == 2)
   {
-    adc2Queue[0] = SET_V1_VBAT1 | SET_V2_VBAT1 | SET_V3_VBAT2 | SET_V4_VBAT2;
-    adc2Queue[1] = SET_V5_VBAT1 | SET_V6_VBAT1 | SET_V7_VBAT2 | SET_V8_VBAT2;
-    adc2Queue[2] = SET_V9_VBAT1 | SET_V10_VBAT1 | SET_V11_VBAT2 | SET_V12_VBAT2;
+    adc2Queue = &adc2Queue2[0];
   }
   else if(data->cellNum == 3)
   {
-    adc2Queue[0] = SET_V1_VBAT1 | SET_V2_VBAT1 | SET_V3_VBAT2 | SET_V4_VBAT2;
-    adc2Queue[1] = SET_V5_VBAT3 | SET_V6_VBAT3 | SET_V7_VBAT1 | SET_V8_VBAT1;
-    adc2Queue[2] = SET_V9_VBAT2 | SET_V10_VBAT2 | SET_V11_VBAT3 | SET_V12_VBAT3;
+    adc2Queue = &adc2Queue3[0];
   }
   else
   {
-    /// [AT-PM] : 1-cell ; 01/31/2013
-    adc2Queue[0] = SET_V1_VBAT1 | SET_V2_VBAT1 | SET_V3_VBAT1 | SET_V4_VBAT1;
-    adc2Queue[1] = SET_V5_VBAT1 | SET_V6_VBAT1 | SET_V7_VBAT1 | SET_V8_VBAT1;
-    adc2Queue[2] = SET_V9_VBAT1 | SET_V10_VBAT1 | SET_V11_VBAT1 | SET_V12_VBAT1;
+    adc2Queue = &adc2Queue1[0];
   }
-  API_I2C_Write(SECURITY, UG31XX_I2C_HIGH_SPEED_MODE, UG31XX_I2C_TEM_BITS_MODE, REG_ADC_V1, 3, &adc2Queue[0]);
+
+  API_I2C_Write(SECURITY, 
+                UG31XX_I2C_HIGH_SPEED_MODE, 
+                UG31XX_I2C_TEM_BITS_MODE, REG_ADC_V1, 
+                3, 
+                adc2Queue);
+}
+
+/**
+ * @brief CheckAdc2Queue
+ *
+ *  Check ADC2 conversion queue
+ *
+ * @para  data  address of SystemDataType
+ * @return  _UPI_TRUE_ if pass
+ */
+_sys_bool_ CheckAdc2Queue(SystemDataType *data)
+{
+  _sys_u8_ adc2Queue[3];
+  _sys_u8_ *adc2QueuePtr;
+
+  /// [AT-PM] : Set cell type ; 01/31/2013
+  if(data->cellNum == 1)
+  {
+    adc2QueuePtr = &adc2Queue1[0];
+  }
+  else if(data->cellNum == 2)
+  {
+    adc2QueuePtr = &adc2Queue2[0];
+  }
+  else if(data->cellNum == 3)
+  {
+    adc2QueuePtr = &adc2Queue3[0];
+  }
+  else
+  {
+    adc2QueuePtr = &adc2Queue1[0];
+  }
+
+  API_I2C_Read(SECURITY, 
+               UG31XX_I2C_HIGH_SPEED_MODE, 
+               UG31XX_I2C_TEM_BITS_MODE, REG_ADC_V1, 
+               3, 
+               &adc2Queue[0]);
+
+  if(adc2QueuePtr[0] != adc2Queue[0])
+  {
+    return (_UPI_FALSE_);
+  }
+  if(adc2QueuePtr[0] != adc2Queue[0])
+  {
+    return (_UPI_FALSE_);
+  }
+  if(adc2QueuePtr[0] != adc2Queue[0])
+  {
+    return (_UPI_FALSE_);
+  }
+  return (_UPI_TRUE_);
 }
 
 /**
@@ -345,6 +482,8 @@ void ConfigureGpio(SystemDataType *data)
 }
 
 #define ADC_FAIL_CRITERIA     (10)
+#define ADC_FAIL_MIN_IT_CODE  (IT_IDEAL_CODE_25/2)
+#define ADC_FAIL_MAX_IT_CODE  (IT_IDEAL_CODE_80*11/10)
 
 /**
  * @brief CheckAdcStatusFail
@@ -369,6 +508,13 @@ _upi_bool_ CheckAdcStatusFail(SystemDataType *data)
                REG_AVE_VBAT1_LOW, 
                REG_AVE_VBAT1_HIGH - REG_AVE_VBAT1_LOW + 1, 
                (unsigned char *)&data->adcCheckData.regVbat1Ave);
+
+  API_I2C_Read(NORMAL, 
+               UG31XX_I2C_HIGH_SPEED_MODE, 
+               UG31XX_I2C_TEM_BITS_MODE, 
+               REG_AVE_IT_LOW, 
+               REG_AVE_IT_HIGH - REG_AVE_IT_LOW + 1, 
+               (unsigned char *)&data->adcCheckData.regITAve);
 
   /// [AT-PM] : Compare counter register ; 01/27/2013
   if(data->adcCheckData.regCounter == data->adcCheckData.lastCounter)
@@ -405,6 +551,11 @@ _upi_bool_ CheckAdcStatusFail(SystemDataType *data)
   if(data->adcCheckData.failCounterVoltage > ADC_FAIL_CRITERIA)
   {
     data->adcCheckData.failCounterVoltage = 0;
+    return (_UPI_TRUE_);
+  }
+  if((data->adcCheckData.regITAve < ADC_FAIL_MIN_IT_CODE) ||
+     (data->adcCheckData.regITAve > ADC_FAIL_MAX_IT_CODE))
+  {
     return (_UPI_TRUE_);
   }
   return (_UPI_FALSE_);
@@ -752,11 +903,13 @@ SYSTEM_RTN_CODE UpiInitSystemData(SystemDataType *data)
  *
  *  Check IC is actived or not
  *
+ * @para  data  address of SystemDataType
  * @return  _UPI_TRUE_ if uG31xx is not actived
  */
-_upi_bool_ UpiCheckICActive(void)
+_upi_bool_ UpiCheckICActive(SystemDataType *data)
 {
   _upi_u8_ tmp = 0;
+  _upi_bool_ rtn;
 
   if(!API_I2C_Read(NORMAL, UG31XX_I2C_HIGH_SPEED_MODE, UG31XX_I2C_TEM_BITS_MODE, REG_MODE, 1, &tmp))
   {
@@ -767,6 +920,27 @@ _upi_bool_ UpiCheckICActive(void)
   if(((tmp & MODE_GG_RUN) == GG_RUN_OPERATION_MODE) && (tmp != 0xFF))
   {
     UG31_LOGN("[%s]: uG31xx is actived.\n", __func__);
+
+    rtn = CheckAdcChopFunction(data);
+    if(rtn == _UPI_FALSE_)
+    {
+      UG31_LOGE("[%s]: CheckAdcChopFunction fail\n", __func__);
+      return (_UPI_TRUE_);
+    }
+    
+    rtn = CheckAdc1Queue(data);
+    if(rtn == _UPI_FALSE_)
+    {
+      UG31_LOGE("[%s]: CheckAdc1Queue fail\n", __func__);
+      return (_UPI_TRUE_);
+    }
+    
+    rtn = CheckAdc2Queue(data);
+    if(rtn == _UPI_FALSE_)
+    {
+      UG31_LOGE("[%s]: CheckAdc2Queue fail\n", __func__);
+      return (_UPI_TRUE_);
+    }
     return (_UPI_FALSE_);
   }
   UG31_LOGE("[%s]: uG31xx is NOT actived.\n", __func__);
@@ -1252,9 +1426,15 @@ void UpiUpdateBatInfoFromIC(SystemDataType *data, _sys_s16_ deltaQ)
     return;
   }
 
+  /// [AT-PM] : Previous rsoc is 0 not in charging -> keep it ; 03/07/2014
+  if(oldRsoc == 0)
+  {
+    return;
+  }
+
   /// [AT-PM] : Operation for EDVF ; 02/25/2014
   if(data->voltage > data->ggbParameter->edv1Voltage)
-  {
+  {    
     if(data->rsocFromIC > 0)
     {
       return;
@@ -1267,14 +1447,19 @@ void UpiUpdateBatInfoFromIC(SystemDataType *data, _sys_s16_ deltaQ)
   else
   {
     /// [AT-PM] : Set RSOC to 0 if not in charging ; 02/25/2014
-    if(data->curr < data->ggbParameter->standbyCurrent)
+    if((data->curr < data->ggbParameter->standbyCurrent) &&
+       (data->rsocFromIC != 0))
     {
-      data->rsocFromIC = 0;
-      data->rmFromIC = 0;
+      data->rsocFromIC = data->rsocFromIC - 1;
+      tmp32 = (_sys_s32_)data->rsocFromIC;
+      tmp32 = tmp32*(data->fccFromIC)/CONST_PERCENTAGE;
+      data->rmFromIC = (_sys_u16_)tmp32;
       return;
     }
   }
 }
+
+#define SAVE_BATINFO_0_VOLT_THRESHOLD     (300)
 
 /**
  * @brief UpiSaveBatInfoTOIC
@@ -1308,6 +1493,17 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
     #endif  ///< end of defined(BUILD_UG31XX_LIB)
 
   #endif  ///< end of defined(uG31xx_OS_ANDROID)
+
+  u16Temp = data->ggbParameter->edv1Voltage - SAVE_BATINFO_0_VOLT_THRESHOLD;
+  if(data->voltage < u16Temp)
+  {
+    UG31_LOGE("[%d]: Voltage = %d < %d - %d -> Set NAC = 0 from %d\n", __func__,
+              data->voltage,
+              data->ggbParameter->edv1Voltage,
+              SAVE_BATINFO_0_VOLT_THRESHOLD,
+              data->rmFromIC);
+    data->rmFromIC = 0;
+  }
   UG31_LOGE("[%s]:timeTag =%d/%x ms,NAC = %d maH,LMD = %d maH\n",
   						__func__, 
   						(int)data->timeTagFromIC,
@@ -1619,7 +1815,6 @@ void UpiSaveTableToIC(_sys_u8_ *data, _sys_u8_ *buf, _sys_u8_ size)
  */
 void UpiSetupAdc1Queue(SystemDataType *data)
 {
-  _sys_u8_ adcQueue[4];
   _sys_u8_ tmp8;
 
   tmp8 = 0;
@@ -1639,17 +1834,12 @@ void UpiSetupAdc1Queue(SystemDataType *data)
                 &tmp8);
 
   /// [AT-PM] : Set ADC1 queue ; 06/04/2013
-  adcQueue[0] = SET_A_IT | SET_B_IT | SET_C_ET | SET_D_ET;
-  adcQueue[1] = SET_E_CURRENT | SET_F_CURRENT | SET_G_CURRENT | SET_H_CURRENT;
-  adcQueue[2] = SET_I_CURRENT | SET_J_CURRENT | SET_K_CURRENT | SET_L_CURRENT;
-  adcQueue[3] = SET_M_CURRENT | SET_N_CURRENT | SET_O_CURRENT | SET_P_CURRENT;
-
  	API_I2C_Write(SECURITY, 
                 UG31XX_I2C_HIGH_SPEED_MODE, 
                 UG31XX_I2C_TEM_BITS_MODE, 
                 REG_ADC_CTR_A, 
                 4, 
-                &adcQueue[0]);
+                &adc1QueueNormal[0]);
 
   /// [AT-PM] : Enable ADC ; 01/31/2013
   API_I2C_Read(SECURITY,
@@ -1706,6 +1896,19 @@ void UpiAllocateTableBuf(_sys_u8_ **data, _sys_u8_ *size)
 void UpiFreeTableBuf(_sys_u8_ **data)
 {
   UG31_LOGD("[%s]: Free address 0x%02x\n", __func__, (unsigned int)(*data));
+}
+
+/**
+ * @brief UpiPrintSystemVersion
+ *
+ *  Print system module version
+ *
+ * @return  NULL
+ */
+void UpiPrintSystemVersion(void)
+{
+  UG31_LOGE("[%s]: %s\n", __func__,
+            SYSTEM_VERSION);
 }
 
 

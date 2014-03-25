@@ -102,6 +102,7 @@
 #define NAC_LMD_ADJUST_CFG_RSOC_FILTER_LOCK_TABLE             (1<<27)
 #define NAC_LMD_ADJUST_CFG_BATTERY_REINSERT_DETECT_EN         (1<<28)
 #define NAC_LMD_ADJUST_CFG_INIT_PARSER_FORCE_100_EN           (1<<29)
+#define NAC_LMD_ADJUST_CFG_RSOC_FILTER_STEP_CC                (1<<30)
 
 #define GET_PRODUCT_TYPE(x)       ((x & NAC_LMD_ADJUST_CFG_PRODUCT_TYPE) >> 6)
 #define GET_CAP_ALGORITHM_VER(x)  ((x & NAC_LMD_ADJUST_CFG_CAP_ALGORITHM_VER) >> 15)
@@ -124,13 +125,17 @@ enum OCV_TABLE_IDX {
 #define CONST_ROUNDING                    (10)
 #define CONST_ROUNDING_5                  (5)
 #define TIME_CONVERT_TIME_TO_MSEC         (10)
-#define CONST_CONVERSION_COUNT_THRESHOLD  (300)
+#define CONST_CONVERSION_COUNT_THRESHOLD  (500)
 #define TIME_SEC_TO_HOUR                  (3600)
 #define TIME_MSEC_TO_SEC                  (1000)
+#define TIME_SEC_TO_MIN                   (60)
 
 #define ET_AVERAGE_NEW      (1)
 #define ET_AVERAGE_OLD      (7)
 #define ET_AVERAGE_BASE     (ET_AVERAGE_NEW + ET_AVERAGE_OLD)
+
+#define IT_IDEAL_CODE_25      (24310)
+#define IT_IDEAL_CODE_80      (28612)
 
 #endif
 

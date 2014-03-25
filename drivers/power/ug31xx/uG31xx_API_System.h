@@ -4,7 +4,7 @@
  *  Interface of ug31xx system control
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 405 $
+ * @revision  $Revision: 492 $
  */
 
 #define UG31XX_SYSTEM_VERSION     (7)
@@ -91,7 +91,7 @@ extern SYSTEM_RTN_CODE UpiInitSystemData(SystemDataType *data);
  *
  * @return  _UPI_TRUE_ if uG31xx is not actived
  */
-extern _upi_bool_ UpiCheckICActive(void);
+extern _upi_bool_ UpiCheckICActive(SystemDataType *data);
 
 /**
  * @brief UpiActiveUg31xx
@@ -257,4 +257,13 @@ extern void UpiAllocateTableBuf(_sys_u8_ **data, _sys_u8_ *size);
  * @return  NULL
  */
 extern void UpiFreeTableBuf(_sys_u8_ **data);
+
+/**
+ * @brief UpiPrintSystemVersion
+ *
+ *  Print system module version
+ *
+ * @return  NULL
+ */
+extern void UpiPrintSystemVersion(void);
 

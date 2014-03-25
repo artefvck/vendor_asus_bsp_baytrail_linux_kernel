@@ -26,12 +26,14 @@ typedef char              _meas_bool_;
 #define MEAS_STATUS_NTC_SHORT                 (1<<3)
 #define MEAS_STATUS_REFER_ET                  (1<<4)
 #define MEAS_STATUS_CABLE_OUT                 (1<<5)
+#define MEAS_STATUS_LAST_IN_SUSPEND_MODE      (1<<6)
 
 #define MEAS_IN_SUSPEND_MODE(x)           ((x & MEAS_STATUS_IN_SUSPEND_MODE) ? _UPI_TRUE_ : _UPI_FALSE_)
 #define MEAS_REVERSE_CURRENT_DIRECTION(x) ((x & MEAS_STATUS_REVERSE_CURRENT_DIRECTION) ? _UPI_TRUE_ : _UPI_FALSE_)
 #define MEAS_NTC_OPEN(x)                  ((x & MEAS_STATUS_NTC_OPEN) ? _UPI_TRUE_ : _UPI_FALSE_)
 #define MEAS_NTC_SHORT(x)                 ((x & MEAS_STATUS_NTC_SHORT) ? _UPI_TRUE_ : _UPI_FALSE_)
 #define MEAS_CABLE_OUT(x)                 ((x & MEAS_STATUS_CABLE_OUT) ? _UPI_TRUE_ : _UPI_FALSE_)
+#define MEAS_LEAVE_SUSPEND_MODE(x)        (((x & MEAS_STATUS_LAST_IN_SUSPEND_MODE) && (!(x & MEAS_STATUS_IN_SUSPEND_MODE))) ? _UPI_TRUE_ : _UPI_FALSE_)
 
 #define MEAS_MAXIMUM_INITIAL_RETRY_CNT      (40)
 #define MEAS_MAXIMUM_ROUTINE_RETRY_CNT      (3)
@@ -180,4 +182,13 @@ extern MEAS_RTN_CODE UpiMeasReadCode(MeasDataType *data);
  * @return  memory size
  */
 extern _meas_u32_ UpiGetMeasurementMemorySize(void);
+
+/**
+ * @brief UpiPrintMeasurementVersion
+ *
+ *  Print measurement module version
+ *
+ * @return  NULL
+ */
+extern void UpiPrintMeasurementVersion(void);
 
