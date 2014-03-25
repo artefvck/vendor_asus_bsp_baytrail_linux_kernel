@@ -183,11 +183,11 @@ void auo_m181_disable_panel_power(struct intel_dsi_device *dsi)
 	sean_debug("%s:----sean test----auo_m181_disable_panel_power----%d\n", __func__,__LINE__);
 	gpio_free(69);
 
-	msleep(20);	//sean test t13 =< 50
+	msleep(10);	//sean test t13 =< 50
 
     sean_debug("%s:----sean test----auo_m181_disable_panel_power----%d\n", __func__,__LINE__);
     intel_mid_pmic_writeb(0x52,0x00);//PANEL_EN 3.3v
-    sean_debug("%s:----sean test----panel 3.3V set low----%d\n", __func__,__LINE__);
+    usleep_range(16000,17000); //sean test t15 <= 10
     intel_mid_pmic_writeb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 1.8v
     sean_debug("%s:----sean test----panel 1.8V set low----%d\n", __func__,__LINE__);
 
@@ -264,7 +264,6 @@ void auo_m181_enable(struct intel_dsi_device *dsi)
 
 void auo_m181_disable(struct intel_dsi_device *dsi)
 {
-
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	sean_debug("----sean test----m181_auo_panel_disable----\n");
