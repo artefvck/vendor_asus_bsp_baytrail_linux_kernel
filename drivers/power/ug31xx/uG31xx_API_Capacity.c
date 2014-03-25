@@ -11,7 +11,7 @@
  *  Capacity algorithm
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 29 $
+ * @revision  $Revision: 57 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,7 +19,7 @@
 
 #ifdef  uG31xx_OS_ANDROID
 
-  #define CAPACITY_VERSION      ("Capacity $Rev: 29 $")
+  #define CAPACITY_VERSION      ("Capacity $Rev: 57 $")
   //#define CAP_LOG_UPDATE_TABLE                              ///< [AT-PM] : Log updated table to a file ; 03/25/2013
 
   #ifdef  CAP_LOG_UPDATE_TABLE
@@ -32,11 +32,11 @@
 
   #if defined(BUILD_UG31XX_LIB)
 
-    #define CAPACITY_VERSION      ("Capacity $Rev: 29 $")
+    #define CAPACITY_VERSION      ("Capacity $Rev: 57 $")
     
   #else   ///< else of defined(BUILD_UG31XX_LIB)
   
-    #define CAPACITY_VERSION      (_T("Capacity $Rev: 29 $"))
+    #define CAPACITY_VERSION      (_T("Capacity $Rev: 57 $"))
     
   #endif  ///< end of defined(BUILD_UG31XX_LIB)
   
@@ -330,7 +330,7 @@ void PredictChargeCapacity(CapacityInternalDataType *obj)
   }
   UG31_LOGD("[%s]: RSOC = %d (%d)\n", __func__, rsoc, obj->info->rsoc);
 
-  if(obj->info->rsoc == CAP_FC_RELEASE_RSOC)
+  if(obj->info->rsoc == CAP_FC_NEAR_RSOC)
   {
     UG31_LOGD("[%s]: Adjust RM at 99%% = %d\n", __func__, obj->rm);
     return;
@@ -631,6 +631,26 @@ void FindOcvRM(CapacityInternalDataType *obj, _cap_u8_ tableIdx, _cap_u16_ volta
   obj->rm = (_cap_u16_)tmp32;
 }
 
+#define IS_SUSPEND_OPERATION_DELAT_TIME     (5*TIME_SEC_TO_MIN*TIME_MSEC_TO_SEC)
+
+/**
+ * @brief IsSuspendOperation
+ *
+ *  Suspend operation if delta time > 5 min and inSuspend = TRUE
+ *
+ * @para  obj addressof CapacityInternalDataType
+ * @return  CAP_TRUE if success
+ */
+_cap_bool_ IsSuspendOperation(CapacityInternalDataType *obj)
+{
+  if((obj->info->inSuspend == CAP_TRUE) && 
+     (obj->info->measurement->deltaTime >= IS_SUSPEND_OPERATION_DELAT_TIME))
+  {
+    return (CAP_TRUE);
+  }
+  return (CAP_FALSE);
+}
+
 /**
  * @brief ChargeSpeedDown
  *
@@ -650,6 +670,13 @@ void ChargeSpeedDown(CapacityInternalDataType *obj)
     return;
   }
 
+  if(IsSuspendOperation(obj) == CAP_TRUE)
+  {
+    UG31_LOGN("[%s]: In suspend operation. (%d)\n", __func__,
+              obj->info->measurement->deltaTime);
+    return;
+  }
+  
   /// [AT-PM] : Calculate new RSOC ; 02/09/2014
   rsoc = (_cap_u8_)CalculateRsoc((_cap_u32_)obj->rm, obj->info->fcc);
   
@@ -1388,6 +1415,8 @@ void InitCapacityParser(CapacityInternalDataType *obj)
   obj->info->rsoc = (_cap_u8_)CalculateRsoc(obj->info->rm, obj->info->fcc);
 }
 
+#define CHARGE_TABLE_REF_THRESHOLD      (20)
+
 /**
  * @brief InitCharge
  *
@@ -1399,6 +1428,7 @@ void InitCapacityParser(CapacityInternalDataType *obj)
 void InitCharge(CapacityInternalDataType *obj)
 {
   _cap_u16_ tmp16;
+  _cap_u32_ tmp32;
   
   /// [AT-PM] : Find temperature index ; 01/25/2013
   if(FindIdxTemperature[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
@@ -1418,12 +1448,22 @@ void InitCharge(CapacityInternalDataType *obj)
       break;
     case CAP_STS_CURR_CHG:
       UG31_LOGN("[%s]: (0x%08x) CAP_STS_CURR_CHG\n", __func__, (unsigned int)obj->info->status);
-      /// [AT-PM] : Loop up charging table ; 01/25/2013
+      /// [AT-PM] : Look up stand alone table ; 03/18/2014
       tmp16 = obj->info->measurement->bat1VoltageAvg;
       tmp16 = tmp16 - obj->info->measurement->currAvg/CHARGE_VOLTAGE_CONST;
       FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, tmp16);
       FindOcvFcc(obj);
       FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, tmp16);
+      /// [AT-PM] : Check minimum rsoc threshold for stand alone table ; 03/18/2014
+      tmp32 = (_cap_u32_)obj->info->fcc;
+      tmp32 = tmp32*CHARGE_TABLE_REF_THRESHOLD/CONST_PERCENTAGE;
+      if(obj->info->rm < tmp32)
+      {
+        tmp16 = obj->info->measurement->bat1VoltageAvg;
+        FindOcvIdxVoltage(obj, OCV_TABLE_IDX_CHARGE, tmp16);
+        FindOcvFcc(obj);
+        FindOcvRM(obj, OCV_TABLE_IDX_CHARGE, tmp16);
+      }
       obj->info->rm = obj->rm;
       break;
     case CAP_STS_CURR_DSG:
@@ -1868,6 +1908,9 @@ void SaveUpdateNacTable(CapacityInternalDataType *data)
   }
 }
 
+#define MAX_RATIO_OF_CC_RECORD_WITH_TABLE     (11/10)
+#define MIN_RATIO_OF_CC_RECORD_WITH_TABLE     (9/10)
+
 /**
  * @brief UpdateCCRecord
  *
@@ -1881,9 +1924,47 @@ void UpdateCCRecord(CapacityInternalDataType *obj)
   _cap_s32_ tmp32;
   _cap_u8_ idx;
 
+  /// [AT-PM] : Check delta capacity ; 01/31/2013
   tmp32 = obj->info->dsgCharge - obj->info->dsgChargeStart;
-  if((tmp32 >= 0) && (obj->info->tableUpdateIdx < SOV_NUMS))
+  if(tmp32 < 0)
   {
+    UG31_LOGE("[%s]: Check delta capacity fail (%d - %d < 0)\n",
+              __func__, (int)obj->info->dsgCharge, (int)obj->info->dsgChargeStart);
+    return;
+  }
+
+  /// [AT-PM] : Check discharge time ; 07/18/2013  
+  if(obj->info->dsgChargeTime == 0)
+  {
+    UG31_LOGE("[%s]: Discharge time = 0\n", __func__);
+    return;
+  }
+
+  /// [AT-PM] : Check update index ; 03/05/2014
+  if(obj->info->tableUpdateIdx >= SOV_NUMS)
+  {
+    UG31_LOGE("[%s]: Check update index fail (%d >= %d)\n",
+              __func__, (int)obj->info->tableUpdateIdx, SOV_NUMS);
+    return;
+  }
+
+  obj->info->ccRecord[obj->info->tableUpdateIdx] = (_cap_s16_)tmp32;
+
+  /// [AT-PM] : Check minimum value ; 03/05/2014
+  tmp32 = (_cap_s32_)obj->tableNac[obj->info->tableUpdateIdx]*MIN_RATIO_OF_CC_RECORD_WITH_TABLE;
+  if(obj->info->ccRecord[obj->info->tableUpdateIdx] < tmp32)
+  {
+    UG31_LOGE("[%s]: Limit to minimum value = %d from %d\n", __func__,
+              tmp32, obj->info->ccRecord[obj->info->tableUpdateIdx]);
+    obj->info->ccRecord[obj->info->tableUpdateIdx] = (_cap_s16_)tmp32;
+  }
+
+  /// [AT-PM] : Check maximum value ; 03/05/2014
+  tmp32 = (_cap_s32_)obj->tableNac[obj->info->tableUpdateIdx]*MAX_RATIO_OF_CC_RECORD_WITH_TABLE;
+  if(obj->info->ccRecord[obj->info->tableUpdateIdx] > tmp32)
+  {
+    UG31_LOGE("[%s]: Limit to maximum value = %d from %d\n", __func__,
+              tmp32, obj->info->ccRecord[obj->info->tableUpdateIdx]);
     obj->info->ccRecord[obj->info->tableUpdateIdx] = (_cap_s16_)tmp32;
   }
 
@@ -2127,6 +2208,7 @@ void RsocFilterReset(CapacityInternalDataType *obj)
   obj->info->socTimeFull = 0;
   obj->info->socTimeFullOverCnt = 0;
   obj->info->socTimeLock = 0;
+  obj->info->socCCStep = 0;
 }
 
 
@@ -2591,7 +2673,42 @@ void UpiSetBoardOffsetKed(CapacityDataType *data)
  */
 void UpiSetFactoryBoardOffset(CapacityDataType *data)
 {
-  data->status = data->status | CAP_STS_NO_STANDBY_CAP_EST;
+  data->status = data->status | (CAP_STS_NO_STANDBY_CAP_EST |
+                                 CAP_STS_BOARD_OFFSET_KED);
+}
+
+/**
+ * @brief UpiGetOcvSoc
+ *
+ *  Get OCV soc according to current temperature and voltage
+ *
+ * @para  data  address of CapacityDataType
+ * @para  volt  target voltage
+ * @return  SOC from OCV table
+ */
+_cap_u8_ UpiGetOcvSoc(CapacityDataType *data, _cap_u16_ volt)
+{
+  CapacityInternalDataType *obj;
+  _cap_u8_ soc;
+
+  #ifdef  UG31XX_SHELL_ALGORITHM
+    obj = (CapacityInternalDataType *)upi_malloc(sizeof(CapacityInternalDataType));
+  #else   ///< else of UG31XX_SHELL_ALGORITHM
+    obj = &capData;
+  #endif  ///< end of UG31XX_SHELL_ALGORITHM
+
+  upi_memset((_cap_u8_ *)obj, 0, sizeof(CapacityInternalDataType));  
+  obj->info = data;
+  
+  if(FindIdxTemperature[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+  {
+    (*FindIdxTemperature[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj, GetBatteryTemperature(obj));
+  }
+
+  FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, volt);
+  FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, volt);
+  soc = (_cap_u8_)CalculateRsoc((_cap_u32_)obj->rm, obj->info->fcc);
+  return (soc);
 }
 
 

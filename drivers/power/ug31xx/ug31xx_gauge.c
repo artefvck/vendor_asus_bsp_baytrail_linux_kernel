@@ -50,6 +50,7 @@
 #define UG31XX_KOBJECT      ///< [AT-PM] : Used for register kobject ; 12/23/2013
 #define UG31XX_USER_SPACE_ALGORITHM     ///< [AT-PM] : Used for user space algorithm operation ; 12/24/2013
 #define UG31XX_USER_SPACE_BACKUP        ///< [AT-PM] : Used for user space backup operation ; 12/30/2013
+#define FEATRUE_K_BOARD_OFFSET
 
 #ifndef ME372CG_USER_BUILD
 #define UG31XX_PROC_DEV
@@ -77,11 +78,16 @@ extern int ec_power_changed_all();
 struct switch_dev batt_dev;
 
 #define UG31XX_USER_DAEMON_VER_LENGTH   (16)
-#define UG31XX_CALI_BO_FACTORY_DELAY	  (1)
 #define UG31XX_CALI_BO_LOW_TEMP         (100)
 #define UG31XX_CALI_BO_HIGH_TEMP        (450)
+#ifdef FEATRUE_K_BOARD_OFFSET
+#define UG31XX_CALI_BO_FACTORY_DELAY    (1)
+#endif ///< for FEATRUE_K_BOARD_OFFSET
 
 #define UG31XX_WAKEUP_ALARM_TIME        (40*60)  ///< [FC] : wakeup alarm 40 min ; 02/08/2014
+#define UG31XX_RETRY_DELAY_TIME         (30) ///< [FC] : retry timer ; 03/11/2014
+#define UG31XX_RESET_DELAY_TIME         (5) ///< [FC] : reset timer ; 03/11/2014
+#define UG31XX_RETRY_TIME               (5) ///< [FC] : retry time ; 03/11/2014
 
 struct ug31xx_gauge {
 #if defined(CONFIG_HAS_EARLYSUSPEND) && defined(UG31XX_EARLY_SUSPEND)
@@ -92,12 +98,16 @@ struct ug31xx_gauge {
 	struct delayed_work     batt_info_update_work;
 	struct delayed_work     batt_power_update_work;
 	struct delayed_work     batt_probe_work;
+	struct delayed_work     batt_retry_work;
+	struct delayed_work     batt_reinitial_work;
 	struct delayed_work     board_offset_cali_work;
 	struct delayed_work     shell_algorithm_work;
 	struct delayed_work     shell_backup_work;
 	struct delayed_work     shell_timeout_work;
-	struct delayed_work     kbo_work;
-	struct delayed_work     kbo_check_work;
+#ifdef FEATRUE_K_BOARD_OFFSET
+  struct delayed_work     kbo_work;
+  struct delayed_work     kbo_check_work;
+#endif ///< for FEATRUE_K_BOARD_OFFSET
 	struct wake_lock        batt_wake_lock;
 	struct wake_lock        shell_algorithm_wake_lock;
 	struct wake_lock        shell_timeout_wake_lock;
@@ -172,8 +182,15 @@ static void batt_info_update_work_func(struct work_struct *work);
 #define UG31XX_IOCTL_ALGORITHM_VERSION        _IOWR(UG31XX_IOC_MAGIC, 25, unsigned char *)
 #define UG31XX_IOCTL_ALGORITHM_LOCK           _IO(UG31XX_IOC_MAGIC, 26)
 #define UG31XX_IOCTL_ALGORITHM_UNLOCK         _IO(UG31XX_IOC_MAGIC, 27)
+#ifdef FEATRUE_K_BOARD_OFFSET
 #define UG31XX_IOCTL_ALGORITHM_READ_BO        _IOWR(UG31XX_IOC_MAGIC, 28, unsigned char *)
 #define UG31XX_IOCTL_ALGORITHM_WRITE_BO       _IOWR(UG31XX_IOC_MAGIC, 29, unsigned char *)
+#endif ///< for FEATRUE_K_BOARD_OFFSET
+#define UG31XX_IOCTL_ALGORITHM_GET_DATA       _IO(UG31XX_IOC_MAGIC, 30)
+#define UG31XX_IOCTL_ALGORITHM_GET_DATA_RUN   _IOWR(UG31XX_IOC_MAGIC, 31, unsigned char *)
+#define UG31XX_IOCTL_ALGORITHM_SET_DATA       _IO(UG31XX_IOC_MAGIC, 32)
+#define UG31XX_IOCTL_ALGORITHM_SET_DATA_RUN   _IOWR(UG31XX_IOC_MAGIC, 33, unsigned char *)
+#define UG31XX_IOCTL_ALGORITHM_SET_DATA_END   _IO(UG31XX_IOC_MAGIC, 34)
 
 #endif	///< end of UG31XX_MISC_DEV
 
@@ -186,6 +203,8 @@ static void batt_info_update_work_func(struct work_struct *work);
 #define UG31XX_WAKE_LOCK_TIMEOUT      		(1)
 
 #endif  ///< end of UG31XX_CELL_REPLACE_TEST
+
+#define UG31XX_IOCTL_TRANS_DATA_SIZE      (0x400)
 
 /* Functions Declaration */
 #ifdef	UG31XX_REGISTER_POWERSUPPLY
@@ -248,17 +267,30 @@ static bool user_space_in_progress = false;
 static bool force_update_backup_file = false;
 static bool enable_board_offset_cali_at_eoc = false;
 static int kbo_result = 0;
+#ifdef FEATRUE_K_BOARD_OFFSET
 static bool kbo_file_exist = false;
+static bool kbo_start_flag = false;
+#endif ///< for FEATRUE_K_BOARD_OFFSET
 static bool board_offset_cali_finish = false;
 static int ggb_board_offset = 0;
 static int ntc_offset = 0;
 static int standby_current = 0;
 static int ggb_board_gain = 1000;
-static bool fix_time_60s = false;
-static bool fix_time_2s = false;
+static int retry_cnt = 0;
+static int ioctl_data_trans_cnt = 0;
+static int ioctl_data_trans_size = 0;
+static unsigned char *ioctl_data_trans_ptr = NULL;
+static unsigned char ioctl_data_trans_buf[UG31XX_IOCTL_TRANS_DATA_SIZE];
 
 static void set_project_config(void)
 {
+#ifdef CONFIG_PRO_K011_GAUGE
+	ggb_board_offset = 7;
+	ggb_board_gain = 949;
+#else
+	ggb_board_offset = 8;
+	ggb_board_gain = 944;
+#endif
 }
 
 static void update_project_config(void)
@@ -358,6 +390,8 @@ static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long
     case UG31XX_IOCTL_RESET:
       UG31_LOGN("[%s] cmd -> RESET\n", __func__);
       op_options = op_options | LKM_OPTIONS_FORCE_RESET;
+      cancel_delayed_work_sync(&ug31->batt_info_update_work);
+      schedule_delayed_work(&ug31->batt_info_update_work, 0*HZ);
       break;
       
     case UG31XX_IOCTL_ENABLE_SUSPEND_LOG:
@@ -618,8 +652,10 @@ static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long
         UG31_LOGE("[%s] copy_from_user fail\n", __func__);
       }
       ug31->daemon_uevent_count = 0;
-      kbo_file_exist = false;
-      schedule_delayed_work(&ug31->kbo_check_work, UG31XX_CALI_BO_FACTORY_DELAY*HZ);
+      #ifdef FEATRUE_K_BOARD_OFFSET
+        kbo_file_exist = false;
+        schedule_delayed_work(&ug31->kbo_check_work, UG31XX_CALI_BO_FACTORY_DELAY*HZ);
+      #endif ///< for FEATRUE_K_BOARD_OFFSET
       break;
 
     case UG31XX_IOCTL_ALGORITHM_LOCK:
@@ -643,7 +679,8 @@ static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long
         wake_unlock(&ug31->shell_timeout_wake_lock);
       }
       break;
-
+      
+#ifdef FEATRUE_K_BOARD_OFFSET
     case UG31XX_IOCTL_ALGORITHM_READ_BO:
       UG31_LOGN("[%s] cmd -> UG31XX_IOCTL_ALGORITHM_READ_BO\n", __func__);
       backup_size = kbo_result;
@@ -683,6 +720,52 @@ static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long
                 val[1]);
       kbo_file_exist = true;
       ug31_module.set_board_offset(kbo_result, UG31XX_BOARD_OFFSET_FROM_UPI_BO);
+      break;
+#endif ///< for FEATRUE_K_BOARD_OFFSET
+
+    case UG31XX_IOCTL_ALGORITHM_GET_DATA:
+      UG31_LOGN("[%s] cmd -> UG31XX_IOCTL_ALGORITHM_GET_DATA\n", __func__);
+      ioctl_data_trans_cnt = 0;
+      ioctl_data_trans_ptr = ug31_module.shell_memory(&ioctl_data_trans_size);
+      break;
+
+    case UG31XX_IOCTL_ALGORITHM_GET_DATA_RUN:
+      UG31_LOGN("[%s] cmd -> UG31XX_IOCTL_ALGORITHM_GET_DATA_RUN (%d)\n", __func__,
+                ioctl_data_trans_cnt);
+      memcpy(ioctl_data_trans_buf, ioctl_data_trans_ptr, UG31XX_IOCTL_TRANS_DATA_SIZE);
+      if(copy_to_user((void __user *)arg, (void *)ioctl_data_trans_buf, UG31XX_IOCTL_TRANS_DATA_SIZE))
+      {
+        rc = -EINVAL;
+        UG31_LOGE("[%s] copy_to_user fail\n", __func__);
+      }
+      ioctl_data_trans_cnt = ioctl_data_trans_cnt + 1;
+      ioctl_data_trans_ptr = ioctl_data_trans_ptr + UG31XX_IOCTL_TRANS_DATA_SIZE;
+      break;
+
+    case UG31XX_IOCTL_ALGORITHM_SET_DATA:
+      UG31_LOGN("[%s] cmd -> UG31XX_IOCTL_ALGORITHM_SET_DATA\n", __func__);
+      ioctl_data_trans_cnt = 0;
+      ioctl_data_trans_ptr = ug31_module.shell_memory(&ioctl_data_trans_size);
+      ug31_module.backup_pointer();
+      break;
+
+    case UG31XX_IOCTL_ALGORITHM_SET_DATA_RUN:
+      UG31_LOGI("[%s] cmd -> UG31XX_IOCTL_ALGORITHM_SET_DATA_RUN (%d)\n", __func__,
+                ioctl_data_trans_cnt);
+      if(copy_from_user((void *)ioctl_data_trans_buf, (void __user *)arg, UG31XX_IOCTL_TRANS_DATA_SIZE))
+      {
+        rc = -EINVAL;
+        UG31_LOGE("[%s] copy_from_user fail\n", __func__);
+      }
+      memcpy(ioctl_data_trans_ptr, ioctl_data_trans_buf, UG31XX_IOCTL_TRANS_DATA_SIZE);
+      ioctl_data_trans_cnt = ioctl_data_trans_cnt + 1;
+      ioctl_data_trans_ptr = ioctl_data_trans_ptr + UG31XX_IOCTL_TRANS_DATA_SIZE;
+      break;
+
+    case UG31XX_IOCTL_ALGORITHM_SET_DATA_END:
+      UG31_LOGI("[%s] cmd -> UG31XX_IOCTL_ALGORITHM_SET_DATA_END\n", __func__);
+      ug31_module.restore_pointer();
+      schedule_delayed_work(&ug31->shell_algorithm_work, 0*HZ);
       break;
 
     default:
@@ -764,9 +847,11 @@ static struct kobj_type ug31xx_ktype = {
 enum UG31XX_KOBJ_ENV {
   UG31XX_KOBJ_ENV_UPDATE_CAPACITY = 0,
   UG31XX_KOBJ_ENV_BACKUP_DATA,
+#ifdef FEATRUE_K_BOARD_OFFSET
   UG31XX_KOBJ_ENV_BACKUP_BO_CHECK,
   UG31XX_KOBJ_ENV_BACKUP_BO_WRITE,
   UG31XX_KOBJ_ENV_BACKUP_BO_INIT,
+#endif ///< for FEATRUE_K_BOARD_OFFSET
   UG31XX_KOBJ_ENV_COUNT,
 };
 
@@ -779,9 +864,11 @@ static void change_ug31xx_kobj(void)
   char *cmd1[] = {"OP_NAME=update_capacity", NULL};
   char *cmd2[] = {"OP_NAME=backup_data", NULL};
   char *cmd3[] = {"OP_NAME=backup_data", "OP_ACTION=write", NULL};
+#ifdef FEATRUE_K_BOARD_OFFSET
   char *cmd4[] = {"OP_NAME=backup_bo", "OP_ACTION=check", NULL};
   char *cmd5[] = {"OP_NAME=backup_bo", "OP_ACTION=write", NULL};
   char *cmd6[] = {"OP_NAME=backup_bo", "OP_ACTION=init", NULL};
+#endif ///< for FEATRUE_K_BOARD_OFFSET
 
   #ifdef  UG31XX_USER_SPACE_ALGORITHM
   
@@ -813,6 +900,7 @@ static void change_ug31xx_kobj(void)
         kobject_uevent_env(&ug31_kobj->kobj, KOBJ_CHANGE, cmd2);
       }
       break;
+#ifdef FEATRUE_K_BOARD_OFFSET
     case UG31XX_KOBJ_ENV_BACKUP_BO_CHECK:
       kobject_uevent_env(&ug31_kobj->kobj, KOBJ_CHANGE, cmd4);
       break;      
@@ -821,7 +909,8 @@ static void change_ug31xx_kobj(void)
       break;      
     case UG31XX_KOBJ_ENV_BACKUP_BO_INIT:
       kobject_uevent_env(&ug31_kobj->kobj, KOBJ_CHANGE, cmd6);
-      break;      
+      break;
+#endif ///< for FEATRUE_K_BOARD_OFFSET
     default:
       break;
   }
@@ -1061,13 +1150,6 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 	if(psp == POWER_SUPPLY_PROP_TEMP)
 	{
 		val->intval = ug31->batt_temp;
-#ifdef CONFIG_PF400CG
-/* FIXME: ER1 has serious battery connector issue
-		, we need report Fake battery temperature
-*/
-		if (hwid==4)
-			val->intval = 250;
-#endif
 	}
 	if(psp == POWER_SUPPLY_PROP_TEMP_AMBIENT)
 	{
@@ -1082,6 +1164,10 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 		val->intval = ug31->batt_capacity;
 		if (ug31->batt_ntc_sts != UPI_UG31XX_NTC_NORMAL)
 			val->intval = -99;
+		if(kbo_start_flag == true)
+		{
+		  val->intval = 100;
+		}
 	}
 	if(psp == POWER_SUPPLY_PROP_VOLTAGE_NOW)
 	{
@@ -1313,7 +1399,7 @@ static void show_abnormal_batt_status(void)
 {
 	set_default_batt_status();
   
-	ug31->batt_capacity		= -99;
+	ug31->batt_capacity = 120;
 
 	GAUGE_notice("ABN STS -> V=%d(mV) C=%d(mA) T=%d-%d(0.1oC) RSOC=%d(%d)(%%) RM=%d(mAh) FCC=%d(mAh) Q=%d(mAh) STS=%d CYCLE=%d\n",
 		ug31->batt_volt,
@@ -1334,6 +1420,33 @@ static void show_default_batt_status(void)
 	set_default_batt_status();
   
 	GAUGE_notice("DEF STS -> V=%d(mV) C=%d(mA) T=%d-%d(0.1oC) RSOC=%d(%d)(%%) RM=%d(mAh) FCC=%d(mAh) Q=%d(mAh) STS=%d CYCLE=%d\n",
+		ug31->batt_volt,
+		ug31->batt_current,
+		ug31->batt_temp,
+		ug31->batt_avg_temp,
+		ug31->batt_capacity,
+		ug31->batt_capacity_real,
+		ug31->batt_charge_now,
+		ug31->batt_charge_full,
+		ug31->batt_charge_counter,
+		ug31->batt_status,
+		ug31->batt_cycle_count);
+}
+
+static void show_abnormal_batt_status_for_retry(void)
+{
+	set_default_batt_status();
+
+	if(probe_with_cable == true)
+	{
+	  ug31->batt_capacity = 0;
+	}
+  else
+  {
+	  ug31->batt_capacity = 120;
+  }
+
+	GAUGE_notice("ABN STS (retry) -> V=%d(mV) C=%d(mA) T=%d-%d(0.1oC) RSOC=%d(%d)(%%) RM=%d(mAh) FCC=%d(mAh) Q=%d(mAh) STS=%d CYCLE=%d\n",
 		ug31->batt_volt,
 		ug31->batt_current,
 		ug31->batt_temp,
@@ -1439,17 +1552,6 @@ static void show_update_batt_status(void)
 	ug31->batt_cycle_count	= ug31_module.get_cycle_count();
 	ug31->batt_ntc_sts		= ug31_module.get_ntc_status();
 	ug31->board_offset		= ug31_module.get_board_offset();
-
-	if(fix_time_60s == true)
-	{
-		ug31->polling_time = 60;
-		ug31->update_time = 60;
-	}
-	if(fix_time_2s == true)
-	{
-		ug31->polling_time = 2;
-		ug31->update_time = 2;
-	}
 
 	if(cable_status_changed > 0)
 	{
@@ -1610,18 +1712,19 @@ static void batt_info_update_work_func(struct work_struct *work)
 
 	mutex_lock(&ug31_dev->info_update_lock); 
 	#ifdef  UG31XX_SHIFT_RSOC
-	ug31_module.set_options(op_options | LKM_OPTIONS_RSOC_REMAP);  
+	  ug31_module.set_options(op_options | LKM_OPTIONS_RSOC_REMAP);  
 	#else   ///< else of UG31XX_SHIFT_RSOC
-	ug31_module.set_options(op_options);  
+	  ug31_module.set_options(op_options);  
 	#endif  ///< end of UG31XX_SHIFT_RSOC
 	if(op_options & LKM_OPTIONS_FORCE_RESET)
 	{
 		ug31_module.reset(FactoryGGBXFile);
-
-		if(kbo_file_exist == true)
-		{
-			ug31_module.set_board_offset(kbo_result, UG31XX_BOARD_OFFSET_FROM_UPI_BO);
-		}
+    #ifdef FEATRUE_K_BOARD_OFFSET
+      if(kbo_file_exist == true)
+      {
+        ug31_module.set_board_offset(kbo_result, UG31XX_BOARD_OFFSET_FROM_UPI_BO);
+      }
+    #endif ///< for FEATRUE_K_BOARD_OFFSET
 	}
 	op_options = op_options & (~LKM_OPTIONS_FORCE_RESET);
   
@@ -1744,10 +1847,14 @@ static void batt_info_update_work_func(struct work_struct *work)
 		schedule_delayed_work(&ug31_dev->batt_info_update_work, ug31_dev->update_time*HZ);
 	}
 
-	if((curr_charger_full_status == true) && 
-	   (enable_board_offset_cali_at_eoc == true) && 
-	   (ug31_dev->batt_capacity == 100) &&
-	   (kbo_file_exist == false))
+#ifdef FEATRUE_K_BOARD_OFFSET
+  if((curr_charger_full_status == true) && 
+     (enable_board_offset_cali_at_eoc == true) && 
+     (ug31_dev->batt_capacity == 100) &&
+     (kbo_file_exist == false))
+#else ///< for FEATRUE_K_BOARD_OFFSET
+  if((is_charging_full() == true) && (enable_board_offset_cali_at_eoc == true)) 
+#endif ///< for FEATRUE_K_BOARD_OFFSET
 	{
 		enable_board_offset_cali_at_eoc = false;
 		if((ug31_dev->batt_avg_temp >= UG31XX_CALI_BO_LOW_TEMP) && (ug31_dev->batt_avg_temp <= UG31XX_CALI_BO_HIGH_TEMP))
@@ -1762,11 +1869,13 @@ static void batt_info_update_work_func(struct work_struct *work)
 		}
 	}
 
+#ifdef FEATRUE_K_BOARD_OFFSET
   /// [AT-PM] : Check board offset calibration file exist ; 02/13/2014
   if(kbo_file_exist == true)
   {
     schedule_delayed_work(&ug31->kbo_check_work, UG31XX_CALI_BO_FACTORY_DELAY*HZ);
   }
+#endif ///< for FEATRUE_K_BOARD_OFFSET
 }
 
 #ifdef  UG31XX_WAIT_CHARGER_FC
@@ -1815,7 +1924,7 @@ int ug31xx_get_proc_rsoc(struct file *filp, char __user *buffer, size_t count, l
   ssize_t ret = 0;
   char *buff;
 
-  buff = kmalloc(10,GFP_KERNEL);
+  buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
   len += sprintf(buff+len, "%d\n", ug31_module.get_predict_rsoc());  
@@ -1830,7 +1939,7 @@ int ug31xx_get_proc_psoc(struct file *filp, char __user *buffer, size_t count, l
   ssize_t ret = 0;
   char *buff;
 
-  buff = kmalloc(10,GFP_KERNEL);
+  buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
   len += sprintf(buff+len, "%d\n", ug31_module.get_relative_state_of_charge());  
@@ -1845,7 +1954,7 @@ int ug31xx_get_proc_rm(struct file *filp, char __user *buffer, size_t count, lof
   ssize_t ret = 0;
   char *buff;
 
-  buff = kmalloc(10,GFP_KERNEL);
+  buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
   len += sprintf(buff+len, "%d\n", ug31_module.get_remaining_capacity());  
@@ -1860,7 +1969,7 @@ int ug31xx_get_proc_fcc(struct file *filp, char __user *buffer, size_t count, lo
   ssize_t ret = 0;
   char *buff;
 
-  buff = kmalloc(10,GFP_KERNEL);
+  buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
   len += sprintf(buff+len, "%d\n", ug31_module.get_full_charge_capacity());  
@@ -1875,7 +1984,7 @@ int ug31xx_get_proc_curr(struct file *filp, char __user *buffer, size_t count, l
   ssize_t ret = 0;
   char *buff;
 
-  buff = kmalloc(10,GFP_KERNEL);
+  buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
   len += sprintf(buff+len, "%d\n", ug31_module.get_current_now());  
@@ -1891,7 +2000,7 @@ int ug31xx_get_proc_temp(struct file *filp, char __user *buffer, size_t count, l
   ssize_t ret = 0;
   char *buff;
 
-  buff = kmalloc(10,GFP_KERNEL);
+  buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
   value = ug31_module.get_avg_external_temperature();
@@ -1901,66 +2010,7 @@ int ug31xx_get_proc_temp(struct file *filp, char __user *buffer, size_t count, l
   return ret;
 }
 
-int ug31xx_get_proc_upi_60(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
-{
-  int len = 0;
-  ssize_t ret = 0;
-  char *buff;
-
-  buff = kmalloc(10,GFP_KERNEL);
-  if(!buff)
-	return -ENOMEM;
-
-	fix_time_60s = true;
-	fix_time_2s = false;
-
-	len = 0;
-	len += sprintf(buff + len, "Fix polling time to 60 seconds\n");
-	ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
-	kfree(buff);
-	return ret;
-}
-
-int ug31xx_get_proc_upi_2(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
-{
-  int len = 0;
-  ssize_t ret = 0;
-  char *buff;
-
-  buff = kmalloc(10,GFP_KERNEL);
-  if(!buff)
-	return -ENOMEM;
-
-	fix_time_60s = false;
-	fix_time_2s = true;
-
-	len = 0;
-	len += sprintf(buff + len, "Fix polling time to 2 seconds\n");
-	ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
-	kfree(buff);
-	return ret;
-}
-
-int ug31xx_get_proc_upi_auto(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
-{
-  int len = 0;
-  ssize_t ret = 0;
-  char *buff;
-
-  buff = kmalloc(10,GFP_KERNEL);
-  if(!buff)
-	return -ENOMEM;
-
-	fix_time_60s = false;
-	fix_time_2s = false;
-
-	len = 0;
-	len += sprintf(buff + len, "Set polling time to %d(%d) seconds\n", (int)ug31->polling_time);
-	ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
-	kfree(buff);
-	return ret;
-}
-
+#ifdef FEATRUE_K_BOARD_OFFSET
 int ug31xx_get_proc_kbo_start(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
   int len = 0;
@@ -1970,6 +2020,7 @@ int ug31xx_get_proc_kbo_start(struct file *filp, char __user *buffer, size_t cou
   buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
+	kbo_start_flag = true;
 
 	stop_charging();
   
@@ -2002,6 +2053,7 @@ int ug31xx_get_proc_kbo_result(struct file *filp, char __user *buffer, size_t co
 	kobj_event_env = UG31XX_KOBJ_ENV_BACKUP_BO_WRITE; 
 	change_ug31xx_kobj();
 
+	kbo_start_flag = false;
 	len = 0;
 	len += sprintf(buff + len, "Board offset = %d.\n", kbo_result);
 	ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
@@ -2023,12 +2075,14 @@ int ug31xx_get_proc_kbo_stop(struct file *filp, char __user *buffer, size_t coun
   
 	cancel_delayed_work_sync(&ug31->kbo_work);
 
+	kbo_start_flag = false;
 	len = 0;
 	len += sprintf(buff + len, "Stop board offset calibration.\n");
 	ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
 	kfree(buff);
 	return (ret);
 }
+#endif ///< for FEATRUE_K_BOARD_OFFSET
 #endif  ///< end of UG31XX_PROC_DEV
 
 #if defined(CONFIG_HAS_EARLYSUSPEND) && defined(UG31XX_EARLY_SUSPEND)
@@ -2293,6 +2347,7 @@ static void shell_algorithm_work_func(struct work_struct *work)
 	user_space_algorithm_response = true;
 }
 
+#ifdef FEATRUE_K_BOARD_OFFSET
 /**
  *	@brief kbo_work_func
  *
@@ -2338,6 +2393,82 @@ static void kbo_check_work_func(struct work_struct *work)
   }
   change_ug31xx_kobj();
 }
+#endif ///< for FEATRUE_K_BOARD_OFFSET
+
+/**
+ * @brief batt_reinitial_work_func
+ *
+ *  Retry to initial or reset gauge
+ *
+ * @para  work  address of struct work_struct
+ * @return  NULL
+ */
+static void batt_reinitial_work_func(struct work_struct *work)
+{
+	int rtn;
+  if(retry_cnt % UG31XX_RETRY_TIME != 0)
+  {
+    GAUGE_info("[%s] initial, retry count = %d\n", __func__, retry_cnt);
+    rtn = ug31_module.initial(FactoryGGBXFile, ((probe_with_cable == true) ? UG31XX_CABLE_IN : UG31XX_CABLE_OUT));
+    if(rtn != 0)
+    {
+      start_charging();
+      schedule_delayed_work(&ug31->batt_retry_work, UG31XX_RETRY_DELAY_TIME*HZ);
+    }
+    else
+    {
+      schedule_delayed_work(&ug31->batt_probe_work, 0*HZ);
+    }
+  }
+  else
+  {
+    GAUGE_info("[%s] reset, retry count = %d\n", __func__, retry_cnt);
+    rtn = ug31_module.reset(FactoryGGBXFile);
+    if(rtn != 0)
+    {
+      start_charging();
+      schedule_delayed_work(&ug31->batt_retry_work, UG31XX_RETRY_DELAY_TIME*HZ);
+    }
+    else
+    {
+      schedule_delayed_work(&ug31->batt_probe_work, 0*HZ);
+    }
+  }
+  retry_cnt++;
+}
+
+/**
+ * @brief batt_retry_work_func
+ *
+ *  Retry to initial gauge
+ *
+ * @para  work  address of struct work_struct
+ * @return  NULL
+ */
+static void batt_retry_work_func(struct work_struct *work)
+{
+#ifdef  UG31XX_PROBE_CHARGER_OFF
+  
+  probe_with_cable = is_charging();
+
+  if(probe_with_cable == true)
+  {
+    schedule_delayed_work(&ug31->batt_reinitial_work, UG31XX_PROBE_CHARGER_OFF_DELAY*HZ);
+    GAUGE_info("[%s] Wait %d seconds to register driver %s\n", __func__, UG31XX_PROBE_CHARGER_OFF_DELAY, ug31->client->name);
+    stop_charging();
+  }
+  else
+  {
+    schedule_delayed_work(&ug31->batt_reinitial_work, 0*HZ);
+    GAUGE_info("[%s] No wait because not in charging\n", __func__);
+  }
+  
+#else   ///< else of UG31XX_PROBE_CHARGER_OFF
+  
+  schedule_delayed_work(&ug31->batt_reinitial_work, 0*HZ);
+  
+#endif  ///< end of UG31XX_PROBE_CHARGER_OFF
+}
 
 /**
  * @brief batt_probe_work_func
@@ -2353,13 +2484,6 @@ static void batt_probe_work_func(struct work_struct *work)
 #ifdef UG31XX_PROC_DEV	
 	struct proc_dir_entry *ent;
 #endif  ///< end of UG31XX_PROC_DEV
-
-#ifdef CONFIG_PF400CG
-	if (!hwid) {
-		op_options = op_options | LKM_OPTIONS_ENABLE_REVERSE_CURRENT;
-		GAUGE_info("[%s] LKM_OPTIONS_ENABLE_REVERSE_CURRENT\n", __func__);
-	}
-#endif	///< end of CONFIG_PF400CG
 
 	#ifdef  UG31XX_SHIFT_RSOC
 	ug31_module.set_options(op_options | LKM_OPTIONS_RSOC_REMAP);  
@@ -2410,8 +2534,10 @@ static void batt_probe_work_func(struct work_struct *work)
 	INIT_DELAYED_WORK(&ug31->shell_algorithm_work, shell_algorithm_work_func);
 	INIT_DELAYED_WORK(&ug31->shell_backup_work, shell_backup_work_func);
 	INIT_DELAYED_WORK(&ug31->shell_timeout_work, shell_timeout_work_func);
+#ifdef FEATRUE_K_BOARD_OFFSET
 	INIT_DELAYED_WORK(&ug31->kbo_work, kbo_work_func);
 	INIT_DELAYED_WORK(&ug31->kbo_check_work, kbo_check_work_func);
+#endif ///< for FEATRUE_K_BOARD_OFFSET
 
 	if(ug31xx_powersupply_init(ug31->client))
 	{
@@ -2454,15 +2580,6 @@ static void batt_probe_work_func(struct work_struct *work)
 	static struct file_operations Aug31xx_get_proc_curr = {
 	    .read = ug31xx_get_proc_curr,
 	};
-	static struct file_operations Aug31xx_get_proc_upi_60 = {
-	    .read = ug31xx_get_proc_upi_60,
-	};
-	static struct file_operations Aug31xx_get_proc_upi_2 = {
-	    .read = ug31xx_get_proc_upi_2,
-	};
-	static struct file_operations Aug31xx_get_proc_upi_auto = {
-	    .read = ug31xx_get_proc_upi_auto,
-	};
 	static struct file_operations Aug31xx_get_proc_temp = {
 	    .read = ug31xx_get_proc_temp,
 	};
@@ -2501,26 +2618,12 @@ static void batt_probe_work_func(struct work_struct *work)
 	{
 		GAUGE_err("create /proc/bat_current fail\n");
 	}
-	ent = proc_create("upi_60", 0744, NULL, &Aug31xx_get_proc_upi_60);
-	if(!ent)
-	{
-		GAUGE_err("create /proc/upi_60 fail\n");
-	}
-	ent = proc_create("upi2", 0744, NULL, &Aug31xx_get_proc_upi_2);
-	if(!ent)
-	{
-		GAUGE_err("create /proc/upi2 fail\n");
-	}
-	ent = proc_create("upi_auto", 0744, NULL, &Aug31xx_get_proc_upi_auto);
-	if(!ent)
-	{
-		GAUGE_err("create /proc/upi_auto fail\n");
-	}
 	ent = proc_create("driver/BatTemp", 0744, NULL, &Aug31xx_get_proc_temp);
 	if(!ent)
 	{
 		GAUGE_err("create /proc/driver/BatTemp fail\n");
 	}
+#ifdef FEATRUE_K_BOARD_OFFSET
 	ent = proc_create("kbo_start", 0744, NULL, &Aug31xx_get_proc_kbo_start);
 	if(!ent)
 	{
@@ -2536,6 +2639,7 @@ static void batt_probe_work_func(struct work_struct *work)
 	{
 		GAUGE_err("create /proc/kbo_stop fail\n");
 	}
+#endif ///< for FEATRUE_K_BOARD_OFFSET
 #endif	///< end of UG31XX_PROC_DEV
 
 	/* request charger driver to update "power supply changed" */
@@ -2571,6 +2675,13 @@ static void batt_probe_work_func(struct work_struct *work)
 pwr_supply_fail:
 	start_charging();
 	kfree(ug31);
+	return;
+
+initial_fail:
+  show_abnormal_batt_status_for_retry();
+  start_charging();
+  ug31xx_powersupply_init(ug31->client);
+  schedule_delayed_work(&ug31->batt_retry_work, UG31XX_RESET_DELAY_TIME*HZ);
 }
 
 //tan static __devinit int ug31xx_i2c_probe(struct i2c_client *client,
@@ -2612,6 +2723,9 @@ static int ug31xx_i2c_probe(struct i2c_client *client,
 #endif ///< end of UG31XX_WAKEUP_ALARM
 	//INIT_DELAYED_WORK_DEFERRABLE(&ug31->batt_probe_work, batt_probe_work_func);
 	INIT_DELAYED_WORK(&ug31->batt_probe_work, batt_probe_work_func); //tan
+  INIT_DELAYED_WORK(&ug31->batt_retry_work, batt_retry_work_func);
+	INIT_DELAYED_WORK(&ug31->batt_reinitial_work, batt_reinitial_work_func);
+
 #ifdef  UG31XX_PROBE_CHARGER_OFF
 	probe_with_cable = is_charging();
 	if(probe_with_cable == true)
@@ -2673,12 +2787,11 @@ static  int ug31xx_i2c_remove(struct i2c_client *client)
 	remove_proc_entry( "RM",NULL );
 	remove_proc_entry( "FCC",NULL );
 	remove_proc_entry( "bat_current",NULL );  
-	remove_proc_entry( "upi_60", NULL );
-	remove_proc_entry( "upi2", NULL );
-	remove_proc_entry( "upi_auto", NULL );
+#ifdef FEATRUE_K_BOARD_OFFSET
 	remove_proc_entry( "kbo_start", NULL );
 	remove_proc_entry( "kbo_result", NULL );
 	remove_proc_entry( "kbo_stop", NULL );
+#endif ///< for FEATRUE_K_BOARD_OFFSET
 
 	#endif	///< end of UG31XX_PROC_DEV
 
@@ -2913,7 +3026,10 @@ static void ug31xx_i2c_shutdown(struct i2c_client *client)
 	cancel_delayed_work_sync(&ug31->shell_algorithm_work);
 	cancel_delayed_work_sync(&ug31->shell_backup_work);
 	cancel_delayed_work_sync(&ug31->shell_timeout_work);
-
+#ifdef FEATRUE_K_BOARD_OFFSET
+	cancel_delayed_work_sync(&ug31->kbo_work);
+	cancel_delayed_work_sync(&ug31->kbo_check_work);
+#endif ///< for FEATRUE_K_BOARD_OFFSET
 	mutex_lock(&ug31->info_update_lock);
 	gg_status = ug31_module.shutdown();
 	if(gg_status == 0)

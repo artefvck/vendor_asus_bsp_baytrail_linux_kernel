@@ -151,6 +151,7 @@ typedef struct ADC_CHECK
 {
 	_upi_u16_ regCounter;	        //check adc counter
 	_upi_u16_ regVbat1Ave;      //check average voltage
+	_upi_u16_ regITAve;
 	_upi_u16_ lastCounter;
   _upi_u16_ lastVBat1Ave;
   _upi_u16_ failCounterCurrent;

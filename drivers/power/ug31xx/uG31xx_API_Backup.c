@@ -11,11 +11,21 @@
  *  Backup data on uG31xx to a file in system
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 16 $
+ * @revision  $Revision: 53 $
  */
 
 #include "stdafx.h"     //windows need this??
 #include "uG31xx_API.h"
+
+#ifdef  uG31xx_OS_WINDOWS
+
+  #define BACKUP_VERSION      (_T("Backup $Rev: 53 $ "))
+
+#else   ///< else of uG31xx_OS_WINDOWS
+
+  #define BACKUP_VERSION      ("Backup $Rev: 53 $ ")
+
+#endif  ///< end of uG31xx_OS_WINDOWS
 
 #define UG31XX_BACKUP_FILE_ENABLE
 
@@ -430,6 +440,9 @@ _backup_bool_ UpiRestoreData(BackupDataType *data)
   if(rtn == _UPI_FALSE_)
   {
     UG31_LOGE("[%s]: Read data from backup file fail.\n", __func__);
+    #ifdef  UG31XX_SHELL_ALGORITHM
+      upi_free(orgSysData);
+    #endif  ///< end of UG31XX_SHELL_ALGORITHM
     return (BACKUP_BOOL_FALSE);
   }
   driverVer = ConvertData(data);
@@ -451,6 +464,9 @@ _backup_bool_ UpiRestoreData(BackupDataType *data)
       data->sysData->rsocFromIC = orgSysData->rsocFromIC;
     }
   }
+  #ifdef  UG31XX_SHELL_ALGORITHM
+    upi_free(orgSysData);
+  #endif  ///< end of UG31XX_SHELL_ALGORITHM
   return (BACKUP_BOOL_TRUE);
 }
 
@@ -693,6 +709,19 @@ void UpiBackupVoltage(BackupDataType *data)
   data->backupVolt2 = data->backupVolt1;
   data->backupDeltaQ = 0;
   UG31_LOGI("[%s]: Update backup voltage point 2 = %d (%d)\n", __func__, data->backupVolt1, data->backupDeltaQ);
+}
+
+/**
+ * @brief UpiPrintBackupVersion
+ *
+ *  Print backup module version
+ *
+ * @return  NULL
+ */
+void UpiPrintBackupVersion(void)
+{
+  UG31_LOGE("[%s]: %s\n", __func__,
+            BACKUP_VERSION);
 }
 
 
