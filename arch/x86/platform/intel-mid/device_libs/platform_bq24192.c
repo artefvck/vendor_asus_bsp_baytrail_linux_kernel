@@ -27,6 +27,7 @@
 #include "platform_bq24192.h"
 #include <linux/usb/otg.h>
 #include <asm/intel_em_config.h>
+#include <asm/intel_vlv2.h>
 
 #define FPO_OVERRIDE_BIT	(1 << 1)
 
@@ -475,7 +476,7 @@ static int platform_get_irq_number(void)
 {
 	int irq;
 	pr_debug("%s:\n", __func__);
-	irq = gpio_to_irq(CHGR_INT_N);
+	irq = VV_PMIC_IRQBASE+4;
 	pr_debug("%s:%d:irq = %d\n", __func__, __LINE__, irq);
 	return irq;
 }
