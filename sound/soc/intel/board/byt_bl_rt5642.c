@@ -603,14 +603,18 @@ static int Int_Mic_event(struct snd_soc_dapm_widget *w,
 		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1fa7);
 		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x20ce);
 		snd_soc_write(codec, RT5640_DRC_AGC_1, 0xc206);
+#else
+		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1fa8);
+		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x20ce);
+		snd_soc_write(codec, RT5640_DRC_AGC_1, 0xc206);
 #endif
 	}else if(SND_SOC_DAPM_EVENT_OFF(event))
 	{
-#ifdef CONFIG_ME176C_CODEC_PARAMETER
+//#ifdef CONFIG_ME176C_CODEC_PARAMETER
 		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1f00);
 		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x0000);
 		snd_soc_write(codec, RT5640_DRC_AGC_1, 0x2206);
-#endif
+//#endif
 	}
 	
 	return 0;
@@ -629,14 +633,18 @@ static int Headset_Mic_event(struct snd_soc_dapm_widget *w,
 		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1fa6);
 		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x20ce);
 		snd_soc_write(codec, RT5640_DRC_AGC_1, 0xc206);
+#else
+		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1fa5);
+		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x20ce);
+		snd_soc_write(codec, RT5640_DRC_AGC_1, 0xc206);
 #endif
 	}else if(SND_SOC_DAPM_EVENT_OFF(event))
 	{
-#ifdef CONFIG_ME176C_CODEC_PARAMETER
+//#ifdef CONFIG_ME176C_CODEC_PARAMETER
 		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1f00);
 		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x0000);
 		snd_soc_write(codec, RT5640_DRC_AGC_1, 0x2206);
-#endif
+//#endif
 	}
 	
 	return 0;
