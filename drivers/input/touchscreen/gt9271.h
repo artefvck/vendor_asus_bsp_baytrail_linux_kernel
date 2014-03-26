@@ -57,14 +57,20 @@
 #define GTP_SLIDE_WAKEUP      0
 #define GTP_DBL_CLK_WAKEUP    0    // double-click wakeup, function together with GTP_SLIDE_WAKEUP
 
-#define GTP_DEBUG_ON          1
+#define GTP_DEBUG_ON          0
 #define GTP_DEBUG_ARRAY_ON    0
 #define GTP_DEBUG_FUNC_ON     0
 
-//add for factory test tool
-#define GTP_OPENSHORT_TEST	1
-#define AREA_ACCORD_CHECK		1
-#define ALL_ACCORD_CHECK		1
+#if IS_ENABLED(CONFIG_FACTORY_ITEMS)
+	//add for factory test tool
+	#define GTP_OPENSHORT_TEST	1
+	#define AREA_ACCORD_CHECK		1
+	#define ALL_ACCORD_CHECK		1
+#else
+	#define GTP_OPENSHORT_TEST	0
+	#define AREA_ACCORD_CHECK		0
+	#define ALL_ACCORD_CHECK		0
+#endif
 
 #if GTP_COMPATIBLE_MODE
 typedef enum
