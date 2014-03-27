@@ -170,7 +170,7 @@ int crystal_cove_vbus_on_status(void)
 	return 0;
 }
 EXPORT_SYMBOL(crystal_cove_vbus_on_status);
-extern unsigned char VbusDetach ; 
+extern unsigned char volatile VbusDetach ; 
 extern unsigned char vbus_Event ; 
 static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 {
