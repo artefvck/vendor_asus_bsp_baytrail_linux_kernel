@@ -887,6 +887,7 @@ static struct proc_dir_entry *panel_type_proc_file;
 static ssize_t panel_type_proc_read(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
 	u8 panel_type = 1;
+	u8 project_stage = 0;
 	ssize_t ret = 0;
 	char *buff;
 	int desc = 0;
@@ -900,7 +901,16 @@ static ssize_t panel_type_proc_read(struct file *filp, char __user *buffer, size
 		return -ENOMEM;
 	}
 
-	panel_type = intel_mid_pmic_readb(0x38);//GPIOxxxCTLI GPIO0P5  /PCB_ID5  //ME176C(GPIO0P5=0)/ME176CX(GPIO0P5=1)
+	project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+
+	if(project_stage) //PR
+	{
+		panel_type = intel_mid_pmic_readb(0x45);//GPIOxxxCTLI GPIO1P2  /PCB_ID5  //ME176C(GPIO1P2=0)/ME176CX(GPIO1P2=1)
+	}
+	else //ER
+	{
+		panel_type = intel_mid_pmic_readb(0x38);//GPIOxxxCTLI GPIO0P5  /PCB_ID5  //ME176C(GPIO0P5=0)/ME176CX(GPIO0P5=1)
+	}
 
 	if(panel_type)
 	{
