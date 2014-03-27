@@ -206,7 +206,7 @@ static ssize_t show_action_status(struct device *dev,
 	if(!hall_sensor_dev)
 		return sprintf(buf, "Hall sensor does not exist!\n");
 #ifdef CONFIG_INPUT_SENSOR_ME181
-	return sprintf(buf, "%d\n", ((gpio_get_value(hall_sensor_dev->gpio)>0)&&(hall_get_din()>0))?1:0);
+	return sprintf(buf, "%d\n", (gpio_get_value(hall_sensor_dev->gpio)>0)?1:0);
 #else
 	switch(board_id)
 	{
@@ -243,7 +243,6 @@ static ssize_t store_hall_sensor_enable(struct device *dev,
 		down(&hall_sensor_dev->sema) ;
 		if (hall_sensor_dev->enable==0){
 #ifdef CONFIG_INPUT_SENSOR_ME181
-			enable_irq(hall_sensor_dev->irq_pmic);
 			enable_irq(hall_sensor_dev->irq_gpio);
 #else
 			switch(board_id){	
@@ -258,7 +257,6 @@ static ssize_t store_hall_sensor_enable(struct device *dev,
 		}
 		else if (hall_sensor_dev->enable==1){
 #ifdef CONFIG_INPUT_SENSOR_ME181	
-			disable_irq(hall_sensor_dev->irq_pmic);
 			disable_irq(hall_sensor_dev->irq_gpio);
 #else
 			switch(board_id){	
@@ -422,27 +420,7 @@ static int set_irq_hall_sensor(void)
 */
 	enable_irq_wake(hall_sensor_dev->irq_gpio);
 //	enable_irq(hall_sensor_dev->irq_gpio) ;
-	hall_sensor_dev->irq_pmic = platform_get_irq(pdev,0);
-	p_debug("\n[%s]hall_sensor_probe!hall_sensor_dev->irq_pmic:%d\n",
-			DRIVER_NAME,hall_sensor_dev->irq_pmic);	
-//	disable_irq(hall_sensor_dev->irq_pmic) ;
-	rc = request_threaded_irq(hall_sensor_dev->irq_pmic,
-			NULL,
-			hall_pmic_interrupt_handler,
-			IRQF_ONESHOT,
-			"hall_pmic_irq",
-			hall_sensor_dev);
-	if(rc){
-		p_debug("[%s] Could not register for hall sensor interrupt, irq_pmic = %d, rc = %d\n", DRIVER_NAME,hall_sensor_dev->irq_pmic,rc);
-		rc = -EIO;
-		goto err_pmic_request_irq_fail ;
-	}
-	enable_irq_wake(hall_sensor_dev->irq_pmic);
-	//enable_irq(hall_sensor_dev->irq_pmic) ;
-
 	return 0 ;
-		free_irq(hall_sensor_dev->irq_pmic, hall_sensor_dev);
-err_pmic_request_irq_fail:
 		free_irq(hall_sensor_dev->irq_gpio, hall_sensor_dev);	
 err_gpio_request_irq_fail:
 		gpio_free(hall_sensor_dev->gpio) ;	
@@ -626,6 +604,8 @@ static int lid_probe(struct platform_device *pdev){
 	}
 	sema_init(&hall_sensor_dev->sema,1) ;
 	hall_sensor_dev->enable = 1;	
+	hall_sensor_dev->irq_gpio = 0 ;
+	hall_sensor_dev->irq_pmic = 0 ;
 	//create input_dev
 	hall_sensor_dev->lid_indev = NULL;
 	ret = lid_input_device_create();
