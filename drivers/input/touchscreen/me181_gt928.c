@@ -1315,7 +1315,7 @@ static s32 gtp_init_panel(struct goodix_ts_data *ts)
             if (opr_buf[0] < 90)    
             {
                 grp_cfg_version = send_cfg_buf[sensor_id][0];       // backup group config version
-                send_cfg_buf[sensor_id][0] = 0x00;
+                //send_cfg_buf[sensor_id][0] = 0x00;
                 ts->fixed_cfg = 0;
             }
             else        // treated as fixed config, not send config
