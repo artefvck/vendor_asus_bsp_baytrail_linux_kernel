@@ -528,12 +528,12 @@ void intel_panel_actually_set_mipi_backlight(struct drm_device *dev, u32 level)
 
 #ifdef CONFIG_CRYSTAL_COVE
 
+u32 max = intel_panel_get_max_backlight(dev);
+
 #ifdef CONFIG_PRO_ME181_PANEL
 	int err = 0;
 	int lcm_id = 0;
-	u32 max = intel_panel_get_max_backlight(dev);
 	int project_stage = 0;
-
 	err = gpio_request(68, "LCM_ID");
 	if (err){
 		printk("%s:----sean test----%d\n", __func__,__LINE__);
