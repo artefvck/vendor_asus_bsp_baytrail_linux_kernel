@@ -41,6 +41,13 @@
 #include <linux/acpi.h>
 #include <linux/gpio.h>
 
+#define DEBUG 1
+#if DEBUG
+	#define sean_debug(x...) printk(x)
+#else
+	#define sean_debug(x...) do {} while(0)
+#endif
+
 #define PCI_LBPC 0xf4 /* legacy/combination backlight modes */
 
 void
@@ -520,10 +527,13 @@ void intel_panel_actually_set_mipi_backlight(struct drm_device *dev, u32 level)
 {
 
 #ifdef CONFIG_CRYSTAL_COVE
+
+u32 max = intel_panel_get_max_backlight(dev);
+
+#ifdef CONFIG_PRO_ME181_PANEL
 	int err = 0;
 	int lcm_id = 0;
-	u32 max = intel_panel_get_max_backlight(dev);
-
+	int project_stage = 0;
 	err = gpio_request(68, "LCM_ID");
 	if (err){
 		printk("%s:----sean test----%d\n", __func__,__LINE__);
@@ -533,7 +543,7 @@ void intel_panel_actually_set_mipi_backlight(struct drm_device *dev, u32 level)
 
 	gpio_free(68);
 
-
+#endif
 
 	if (BYT_CR_CONFIG) {
 		/* FixMe: if level is zero still a pulse is observed consuming
@@ -542,23 +552,32 @@ void intel_panel_actually_set_mipi_backlight(struct drm_device *dev, u32 level)
 		lpio_bl_write_bits(0, LPIO_PWM_CTRL, (0xff - level), 0xFF);
 		lpio_bl_update(0, LPIO_PWM_CTRL);
 	} else{
-		//intel_mid_pmic_writeb(0x4E, level*0xff/max);
 #ifdef CONFIG_PRO_ME181_PANEL
-		if(lcm_id)
+
+		project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+		if(project_stage) //PR
 		{
 			intel_mid_pmic_writeb(0x4E, level*0xff/max);
-			printk("%s:----sean test----%d\n", __func__,__LINE__);
+			sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
 		}
-		else
+		else //ER
 		{
-			level = level*0xff/max;
-			level = (level+45)*(level+45) / (300*300/204); //max is 80%
-			intel_mid_pmic_writeb(0x4E, level);
-			printk("%s:----sean test----%d\n", __func__,__LINE__);
+			if(lcm_id) //AUO
+			{
+				intel_mid_pmic_writeb(0x4E, level*0xff/max);
+				sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
+			}
+			else //INX
+			{
+				level = level*0xff/max;
+				level = (level+45)*(level+45) / (300*300/204); //max is 80%
+				intel_mid_pmic_writeb(0x4E, level);
+				sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
+			}
 		}
 #else
 	intel_mid_pmic_writeb(0x4E, level*0xff/max);
-
+	sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
 #endif
 	}
 #else
@@ -621,10 +640,10 @@ void intel_panel_disable_backlight(struct drm_device *dev)
 			lpio_bl_write_bits(0, LPIO_PWM_CTRL, 0x00, 0x80000000);
 		} else {
 			intel_mid_pmic_writeb(0x51, 0x00);
-			printk("%s:----sean test----BL_EN set low----%d\n", __func__,__LINE__);
-			printk("%s:----sean test----auo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,intel_mid_pmic_readb(0x52));
+			sean_debug("%s:----sean test----BL_EN set low----%d\n", __func__,__LINE__);
+			sean_debug("%s:----sean test----auo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,intel_mid_pmic_readb(0x52));
 			//intel_mid_pmic_writeb(0x52, 0x00); //sean --
-			//printk("%s:----sean test----panel 3.3V set low----%d\n", __func__,__LINE__);
+			//sean_debug("%s:----sean test----%d\n", __func__,__LINE__);("%s:----sean test----panel 3.3V set low----%d\n", __func__,__LINE__);
 			//intel_mid_pmic_writeb(0x4B, 0x7F);
 			//pbtest set pwm0clk 23.437kHz 20140207
 			intel_mid_pmic_writeb(0x4B, 0x00);
@@ -697,7 +716,7 @@ void intel_panel_enable_backlight(struct drm_device *dev,
 			intel_mid_pmic_writeb(0x4B, 0x80);
 			intel_mid_pmic_writeb(0x4E, 0xFF);
 			intel_mid_pmic_writeb(0x51, 0x01);
-			printk("%s:----sean test----BL_EN set high----%d\n", __func__,__LINE__);
+			sean_debug("%s:----sean test----BL_EN set high----%d\n", __func__,__LINE__);
 #if 0
 			/* Control Backlight Slope programming for LP8556 IC*/
 			if (lpdata) {

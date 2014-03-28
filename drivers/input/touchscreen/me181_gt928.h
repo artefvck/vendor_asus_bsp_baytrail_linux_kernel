@@ -35,14 +35,13 @@
 #include <linux/earlysuspend.h>
 #include <linux/slab.h>
 
-
 //***************************PART1:ON/OFF define*******************************
 #define GTP_CUSTOM_CFG        0
 #define GTP_CHANGE_X2Y        0
 #define GTP_DRIVER_SEND_CFG   1
 #define GTP_HAVE_TOUCH_KEY    0
 #define GTP_POWER_CTRL_SLEEP  1
-#define GTP_ICS_SLOT_REPORT   0 
+#define GTP_ICS_SLOT_REPORT   0
 
 #define GTP_AUTO_UPDATE       1    // auto update fw by .bin file as default
 #define GTP_HEADER_FW_UPDATE  1    // auto update fw by gtp_default_FW in gt9xx_firmware.h, function together with GTP_AUTO_UPDATE
@@ -52,10 +51,11 @@
 
 #define GTP_CREATE_WR_NODE    1
 #define GTP_ESD_PROTECT       1    // esd protection with a cycle of 2 seconds
-#define GTP_WITH_PEN          0
 
-#define GTP_SLIDE_WAKEUP      0
-#define GTP_DBL_CLK_WAKEUP    0    // double-click wakeup, function together with GTP_SLIDE_WAKEUP
+#define GTP_WITH_PEN          0
+#define GTP_PEN_HAVE_BUTTON   0    // active pen has buttons, function together with GTP_WITH_PEN
+
+#define GTP_GESTURE_WAKEUP    0    // gesture wakeup
 
 #define GTP_DEBUG_ON          0
 #define GTP_DEBUG_ARRAY_ON    0
@@ -91,6 +91,10 @@ struct goodix_ts_data {
     u8  fw_error;
     u8  pnl_init_error;
     
+#if GTP_WITH_PEN
+    struct input_dev *pen_dev;
+#endif
+
 #if GTP_ESD_PROTECT
     spinlock_t esd_lock;
     u8  esd_running;
@@ -127,7 +131,6 @@ extern u16 total_len;
 // The predefined one is just a sample config, which is not suitable for your tp in most cases.
 #define CTP_CFG_GROUP1 {\
     }
-
     
 // TODO: define your config for Sensor_ID == 1 here, if needed
 #define CTP_CFG_GROUP2 {\
@@ -158,15 +161,14 @@ extern u16 total_len;
 	0x04,0x06,0x07,0x08,0x0A,0x0C,0x0D,0x0E,0x0F,0x10,\
 	0x11,0x12,0x13,0x14,0x00,0x00,0x00,0x00,0x00,0x00,\
 	0x00,0x00,0x00,0x00,0xC9,0x01\
-    }
-
+}
 // TODO: define your config for Sensor_ID == 4 here, if needed
 #define CTP_CFG_GROUP5 {\
     }
 
 // TODO: define your config for Sensor_ID == 5 here, if needed
 #define CTP_CFG_GROUP6 {\
-	0x00,0x20,0x03,0x00,0x05,0x0A,0x35,0x00,0x01,0x08,\
+0x00,0x20,0x03,0x00,0x05,0x0A,0x35,0x00,0x01,0x08,\
 	0x1E,0x09,0x50,0x3C,0x04,0x04,0x00,0x00,0x00,0x00,\
 	0x00,0x00,0x00,0x15,0x17,0x18,0x14,0x90,0x30,0xCC,\
 	0x2B,0x2D,0x33,0x0F,0x00,0x00,0x00,0x02,0x03,0x1D,\
@@ -266,7 +268,7 @@ extern u16 total_len;
 // STEP_2(REQUIRED): Customize your I/O ports & I/O operations
 #define GTP_RST_PORT    60
 #define GTP_INT_PORT    158
-#define GTP_INT_IRQ     158
+#define GTP_INT_IRQ     gpio_to_irq(GTP_INT_PORT)
 #define GTP_INT_CFG     0
 
 #define GTP_GPIO_AS_INPUT(pin)          do{\
@@ -299,8 +301,9 @@ extern u16 total_len;
 #endif
 
 //***************************PART3:OTHER define*********************************
-#define GTP_DRIVER_VERSION    "V2.0<2013/08/28>"
-#define GTP_I2C_NAME          "Goodix-TS"
+#define GTP_DRIVER_VERSION          "V2.2<2014/01/14>"
+#define GTP_I2C_NAME                "Goodix-TS"
+#define GT91XX_CONFIG_PROC_FILE     "gt9xx_config"
 #define GTP_POLL_TIME         10    
 #define GTP_ADDR_LENGTH       2
 #define GTP_CONFIG_MIN_LENGTH 186

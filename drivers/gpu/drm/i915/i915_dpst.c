@@ -36,6 +36,15 @@
 #include <linux/acpi.h>
 #include <linux/gpio.h>
 
+
+#include "linux/mfd/intel_mid_pmic.h"
+#define DEBUG 1
+#if DEBUG
+	#define sean_debug(x...) printk(x)
+#else
+	#define sean_debug(x...) do {} while(0)
+#endif
+
 /*
  * DPST (Display Power Savings Technology) is a power savings features
  * which reduces the backlight while enhancing the image such that the
@@ -214,6 +223,7 @@ i915_dpst_init(struct drm_device *dev,
 #ifdef CONFIG_PRO_ME181_PANEL
 	int err = 0;
 	int lcm_id = 0;
+	int project_stage = 0;
 #endif
 
 	u32 blm_hist_guard, gb_val;
@@ -256,19 +266,29 @@ i915_dpst_init(struct drm_device *dev,
 
 	gpio_free(68);
 
-	if(lcm_id)
+	project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+
+	if(project_stage) //PR
 	{
 		i915_dpst_enable_hist_interrupt(dev);
-		printk("%s:----sean test----%d\n", __func__,__LINE__);
+		sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
 	}
-	else
+	else //ER
 	{
-		i915_dpst_disable_hist_interrupt(dev);
-		printk("%s:----sean test----%d\n", __func__,__LINE__);
+		if(lcm_id) //AUO
+		{
+			i915_dpst_enable_hist_interrupt(dev);
+			sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
+		}
+		else //INX
+		{
+			i915_dpst_disable_hist_interrupt(dev);
+			sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
+		}
 	}
-	//i915_dpst_enable_hist_interrupt(dev);
 #else
 	i915_dpst_enable_hist_interrupt(dev);
+	sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
 #endif
 
 
