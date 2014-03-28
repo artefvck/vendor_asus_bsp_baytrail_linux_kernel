@@ -1327,7 +1327,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		tunables->go_hispeed_load = DEFAULT_GO_HISPEED_LOAD;
 		tunables->target_loads = default_target_loads;
 		tunables->ntarget_loads = ARRAY_SIZE(default_target_loads);
-		tunables->min_sample_time = 200 * USEC_PER_MSEC;;
+		tunables->min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
 		tunables->timer_rate = DEFAULT_TIMER_RATE;
 		tunables->boostpulse_duration_val = DEFAULT_MIN_SAMPLE_TIME;
 		tunables->touchboostpulse_duration_val =

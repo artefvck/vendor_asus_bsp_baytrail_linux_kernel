@@ -71,13 +71,18 @@
 
 #define BYT_JD_INTR_DEBOUNCE            0
 #define BYT_CODEC_INTR_DEBOUNCE         0
-#define BYT_HS_INSERT_DET_DELAY         500
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+	#define BYT_HS_INSERT_DET_DELAY         1000
+	#define BYT_HS_DET_RETRY_COUNT          4
+#else
+	#define BYT_HS_INSERT_DET_DELAY         500
+	#define BYT_HS_DET_RETRY_COUNT          6
+#endif
 #define BYT_HS_REMOVE_DET_DELAY         500
 #define BYT_BUTTON_DET_DELAY            100
 #define BYT_HS_DET_POLL_INTRVL          100
 #define BYT_BUTTON_EN_DELAY             1500
 
-#define BYT_HS_DET_RETRY_COUNT          6
 #define ME176C_BOARD_ER				0
 #define ME176C_BOARD_PR				1
 

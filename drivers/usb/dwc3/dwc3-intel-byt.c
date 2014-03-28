@@ -761,8 +761,8 @@ cleanup:
 	return type;
 }
 //--------------2014-1-1--------tan--
-static int Power_State = POWER_SUPPLY_CHARGER_TYPE_NONE;
-unsigned char PowerStateOk;
+volatile int Power_State = POWER_SUPPLY_CHARGER_TYPE_NONE;
+unsigned char volatile PowerStateOk;
 static enum power_supply_charger_cable_type
 			dwc3_intel_byt_get_charger_type_asus(struct dwc_otg2 *otg)
 {
