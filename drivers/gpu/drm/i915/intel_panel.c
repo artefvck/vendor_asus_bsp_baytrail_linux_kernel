@@ -527,6 +527,8 @@ void intel_panel_actually_set_mipi_backlight(struct drm_device *dev, u32 level)
 {
 
 #ifdef CONFIG_CRYSTAL_COVE
+
+#ifdef CONFIG_PRO_ME181_PANEL
 	int err = 0;
 	int lcm_id = 0;
 	u32 max = intel_panel_get_max_backlight(dev);
@@ -541,7 +543,7 @@ void intel_panel_actually_set_mipi_backlight(struct drm_device *dev, u32 level)
 
 	gpio_free(68);
 
-
+#endif
 
 	if (BYT_CR_CONFIG) {
 		/* FixMe: if level is zero still a pulse is observed consuming
