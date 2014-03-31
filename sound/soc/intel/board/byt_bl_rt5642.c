@@ -60,10 +60,8 @@
 #include <asm/uaccess.h>
 #endif
 //terry_tao@asus.com-- audio debug mode
-#ifdef CONFIG_ME176C_CODEC_PARAMETER
 #include <asm/intel_vlv2.h>
 #define CODEC_RESET_N   (VV_NGPIO_SCORE + 16)	
-#endif
 
 #define BYT_PLAT_CLK_3_HZ	25000000
 #define BYT_CODEC_GPIO_IDX      0
@@ -83,8 +81,8 @@
 #define BYT_HS_DET_POLL_INTRVL          100
 #define BYT_BUTTON_EN_DELAY             1500
 
-#define ME176C_BOARD_ER				0
-#define ME176C_BOARD_PR				1
+#define ME176C_ME181C_BOARD_ER				0
+#define ME176C_ME181C_BOARD_PR				1
 
 struct byt_mc_private {
 #ifdef CONFIG_SND_SOC_COMMS_SSP
@@ -1339,18 +1337,16 @@ static void remove_audio_debug_proc_file(void)
 #endif //#ifdef CONFIG_PROC_FS
 //terry_tao@asus.com-- Audio debug mode
 
-#ifdef CONFIG_ME176C_CODEC_PARAMETER
 static int get_Board_Type(void)
 {
 	int gpio0p6;
 	intel_mid_pmic_writeb(0x31,0x14);//PMIC GPIO0P6 CTLO
-	//intel_mid_pmic_writeb(0x30,0x1c);//PMIC GPIO0P5 CTLO
+
 	msleep(10);
 	gpio0p6 = intel_mid_pmic_readb(0x39) & 0x01;//PMIC GPIO0P6 CTLI
-	//gpio0p5_v2 = intel_mid_pmic_readb(0x38) & 0x01;//PMIC GPIO0P5 CTLI
+
 	return gpio0p6;
 }
-#endif
 
 static void PMIC_enable_codec(void)
 {
@@ -1371,9 +1367,9 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 	int debug_gpio_ret;
 #endif
 	int jd_gpio;
-#ifdef CONFIG_ME176C_CODEC_PARAMETER
+
 	int codec_reset_gpio_ret;
-	if(get_Board_Type()==ME176C_BOARD_ER){
+	if(get_Board_Type()==ME176C_ME181C_BOARD_ER){
 		PMIC_enable_codec();
 	}
 	else{
@@ -1393,9 +1389,6 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 			pr_debug("gpio_direction_output SUCCESS!!!!!!\n");
 		}
 	}
-#else
-	PMIC_enable_codec();
-#endif
 
 	pr_debug("Entry %s\n", __func__);
 	drv = devm_kzalloc(&pdev->dev, sizeof(*drv), GFP_ATOMIC);
@@ -1517,16 +1510,14 @@ static void snd_byt_mc_shutdown(struct platform_device *pdev)
 	struct byt_mc_private *drv = snd_soc_card_get_drvdata(soc_card);
 
 	pr_debug("In %s\n", __func__);
-#ifdef CONFIG_ME176C_CODEC_PARAMETER
-	if(get_Board_Type()==ME176C_BOARD_ER){
+
+	if(get_Board_Type()==ME176C_ME181C_BOARD_ER){
 		PMIC_disable_codec();
 	}
 	else{
 		gpio_free(CODEC_RESET_N);
 	}
-#else
-	PMIC_disable_codec();
-#endif
+
 	snd_byt_unregister_jack(drv);
 }
 
