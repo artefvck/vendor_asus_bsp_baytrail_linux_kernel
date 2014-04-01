@@ -39,6 +39,7 @@
 
 #define RT5640_REG_RW 0		/* for debug */
 #define RT5640_DET_EXT_MIC 1
+/* Disable ONEBIT_DEPOP for headset touch sounds playback DEPOP */
 #define USE_ONEBIT_DEPOP 0	/* for one bit depop */
 #define HEADSET_DET_DELAY    20 /* Delay(ms) before reading over current
 				    status for headset detection */
@@ -53,6 +54,9 @@
 //#endif
 #define USE_ASRC
 #define VERSION "0.8.4 alsa 1.0.25"
+
+struct delayed_work hp_amp_work;
+static struct snd_soc_codec *rt5640_codec;
 
 struct rt5640_init_reg {
 	u8 reg;
@@ -533,6 +537,11 @@ void DC_Calibrate(struct snd_soc_codec *codec)
 
 	rt5640_index_write(codec, RT5640_HP_DCC_INT1, 0x9f00);
 	snd_soc_update_bits(codec, RT5640_PWR_ANLG2, RT5640_PWR_MB1, 0);
+
+	/* Headset touch sounds playback DEPOP */
+	snd_soc_write(codec, RT5640_DEPOP_M1, 0x0009);
+	snd_soc_write(codec, RT5640_DEPOP_M2, 0x3100);
+	snd_soc_write(codec, RT5640_CHARGE_PUMP, 0x0f00);
 }
 
 int rt5640_check_jd_status(struct snd_soc_codec *codec)
@@ -1684,16 +1693,14 @@ static void rt5640_pmu_depop(struct snd_soc_codec *codec)
 {
 	hp_amp_power(codec, 1);
 	/* headphone unmute sequence */
-	usleep_range(5000, 5500);
-	snd_soc_update_bits(codec, RT5640_HP_VOL,
-			    RT5640_L_MUTE | RT5640_R_MUTE, 0);
-	msleep(65);
+	schedule_delayed_work(&hp_amp_work,msecs_to_jiffies(50));
 	/*snd_soc_update_bits(codec, RT5640_HP_CALIB_AMP_DET,
 	   RT5640_HPD_PS_MASK, RT5640_HPD_PS_EN); */
 }
 
 static void rt5640_pmd_depop(struct snd_soc_codec *codec)
 {
+	cancel_delayed_work_sync(&hp_amp_work);
 	snd_soc_update_bits(codec, RT5640_DEPOP_M3,
 			    RT5640_CP_FQ1_MASK | RT5640_CP_FQ2_MASK |
 			    RT5640_CP_FQ3_MASK,
@@ -1789,6 +1796,8 @@ static void rt5640_pmu_depop(struct snd_soc_codec *codec)
 {
 	hp_amp_power(codec, 1);
 	/* headphone unmute sequence */
+	/* Solve the headset pop noise issue */
+	schedule_delayed_work(&hp_amp_work, msecs_to_jiffies(50));
 	snd_soc_update_bits(codec, RT5640_DEPOP_M3,
 			    RT5640_CP_FQ1_MASK | RT5640_CP_FQ2_MASK |
 			    RT5640_CP_FQ3_MASK,
@@ -1817,6 +1826,7 @@ static void rt5640_pmu_depop(struct snd_soc_codec *codec)
 
 static void rt5640_pmd_depop(struct snd_soc_codec *codec)
 {
+	cancel_delayed_work_sync(&hp_amp_work);
 	/* headphone mute sequence */
 	snd_soc_update_bits(codec, RT5640_DEPOP_M3,
 			    RT5640_CP_FQ1_MASK | RT5640_CP_FQ2_MASK |
@@ -3234,8 +3244,10 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 	case SND_SOC_BIAS_OFF:
 		pr_debug("In case SND_SOC_BIAS_OFF:\n");
 		set_sys_clk(codec, RT5640_SCLK_S_RCCLK);
-		snd_soc_write(codec, RT5640_DEPOP_M1, 0x0004);
-		snd_soc_write(codec, RT5640_DEPOP_M2, 0x1100);
+		/* Headset touch sounds playback DEPOP
+		  snd_soc_write(codec, RT5640_DEPOP_M1, 0x0004);
+		  snd_soc_write(codec, RT5640_DEPOP_M2, 0x1100);
+		 */
 		snd_soc_write(codec, RT5640_PWR_DIG1, 0x0000);
 		snd_soc_write(codec, RT5640_PWR_DIG2, 0x0000);
 		snd_soc_write(codec, RT5640_PWR_VOL, 0x0000);
@@ -3255,6 +3267,14 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 	return 0;
 }
 
+static void do_hp_amp(struct work_struct *work)
+{
+	msleep(5);
+	snd_soc_update_bits(rt5640_codec, RT5640_HP_VOL,
+		RT5640_L_MUTE | RT5640_R_MUTE, 0);
+	msleep(65);
+}
+
 static int rt5640_probe(struct snd_soc_codec *codec)
 {
 	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
@@ -3262,7 +3282,6 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 	int ret;
 
 	pr_info("Codec driver version %s\n", VERSION);
-
 	ret = snd_soc_codec_set_cache_io(codec, 8, 16, SND_SOC_I2C);
 	if (ret != 0) {
 		dev_err(codec->dev, "Failed to set cache I/O: %d\n", ret);
@@ -3313,7 +3332,10 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 	/* Set codec bias level to off during probe to avoid kernel warning */
 	rt5640_set_bias_level(codec, SND_SOC_BIAS_OFF);
 	rt5640->codec = codec;
+	rt5640_codec = codec;
 	rt5640->jack_type = RT5640_NO_JACK;
+
+	INIT_DELAYED_WORK(&hp_amp_work, do_hp_amp);
 
 #if IS_ENABLED(CONFIG_SND_SOC_RT5642)
 	rt5640->dsp_sw = RT5640_DSP_AEC_NS_FENS;
