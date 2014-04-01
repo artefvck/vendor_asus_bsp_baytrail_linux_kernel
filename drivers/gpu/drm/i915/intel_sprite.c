@@ -346,6 +346,8 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_crtc *crtc,
 	if (obj->tiling_mode != I915_TILING_NONE)
 		sprctl |= SP_TILED;
 
+	sprctl |= SP_GEAMMA_ENABLE;
+
 	sprctl |= SP_ENABLE;
 
 	intel_update_sprite_watermarks(dplane, crtc, src_w, pixel_size, true,
