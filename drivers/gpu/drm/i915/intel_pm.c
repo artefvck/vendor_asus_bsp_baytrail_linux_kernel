@@ -1477,6 +1477,14 @@ static void valleyview_update_wm(struct drm_device *dev)
 		      plane_sr, cursor_sr);
 #endif
 
+	if (is_maxfifo_needed(dev_priv)) {
+		I915_WRITE(FW_BLC_SELF_VLV, FW_CSPWRDWNEN);
+	} else if (I915_READ(FW_BLC_SELF_VLV) & FW_CSPWRDWNEN &&
+	    !is_maxfifo_needed(dev_priv)) {
+		I915_WRITE(FW_BLC_SELF_VLV,
+			   I915_READ(FW_BLC_SELF_VLV) & ~FW_CSPWRDWNEN);
+	}
+
 	I915_WRITE(DSPFW1,
 		   (DSPFW_SR_VAL << DSPFW_SR_SHIFT) |
 		   (DSPFW_CURSORB_VAL << DSPFW_CURSORB_SHIFT) |
@@ -3133,6 +3141,13 @@ static void valleyview_update_sprite_wm(struct drm_plane *plane,
 	enable.cursor_enabled = false;
 	enable.sprite_enabled = enabled;
 
+	if (is_maxfifo_needed(dev_priv)) {
+		I915_WRITE(FW_BLC_SELF_VLV, FW_CSPWRDWNEN);
+	} else if (I915_READ(FW_BLC_SELF_VLV) & FW_CSPWRDWNEN &&
+	    !is_maxfifo_needed(dev_priv)) {
+		I915_WRITE(FW_BLC_SELF_VLV,
+			   I915_READ(FW_BLC_SELF_VLV) & ~FW_CSPWRDWNEN);
+	}
 
 	if (intel_plane->plane == 0) {
 		mask = 0x0000ff00;
