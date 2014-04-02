@@ -526,14 +526,28 @@ void intel_panel_actually_set_backlight(struct drm_device *dev, u32 level)
 void intel_panel_actually_set_mipi_backlight(struct drm_device *dev, u32 level)
 {
 
-#ifdef CONFIG_CRYSTAL_COVE
-
-u32 max = intel_panel_get_max_backlight(dev);
+struct drm_i915_private *dev_priv = dev->dev_private;
+u32 max;
 
 #ifdef CONFIG_PRO_ME181_PANEL
 	int err = 0;
 	int lcm_id = 0;
 	int project_stage = 0;
+#endif
+
+	DRM_DEBUG_DRIVER("set backlight PWM = %d\n", level);
+	if (!dev_priv->backlight.enabled) {
+		DRM_DEBUG_DRIVER("backlight is not enable\n");
+		return;
+	}
+#ifdef CONFIG_CRYSTAL_COVE
+
+	max = intel_panel_get_max_backlight(dev);
+
+#ifdef CONFIG_PRO_ME181_PANEL
+	//int err = 0;
+	//int lcm_id = 0;
+	//int project_stage = 0;
 	err = gpio_request(68, "LCM_ID");
 	if (err){
 		printk("%s:----sean test----%d\n", __func__,__LINE__);

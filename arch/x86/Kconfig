@@ -2406,3 +2406,15 @@ source "crypto/Kconfig"
 source "arch/x86/kvm/Kconfig"
 
 source "lib/Kconfig"
+
+config PRO_ME176_THERMAL
+	bool "me176 thermal"
+	default n
+	help
+	me176 thermal
+
+config PRO_ME181_THERMAL
+	bool "me181 thermal"
+	default n
+	help
+	me181 thermal

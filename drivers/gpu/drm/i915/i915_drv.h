@@ -1565,6 +1565,10 @@ typedef struct drm_i915_private {
 	u16 is_mipi;
 	u16 mipi_panel_id;
 	u16 mipi_fw;
+	/*Turn on backlight after first frame update */
+	struct work_struct backlight_work;
+	bool backlight_resume;
+	int backlight_on_delay;
 
 	unsigned int fwlogo_size;
 	unsigned int fwlogo_offset;

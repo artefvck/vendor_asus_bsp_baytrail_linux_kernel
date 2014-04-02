@@ -706,6 +706,22 @@ static int intel_hpd_irq_event(struct drm_device *dev, struct drm_connector *con
 	return (old_status != connector->status);
 }
 
+static void i915_backlight_work_func(struct work_struct *work)
+{
+	drm_i915_private_t *dev_priv = container_of(work, drm_i915_private_t,
+						    backlight_work);
+	struct drm_device *dev = dev_priv->dev;
+
+	/* Adjust backlight timing for specific panel */
+	if (dev_priv->backlight_on_delay >= 20)
+		msleep(dev_priv->backlight_on_delay);
+	else
+		usleep_range(dev_priv->backlight_on_delay * 1000,
+			(dev_priv->backlight_on_delay * 1000) + 500);
+
+	intel_panel_enable_backlight(dev, 0);
+}
+
 /*
  * Handle hotplug events outside the interrupt handler proper.
  */
@@ -1424,6 +1440,10 @@ static irqreturn_t valleyview_irq_handler(int irq, void *arg)
 			if (pipe_stats[pipe] & PLANE_FLIPDONE_INT_STATUS_VLV) {
 				intel_prepare_page_flip(dev, pipe);
 				intel_finish_page_flip(dev, pipe);
+				if (dev_priv->is_mipi && pipe == 0 && dev_priv->backlight_resume) {
+					dev_priv->backlight_resume = false;
+					queue_work(dev_priv->wq, &dev_priv->backlight_work);
+				}
 			}
 			if (pipe_stats[pipe] & SPRITE_FLIPDONE_INT_STATUS_VLV) {
 				intel_prepare_sprite_page_flip(dev, pipe);
@@ -3837,6 +3857,7 @@ void intel_irq_init(struct drm_device *dev)
 	INIT_WORK(&dev_priv->gpu_error.work, i915_error_work_func);
 	INIT_WORK(&dev_priv->rps.work, gen6_pm_rps_work);
 	INIT_WORK(&dev_priv->l3_parity.error_work, ivybridge_parity_work);
+	INIT_WORK(&dev_priv->backlight_work, i915_backlight_work_func);
 
 	setup_timer(&dev_priv->hotplug_reenable_timer, i915_reenable_hotplug_timer_func,
 		    (unsigned long) dev_priv);
