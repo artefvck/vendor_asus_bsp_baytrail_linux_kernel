@@ -288,7 +288,7 @@ static void intel_dsi_enable(struct intel_encoder *encoder)
 		I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
 		usleep_range(2000, 2500);
 	}
-
+#if 0
 	/* Adjust backlight timing for specific panel */
 	if (intel_dsi->backlight_on_delay >= 20)
 		msleep(intel_dsi->backlight_on_delay);
@@ -297,6 +297,8 @@ static void intel_dsi_enable(struct intel_encoder *encoder)
 			(intel_dsi->backlight_on_delay * 1000) + 500);
 
 	intel_panel_enable_backlight(dev, pipe);
+#endif
+	dev_priv->backlight_resume = true;
 }
 
 static void intel_dsi_disable(struct intel_encoder *encoder)
@@ -1186,6 +1188,7 @@ bool intel_dsi_init(struct drm_device *dev)
 	}
 
 	dev_priv->is_mipi = true;
+	dev_priv->backlight_on_delay = intel_dsi->backlight_on_delay;
 	fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
 	intel_panel_init(&intel_connector->panel, fixed_mode);
 	intel_panel_setup_backlight(connector);
