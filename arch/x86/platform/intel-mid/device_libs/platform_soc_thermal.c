@@ -57,6 +57,17 @@ static struct soc_throttle_data vlv2_soc_data[] = {
 		.power_limit = 0x6D, /* 3.5W */
 		.floor_freq = 0x01,
 	},
+#ifdef CONFIG_PRO_ME176_THERMAL
+	{
+		.power_limit = 0x28, /* 1.3W */
+		.floor_freq = 0x01,
+	},
+	{
+		.power_limit = 0x28, /* 1.3W */
+		.floor_freq = 0x01,
+	},
+#endif
+#ifdef CONFIG_PRO_ME181_THERMAL
 	{
 		.power_limit = 0x2E, /* 1.5W */
 		.floor_freq = 0x01,
@@ -65,6 +76,7 @@ static struct soc_throttle_data vlv2_soc_data[] = {
 		.power_limit = 0x2E, /* 1.5W */
 		.floor_freq = 0x01,
 	},
+#endif
 };
 
 void soc_thrm_device_handler(struct sfi_device_table_entry *pentry,
@@ -125,6 +137,8 @@ static int __init byt_soc_thermal_init(void)
 	}
 
 	pdev->dev.platform_data = &vlv2_soc_data;
+
+	//printk("----sean test----now is CONFIG_PRO_THERMAL : power_limit: %x",vlv2_soc_data[2].power_limit);
 
 	return ret;
 }
