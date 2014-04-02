@@ -100,7 +100,13 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.type = INTEL_DSI_VIDEO_MODE,
 		.name = "innolux-m181-dsi-vid-mode-display",
 		.dev_ops = &innolux_m181_dsi_display_ops,
-	},		
+	},
+	{
+		.panel_id = MIPI_DSI_IVO_M181_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "ivo-m181-dsi-vid-mode-display",
+		.dev_ops = &ivo_m181_dsi_display_ops,
+	},
 };
 
 static struct intel_dsi *intel_attached_dsi(struct drm_connector *connector)
@@ -187,10 +193,10 @@ void intel_dsi_device_ready(struct intel_encoder *encoder)
 #ifdef CONFIG_CRYSTAL_COVE
 	/* Panel Enable */
 	intel_mid_pmic_writeb(0x3C,0x21);//GPIOxxxCTLO GPIO1P1 1.8v
-	printk("%s:----sean test----intel_dsi_device_ready SET PANEL 1.8V high----%d\n", __func__,__LINE__);
+	sean_debug("%s:----sean test----intel_dsi_device_ready SET PANEL 1.8V high----%d\n", __func__,__LINE__);
 	msleep(10);
 	intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x01);
-	printk("%s:----sean test----intel_dsi_device_ready SET PMIC_PANEL_EN 3.3V high----\n",__func__);
+	sean_debug("%s:----sean test----intel_dsi_device_ready SET PMIC_PANEL_EN 3.3V high----\n",__func__);
 
 	if (BYT_CR_CONFIG) {
 		/*  cabc disable */
@@ -399,8 +405,8 @@ void intel_dsi_clear_device_ready(struct intel_encoder *encoder)
 #ifdef CONFIG_CRYSTAL_COVE
 	/* Disable Panel */
 	//intel_mid_pmic_writeb(PMIC_PANEL_EN, 0x00);
-	printk("%s:----sean test----intel_dsi_clear_device_ready__set PMIC_PANEL_EN low----\n",__func__);
-	printk("%s:----sean test----auo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,intel_mid_pmic_readb(0x52));
+	sean_debug("%s:----sean test----intel_dsi_clear_device_ready__set PMIC_PANEL_EN low----\n",__func__);
+	sean_debug("%s:----sean test----auo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,intel_mid_pmic_readb(0x52));
 	if (BYT_CR_CONFIG) {
 		/* Disable Panel */
 		vlv_gpio_nc_write(dev_priv, GPIO_NC_11_PCONF0, 0x2000CC00);
@@ -941,7 +947,7 @@ static void create_panel_type_proc_file(void)
     panel_type_proc_file = proc_create(PANEL_TYPE_PROC_FILE, 0666,NULL, &panel_type_proc_ops);
     if(!panel_type_proc_file)
 	{
-		printk("create driver/me176c_panel_type fail\n");
+		sean_debug("create driver/me176c_panel_type fail\n");
 	}
 }
 #endif
@@ -973,7 +979,7 @@ static ssize_t panel_id_proc_read(struct file *filp, char __user *buffer, size_t
 
 	err = gpio_request(68, "LCM_ID");
 	if (err){
-		sean_debug("%s:----sean test----panel_id_proc_read----%d\n", __func__,__LINE__);
+		printk("%s:----sean test----request_gpio_lcm_id fail----%d\n", __func__,__LINE__);
 	}
 	gpio_direction_input(68);
 	lcm_id = gpio_get_value(68);
@@ -1087,10 +1093,14 @@ bool intel_dsi_init(struct drm_device *dev)
 
 		//sean ++++
 		int err = 0;
+		int project_type = 0;
+		int project_stage = 0;
 		int lcm_id = 1;
 		int gpio_panel_id = 0;
 		int gpio_lcm_id = 68;
 		int fact_panel_id = 6;
+
+		project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
 
 		sean_debug("%s:----sean test----m181_init i915_init----\n", __func__);
 		err = gpio_request(gpio_lcm_id, "LCM_ID");	//GPIO_S0[68] /LCM_ID
@@ -1117,15 +1127,53 @@ bool intel_dsi_init(struct drm_device *dev)
 		
 		gpio_free(gpio_lcm_id);
 
-		if(lcm_id)
+		if(project_stage) //PR
 		{
-			fact_panel_id = MIPI_DSI_AUO_M181_PANEL_ID;
-			gpio_set_value(gpio_panel_id,0);
+			project_type = intel_mid_pmic_readb(0x45); //GPIOxxxCTLI GPIO1P2 /PCB_ID5 //ME181C(GPIO1P2=0)/ME181CX(GPIO1P2=1)
+
+			if(project_type) //ME181CX
+			{
+				if(lcm_id) //IVO
+				{
+					sean_debug("%s:----sean test----now panel type is IVO:%d----\n", __func__,__LINE__);
+					fact_panel_id = MIPI_DSI_IVO_M181_PANEL_ID;
+					gpio_set_value(gpio_panel_id,0);
+				}
+				else //INX
+				{
+					sean_debug("%s:----sean test----now panel type is C_INX:%d----\n", __func__,__LINE__);
+					fact_panel_id = MIPI_DSI_INNOLUX_M181_PANEL_ID;
+					gpio_set_value(gpio_panel_id,1);
+				}
+			}
+			else //ME181C
+			{
+				if(lcm_id) //AUO
+				{
+					sean_debug("%s:----sean test----now panel type is AUO:%d----\n", __func__,__LINE__);
+					fact_panel_id = MIPI_DSI_AUO_M181_PANEL_ID;
+					gpio_set_value(gpio_panel_id,0);
+				}
+				else //INX
+				{
+					sean_debug("%s:----sean test----now panel type is CX_INX:%d----\n", __func__,__LINE__);
+					fact_panel_id = MIPI_DSI_INNOLUX_M181_PANEL_ID;
+					gpio_set_value(gpio_panel_id,1);
+				}
+			}
 		}
-		else
+		else //ER only ME181C
 		{
-			fact_panel_id = MIPI_DSI_INNOLUX_M181_PANEL_ID;
-			gpio_set_value(gpio_panel_id,1);
+			if(lcm_id) //AUO
+			{
+				fact_panel_id = MIPI_DSI_AUO_M181_PANEL_ID;
+				gpio_set_value(gpio_panel_id,0);
+			}
+			else //INX
+			{
+				fact_panel_id = MIPI_DSI_INNOLUX_M181_PANEL_ID;
+				gpio_set_value(gpio_panel_id,1);
+			}
 		}
 		
 		gpio_free(gpio_panel_id);
