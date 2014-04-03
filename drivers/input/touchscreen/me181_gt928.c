@@ -97,6 +97,11 @@ extern s32 init_wr_node(struct i2c_client*);
 extern void uninit_wr_node(void);
 #endif
 
+#if GTP_OPENSHORT_TEST
+extern s32 gtp_test_sysfs_init(void);
+extern void gtp_test_sysfs_deinit(void);
+#endif
+
 #if GTP_AUTO_UPDATE
 extern u8 gup_init_update_proc(struct goodix_ts_data *);
 #endif
@@ -2619,6 +2624,14 @@ static int goodix_ts_probe(struct i2c_client *client, const struct i2c_device_id
 #if GTP_ESD_PROTECT
     gtp_esd_switch(client, SWITCH_ON);
 #endif
+
+#if GTP_OPENSHORT_TEST
+	ret = gtp_test_sysfs_init();
+		if (ret)	{
+				GTP_ERROR("	Create test sysfs failed.\n");
+		}
+#endif
+
     return 0;
 }
 
@@ -3075,6 +3088,9 @@ static void goodix_ts_exit(void)
     {
         destroy_workqueue(goodix_wq);
     }
+    #if GTP_OPENSHORT_TEST
+		gtp_test_sysfs_deinit();
+	#endif
 }
 
 late_initcall(goodix_ts_init);

@@ -36,6 +36,8 @@
 #include <linux/proc_fs.h>
 #include <linux/workqueue.h> //tan
 #include <linux/init.h> 		    //tan
+#include <linux/switch.h>
+#include "ug31xx_version.h"
 
 //#define	UPI_CALLBACK_FUNC	            ///< [AT-PM] : Used for removing callback function ; 04/15/2013
 #define	UG31XX_DYNAMIC_POLLING	      ///< [AT-PM] : Used for dynamic polling time ; 04/30/2013
@@ -1933,7 +1935,7 @@ int ug31xx_get_proc_rsoc(struct file *filp, char __user *buffer, size_t count, l
   return ret;
 }
 
-int ug31xx_get_proc_psoc(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
+int ug31xx_get_version(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
   int len = 0;
   ssize_t ret = 0;
@@ -1942,7 +1944,7 @@ int ug31xx_get_proc_psoc(struct file *filp, char __user *buffer, size_t count, l
   buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
-  len += sprintf(buff+len, "%d\n", ug31_module.get_relative_state_of_charge());  
+  len += sprintf(buff+len, "%s:%s\n", UG31XX_DRIVER_VERSION_STR,UG31XX_DRIVER_RELEASE_NOTE);  
   ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
   kfree(buff);
   return ret;
@@ -2568,8 +2570,8 @@ static void batt_probe_work_func(struct work_struct *work)
 	static struct file_operations Aug31xx_get_proc_rsoc = {
 	    .read = ug31xx_get_proc_rsoc,
 	};
-	static struct file_operations Aug31xx_get_proc_psoc = {
-	    .read = ug31xx_get_proc_psoc,
+	static struct file_operations Aug31xx_get_version = {
+	    .read = ug31xx_get_version,
 	};
 	static struct file_operations Aug31xx_get_proc_rm = {
 	    .read = ug31xx_get_proc_rm,
@@ -2593,10 +2595,10 @@ static void batt_probe_work_func(struct work_struct *work)
 	    .read = ug31xx_get_proc_kbo_stop,
 	};
 
-	ent = proc_create("BMSSOC", 0744,NULL, &Aug31xx_get_proc_rsoc); 
+	ent = proc_create("VERSION", 0744,NULL, &Aug31xx_get_version); 
 	if(!ent)
 	{
-		GAUGE_err("create /proc/BMSSOC fail\n");
+		GAUGE_err("create /proc/VERSION fail\n");
 	}
 	ent = proc_create("RSOC", 0744, NULL, &Aug31xx_get_proc_rsoc);
 	if(!ent)
@@ -2650,10 +2652,10 @@ static void batt_probe_work_func(struct work_struct *work)
 	batt_dev.name = "battery";
 	batt_dev.print_name = batt_switch_name;
 	/// tan
-	//if (switch_dev_register(&batt_dev) < 0) {
-	//	GAUGE_err("%s: fail to register battery switch\n", __func__);
-	//	goto pwr_supply_fail;
-	//}
+	if (switch_dev_register(&batt_dev) < 0) {
+		GAUGE_err("%s: fail to register battery switch\n", __func__);
+		goto pwr_supply_fail;
+	}
 	ug31xx_config_earlysuspend(ug31);
 
 	if((is_charging() == true) &&
