@@ -41,7 +41,7 @@
 #include <linux/acpi.h>
 #include <linux/gpio.h>
 
-#define DEBUG 1
+#define DEBUG 0
 #if DEBUG
 	#define sean_debug(x...) printk(x)
 #else
