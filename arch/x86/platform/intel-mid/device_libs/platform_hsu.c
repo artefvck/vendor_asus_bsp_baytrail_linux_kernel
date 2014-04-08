@@ -689,13 +689,14 @@ void intel_mid_hsu_rts(int port, int value)
 
 void intel_mid_hsu_suspend_post(int port)
 {
-	struct hsu_port_pin_cfg *info = hsu_port_gpio_mux + port;
+/*	struct hsu_port_pin_cfg *info = hsu_port_gpio_mux + port;
 
 	if (info->rts_gpio && info->wake_gpio
 		&& info->wake_gpio == info->rx_gpio) {
 		gpio_direction_output(info->rts_gpio, 0);
 		lnw_gpio_set_alt(info->rts_gpio, LNW_GPIO);
 	}
+*/
 }
 
 void intel_mid_hsu_set_clk(unsigned int m, unsigned int n,
