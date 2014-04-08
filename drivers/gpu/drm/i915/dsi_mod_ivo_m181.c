@@ -146,13 +146,13 @@ void ivo_m181_panel_reset(struct intel_dsi_device *dsi)
 	if (err){
 		printk("%s----sean test----gpio_requset_fail----\n",__func__);
 	}
-	msleep(50); //50ms
+	//msleep(20); //20ms
 	
-	gpio_direction_output(69, 0);	// sean 2 low pulse
-	gpio_set_value(69, 1);
-	usleep_range(1000,2000);	//
+	gpio_direction_output(69, 1);	// sean 2 low pulse
+	//gpio_set_value(69, 1);
+	//usleep_range(5000,10000);	//
 	gpio_set_value(69, 0);
-	usleep_range(1000,2000); 	// > 10E-2 ms
+	usleep_range(5000,10000); 	// > 10E-2 ms
 	gpio_set_value(69, 1);
 	usleep_range(1000,5000); 	// < 5ms
 	gpio_free(69);
@@ -165,18 +165,29 @@ void ivo_m181_disable_panel_power(struct intel_dsi_device *dsi)
     int err;
     err = gpio_request(69, "sd_pwr_en1");
 	if (err){
-		printk("%s:----sean test----m176_panel_request fail----\n",__func__);
+		printk("%s:----sean test----m181_ivo_panel_request fail----\n",__func__);
 	}
-	
+
+	err =  intel_mid_pmic_readb(0x52);
+    sean_debug("%s:----sean test----ivo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,err);
+
+	msleep(100);	//sean test t12 >= 50
+
 	gpio_direction_output(69, 0);
 	gpio_set_value(69, 0);	//RESX low
-	gpio_free(69);
-	msleep(10);	
 
-    sean_debug("%s:----sean test----m181_ivo_panel_disable_power----\n", __func__);
-    intel_mid_pmic_setb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 
-    intel_mid_pmic_writeb(0x52,0);//PANEL_EN
-    msleep(160);	
+	msleep(50);
+
+    intel_mid_pmic_writeb(0x52,0x00);//PANEL_EN 3.3v
+    usleep_range(16000,17000); //sean test t15 <= 10
+    intel_mid_pmic_writeb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 1.8v
+    sean_debug("%s:----sean test----panel 1.8V set low----%d\n", __func__,__LINE__);
+
+    err =  intel_mid_pmic_readb(0x52);
+    sean_debug("%s:----sean test----ivo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,err);
+
+    gpio_free(69);
+
 }
 
 void ivo_m181_send_otp_cmds(struct intel_dsi_device *dsi)
@@ -187,6 +198,8 @@ void ivo_m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	
 	sean_debug("%s:----sean test----m181_ivo_send_otp_cmds----%d\n", __func__,__LINE__);
 	intel_dsi->hs = 0 ;
+
+	msleep(20);
 
 	//========== Internal setting ==========
 	sean_debug("%s:----sean test----m181_ivo_send_otp_cmds----%d\n", __func__,__LINE__);
@@ -263,7 +276,7 @@ void ivo_m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	}
 	
 	{
-		unsigned char data[] = {0xEF, 0x02, 0x02, 0x13, 0x11, 0x0F, 0x0F, 0x0B, 0x0B, 
+		unsigned char data[] = {0xF7, 0x02, 0x02, 0x13, 0x11, 0x0F, 0x0F, 0x0B, 0x0B,
 								0x0E, 0x0E, 0x0A, 0x0A, 0x05, 0x07, 0x1F, 0x1F, 0x02,
 								0x02, 0x12, 0x10, 0x0D, 0x0D, 0x09 ,0x09, 0x0C, 0x0C, 
 								0x08, 0x08, 0x04, 0x06, 0x1F, 0x1F};
