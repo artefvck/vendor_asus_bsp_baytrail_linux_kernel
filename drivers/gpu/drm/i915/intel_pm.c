@@ -1318,11 +1318,11 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 	clock = crtc->mode.clock;	/* VESA DOT Clock */
 	if (enable.plane_enabled) {
 		pixel_size = crtc->fb->bits_per_pixel / 8;	/* BPP */
-		entries = (clock / 1000) * pixel_size;
+		entries = intel_div_round(clock, 1000) * pixel_size;
 		*plane_prec_mult = (entries > 256) ?
 			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
-		*plane_dl = (64 * (*plane_prec_mult) * 4) / ((clock / 1000) *
-						     pixel_size);
+		*plane_dl = intel_div_round((64 * (*plane_prec_mult) * 4),
+				(entries));
 		latencyprogrammed = true;
 	}
 
@@ -1335,11 +1335,11 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 		latencyprogrammed = true;
 	}
 	if (enable.sprite_enabled) {
-		entries = (clock / 1000) * sprite_pixel_size;
+		entries = intel_div_round(clock, 1000) * sprite_pixel_size;
 		*sprite_prec_mult = (entries > 256) ?
 			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
-		*sprite_dl = (64 * (*sprite_prec_mult) * 4) / ((clock / 1000) *
-						sprite_pixel_size);
+		*sprite_dl = intel_div_round((64 * (*sprite_prec_mult) * 4),
+				(entries));
 		latencyprogrammed = true;
 	}
 
@@ -1377,7 +1377,10 @@ static void vlv_update_drain_latency(struct drm_device *dev)
 				DDL_PLANEA_PRECISION_32 :
 				DDL_PLANEA_PRECISION_64;
 
-		I915_WRITE_BITS(VLV_DDL1, planea_prec | planea_dl, 0x000000ff);
+		if (((I915_READ(DSPCNTR(0))) & DISPPLANE_TILED) | dev_priv->is_tiled)
+			I915_WRITE_BITS(VLV_DDL1, planea_prec | planea_dl, 0x000000ff);
+		else
+			I915_WRITE_BITS(VLV_DDL1, 0x0000, 0x000000ff);
 	} else
 		I915_WRITE_BITS(VLV_DDL1, 0x0000, 0x000000ff);
 
@@ -3171,8 +3174,12 @@ static void valleyview_update_sprite_wm(struct drm_plane *plane,
 					DDL_SPRITEB_PRECISION_64;
 		}
 
-		I915_WRITE_BITS(VLV_DDL(intel_plane->pipe),
+		if (((I915_READ(SPCNTR(0,intel_plane->pipe))) &
+					DISPPLANE_TILED) | dev_priv->is_tiled)
+			I915_WRITE_BITS(VLV_DDL(intel_plane->pipe),
 				sprite_prec | (sprite_dl << shift), mask);
+		else
+			I915_WRITE_BITS(VLV_DDL(intel_plane->pipe), 0x00, mask);
 	} else
 		I915_WRITE_BITS(VLV_DDL(intel_plane->pipe), 0x00, mask);
 

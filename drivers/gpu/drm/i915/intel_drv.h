@@ -34,6 +34,14 @@
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_dp_helper.h>
 
+#define intel_div_round(divident, divisor) ({					\
+	unsigned int quo1, quo2, ret__;					\
+	quo1 = divident / divisor;					\
+	quo2 = ((divident % divisor) * 2) / divisor;			\
+	ret__ = (quo1 + quo2);						\
+	ret__;								\
+})
+
 /**
  * _wait_for - magic (register) wait macro
  *
