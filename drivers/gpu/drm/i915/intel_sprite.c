@@ -1052,10 +1052,6 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	if (dev_priv->pm.shutdown_in_progress)
 		return -EINVAL;
 
-	if (event == NULL)
-		intel_enable_primary(plane, crtc);
-	else
-		intel_disable_primary(plane, crtc);
 	intel_fb = to_intel_framebuffer(fb);
 	obj = intel_fb->obj;
 
@@ -1275,6 +1271,9 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 		if (!disable_primary)
 			intel_enable_primary(plane, crtc);
 	}
+	/* TODO: Re-visit: enable primary before disable sprite */
+	if (event == NULL)
+		intel_enable_primary(plane, crtc);
 
 	if (visible) {
 		intel_plane->update_plane(plane, crtc, fb, obj,
@@ -1282,6 +1281,10 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 					  src_x, src_y, src_w, src_h, event);
 	} else
 		intel_plane->disable_plane(plane, crtc);
+
+	/* TODO: Re-visit: disable primary after enable of sprite */
+	if (event != NULL)
+		intel_disable_primary(plane, crtc);
 
 	if (!IS_VALLEYVIEW(dev)) {
 		if (disable_primary)
