@@ -1966,11 +1966,6 @@ static void intel_disable_plane(struct drm_i915_private *dev_priv,
 	if ((val & DISPLAY_PLANE_ENABLE) == 0)
 		return;
 
-	/* If MAX FIFO enabled disable */
-	if (I915_READ(FW_BLC_SELF_VLV) & FW_CSPWRDWNEN)
-		I915_WRITE(FW_BLC_SELF_VLV,
-			   I915_READ(FW_BLC_SELF_VLV) & ~FW_CSPWRDWNEN);
-
 	I915_WRITE(reg, val & ~DISPLAY_PLANE_ENABLE);
 	intel_flush_display_plane(dev_priv, plane);
 	intel_wait_for_vblank(dev_priv->dev, pipe);
