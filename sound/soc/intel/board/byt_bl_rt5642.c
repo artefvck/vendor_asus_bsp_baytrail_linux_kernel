@@ -47,6 +47,10 @@
 #include <linux/delay.h>
 #include <linux/mfd/intel_mid_pmic.h>
 
+#ifdef CONFIG_FACTORY_ITEMS
+#include <linux/lnw_gpio.h>
+#endif
+
 //terry_tao@asus.com++ audio debug mode
 #ifdef CONFIG_PROC_FS
 #include <linux/proc_fs.h>
@@ -178,6 +182,9 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 
 #ifdef CONFIG_PROC_FS
 static int debug_gpio;
+#ifdef CONFIG_FACTORY_ITEMS
+static int uart_tx_gpio;
+#endif
 int g_bDebugMode = 0;
 EXPORT_SYMBOL(g_bDebugMode);
 #endif
@@ -1295,12 +1302,25 @@ static ssize_t audio_debug_proc_write(struct file *filp, const char *buff, size_
         snd_soc_jack_report(jack, jack_type, gpio->report);
         
         gpio_set_value(debug_gpio,0);
+#ifdef CONFIG_FACTORY_ITEMS
+        if(uart_tx_gpio > 0){
+            gpio_request(uart_tx_gpio,"uart_tx_gpio");
+            lnw_gpio_set_alt(uart_tx_gpio, LNW_ALT_1);
+        }
+#endif
         g_bDebugMode = 1;
         printk("%d Audio Debug Mode!!!\n",debug_gpio);
     }
     else if(strncmp(messages, "0", 1) == 0)
     {
         gpio_set_value(debug_gpio,1);
+ #ifdef CONFIG_FACTORY_ITEMS
+        if(uart_tx_gpio > 0){
+            gpio_request(uart_tx_gpio,"uart_tx_gpio");
+            lnw_gpio_set_alt(uart_tx_gpio, LNW_GPIO);
+            gpio_direction_output(uart_tx_gpio,0);
+        }
+#endif
         g_bDebugMode = 0;
         printk("%d Audio Headset Normal Mode!!!\n",debug_gpio);
         if(ctx->use_soc_jd_gpio)
@@ -1464,6 +1484,10 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_PROC_FS
 	debug_gpio = acpi_get_gpio("\\_SB.GPO2", 8);
+#ifdef CONFIG_FACTORY_ITEMS
+	uart_tx_gpio = acpi_get_gpio("\\_SB.GPO0", 57);
+	pr_debug("uart_tx_gpio = %d\n",uart_tx_gpio);
+#endif
 	pr_info("debug_gpio = %d\n",debug_gpio);
 	debug_gpio_ret = gpio_request(debug_gpio,"debug_gpio");
 	if(debug_gpio_ret)pr_info("debug gpio request fail\n");
