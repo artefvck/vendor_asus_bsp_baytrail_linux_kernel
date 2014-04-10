@@ -1973,7 +1973,7 @@ s32 gt9xx_open_test(struct i2c_client * client)
         all_accord_limit = all_accord_limit_Jtouch;
 #endif
     }
-    else if (rd_cfg_buffer[GTP_ADDR_LENGTH] == 4)   //Ofilm
+    else if (rd_cfg_buffer[GTP_ADDR_LENGTH] == 3)   //Ofilm
     {
         max_limit_value = max_limit_value_Ofilm;
         min_limit_value = min_limit_value_Ofilm;
@@ -2174,7 +2174,7 @@ static ssize_t gtp_sysfs_opentest_store(struct device *dev,struct device_attribu
         all_accord_limit_Jtouch = val;
 #endif
     }
-    else if (val == 4)    //Ofilm
+    else if (val == 3)    //Ofilm
     {
      error = kstrtouint((tbuf+2), 10, &val);
         if (error)
