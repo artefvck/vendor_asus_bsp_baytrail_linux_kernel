@@ -286,9 +286,17 @@ i915_dpst_init(struct drm_device *dev,
 			sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
 		}
 	}
+#else //ME176C
+
+#if IS_ENABLED(CONFIG_FACTORY_ITEMS) //only factory version
+	//i915_dpst_enable_hist_interrupt(dev);
+	i915_dpst_disable_hist_interrupt(dev);
+	sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
 #else
 	i915_dpst_enable_hist_interrupt(dev);
 	sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
+#endif
+
 #endif
 
 
