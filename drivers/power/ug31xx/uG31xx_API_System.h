@@ -4,7 +4,7 @@
  *  Interface of ug31xx system control
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 492 $
+ * @revision  $Revision: 73 $
  */
 
 #define UG31XX_SYSTEM_VERSION     (7)
@@ -103,6 +103,15 @@ extern _upi_bool_ UpiCheckICActive(SystemDataType *data);
 extern SYSTEM_RTN_CODE UpiActiveUg31xx(void);
 
 /**
+ * @brief UpiStopUg31xx
+ *
+ *  Stop uG31xx
+ *
+ * @return  SYSTEM_RTN_CODE
+ */
+extern SYSTEM_RTN_CODE UpiStopUg31xx(void);
+
+/**
  * @brief UpiSetupAdc
  *
  *  Setup ADC configurations
@@ -174,9 +183,10 @@ extern void UpiLoadBatInfoFromIC(SystemDataType *data);
  *
  * @para  data  address of SystemDataType
  * @para  deltaQ  delta capacity from coulomb counter
+ * @para  suspend set _UPI_TRUE_ for suspend operation
  * @return  _UPI_NULL_
  */
-extern void UpiUpdateBatInfoFromIC(SystemDataType *data, _sys_s16_ deltaQ);
+extern void UpiUpdateBatInfoFromIC(SystemDataType *data, _sys_s16_ deltaQ, _sys_bool_ suspend);
 
 /**
  * @brief UpiSaveBatInfoTOIC

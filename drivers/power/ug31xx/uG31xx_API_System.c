@@ -11,7 +11,7 @@
  *  uG31xx system control
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 492 $
+ * @revision  $Revision: 73 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,7 +19,7 @@
 
 #if defined(uG31xx_OS_WINDOWS)
 
-#define SYSTEM_VERSION      (_T("System $Rev: 492 $"))
+#define SYSTEM_VERSION      (_T("System $Rev: 73 $"))
 
 _upi_bool_ ReadGGBFileToCellDataAndInitSetting(SystemDataType *obj)
 {
@@ -54,7 +54,7 @@ _upi_bool_ ReadGGBFileToCellDataAndInitSetting(SystemDataType *obj)
 
 #else   ///< else of defined(uG31xx_OS_WINDOWS)
 
-#define SYSTEM_VERSION      ("System $Rev: 492 $")
+#define SYSTEM_VERSION      ("System $Rev: 73 $")
 
 _upi_bool_ ReadGGBXFileToCellDataAndInitSetting(SystemDataType *obj)
 {
@@ -481,7 +481,7 @@ void ConfigureGpio(SystemDataType *data)
                 &data->ggbParameter->gpio34);
 }
 
-#define ADC_FAIL_CRITERIA     (10)
+#define ADC_FAIL_CRITERIA     (5)
 #define ADC_FAIL_MIN_IT_CODE  (IT_IDEAL_CODE_25/2)
 #define ADC_FAIL_MAX_IT_CODE  (IT_IDEAL_CODE_80*11/10)
 
@@ -990,6 +990,45 @@ SYSTEM_RTN_CODE UpiActiveUg31xx(void)
 }
 
 /**
+ * @brief UpiStopUg31xx
+ *
+ *  Stop uG31xx
+ *
+ * @return  SYSTEM_RTN_CODE
+ */
+SYSTEM_RTN_CODE UpiStopUg31xx(void)
+{
+  _sys_u8_ tmp8;
+
+  UG31_LOGN("[%s]: Stop uG31xx\n", __func__);
+  
+  /// [AT-PM] : Reset uG31xx ; 01/31/2013
+  tmp8 = PORDET_W_SOFTRESET | IO1DATA_W_HIGH;
+	if(!API_I2C_Write(NORMAL, UG31XX_I2C_HIGH_SPEED_MODE, UG31XX_I2C_TEM_BITS_MODE, REG_CTRL1, 1, &tmp8))
+  { 
+		return (SYSTEM_RTN_I2C_FAIL);
+  }
+  tmp8 = IO1DATA_W_HIGH;
+	if(!API_I2C_Write(NORMAL, UG31XX_I2C_HIGH_SPEED_MODE, UG31XX_I2C_TEM_BITS_MODE, REG_CTRL1, 1, &tmp8))
+  { 
+		return (SYSTEM_RTN_I2C_FAIL);
+  }  
+
+  /// [AT-PM] : Stop uG31xx ; 01/31/2013
+  tmp8 = CTRL1_GG_RST | IO1DATA_W_HIGH;
+	if(!API_I2C_Write(NORMAL, UG31XX_I2C_HIGH_SPEED_MODE, UG31XX_I2C_TEM_BITS_MODE, REG_CTRL1, 1, &tmp8))
+  { 
+		return (SYSTEM_RTN_I2C_FAIL);
+  }
+  tmp8 = 0;
+	if(!API_I2C_Write(NORMAL, UG31XX_I2C_HIGH_SPEED_MODE, UG31XX_I2C_TEM_BITS_MODE, REG_MODE, 1, &tmp8))
+  { 
+		return (SYSTEM_RTN_I2C_FAIL);
+  }
+  return (SYSTEM_RTN_PASS);
+}
+
+/**
  * @brief UpiSetupAdc
  *
  *  Setup ADC configurations
@@ -1135,7 +1174,8 @@ void UpiCalculateOscFreq(SystemDataType *data)
  */
 void UpiAdcStatus(SystemDataType *data)
 {
-	if(CheckAdcStatusFail(data) == _UPI_TRUE_)      //check ADC Code frozen 
+  data->adcCheckData.decimateRst = CheckAdcStatusFail(data);
+	if(data->adcCheckData.decimateRst == _UPI_TRUE_)      //check ADC Code frozen 
 	{
     DecimateRst();
 	}			
@@ -1344,9 +1384,10 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
  *
  * @para  data  address of SystemDataType
  * @para  deltaQ  delta capacity from coulomb counter
+ * @para  suspend set _UPI_TRUE_ for suspend operation
  * @return  _UPI_NULL_
  */
-void UpiUpdateBatInfoFromIC(SystemDataType *data, _sys_s16_ deltaQ)
+void UpiUpdateBatInfoFromIC(SystemDataType *data, _sys_s16_ deltaQ, _sys_bool_ suspend)
 {
   _sys_s32_ tmp32;
   _sys_u8_ oldRsoc;
@@ -1398,7 +1439,8 @@ void UpiUpdateBatInfoFromIC(SystemDataType *data, _sys_s16_ deltaQ)
   /// [AT-PM] : Check taper condition reached ; 12/26/2013
   if((data->voltage > data->ggbParameter->TPVoltage) &&
      (data->curr < data->ggbParameter->TPCurrent) &&
-     (data->curr >= data->ggbParameter->standbyCurrent))
+     (data->curr >= data->ggbParameter->standbyCurrent) &&
+     (suspend == _UPI_FALSE_))
   {
     data->tpCount = data->tpCount + 1;
     if(data->tpCount > 3)
