@@ -25,11 +25,11 @@ _upi_bool_ MPK_active = _UPI_FALSE_;
 
 #if defined (uG31xx_OS_WINDOWS)
 
-  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 507 $"))
+  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 73 $"))
 
 #else
 
-  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 507 $")
+  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 73 $")
 
 #endif
 
@@ -380,13 +380,43 @@ GGSTATUS upiGG_ReadDeviceInfo(char *pObj, GG_DEVICE_INFO* pExtDeviceInfo)
   pUg31xx->deviceInfo.IT = pUg31xx->measData.intTemperature;
   pUg31xx->deviceInfo.ET = pUg31xx->measData.extTemperature;
 	pUg31xx->deviceInfo.v1_mV = pUg31xx->measData.bat1Voltage;
+	pUg31xx->deviceInfo.v2_mV = pUg31xx->measData.bat2Voltage;
+	pUg31xx->deviceInfo.v3_mV = pUg31xx->measData.bat3Voltage;
+
+	pUg31xx->deviceInfo.vCell2_mV = pUg31xx->measData.bat2Voltage;
+	pUg31xx->deviceInfo.vCell3_mV = pUg31xx->measData.bat3Voltage;
 	pUg31xx->deviceInfo.vCell1_mV = pUg31xx->measData.bat1Voltage;
 	pUg31xx->deviceInfo.vBat1Average_mV = CalculateVoltageFromUserReg(pUg31xx, 
                                                                     pUg31xx->measData.bat1Voltage, 
                                                                     pUg31xx->measData.curr, 
                                                                     pUg31xx->cellParameter.offsetR, 
                                                                     0);
-	pUg31xx->deviceInfo.voltage_mV = pUg31xx->deviceInfo.vBat1Average_mV;
+	pUg31xx->deviceInfo.vBat2Average_mV = CalculateVoltageFromUserReg(pUg31xx, 
+                                                                    pUg31xx->measData.bat2Voltage, 
+                                                                    pUg31xx->measData.curr, 
+                                                                    pUg31xx->cellParameter.offsetR, 
+                                                                    0);
+	pUg31xx->deviceInfo.vBat3Average_mV = CalculateVoltageFromUserReg(pUg31xx, 
+                                                                    pUg31xx->measData.bat3Voltage, 
+                                                                    pUg31xx->measData.curr, 
+                                                                    pUg31xx->cellParameter.offsetR, 
+                                                                    0);
+  /// [RY] : multi - cell setting
+  if(pUg31xx->measData.codeBat3 > 0)
+  {
+    pUg31xx->deviceInfo.voltage_mV = pUg31xx->deviceInfo.vBat1Average_mV +
+                                                          pUg31xx->deviceInfo.vBat2Average_mV + 
+                                                          pUg31xx->deviceInfo.vBat3Average_mV;
+  }
+  else if(pUg31xx->measData.codeBat2 > 0)
+  {
+    pUg31xx->deviceInfo.voltage_mV = pUg31xx->deviceInfo.vBat1Average_mV + 
+                                                          pUg31xx->deviceInfo.vBat2Average_mV;
+  }
+  else
+  {
+	  pUg31xx->deviceInfo.voltage_mV = pUg31xx->deviceInfo.vBat1Average_mV;
+  }
 	pUg31xx->deviceInfo.chargeData_mAh = pUg31xx->measData.deltaCap;
 
   pUg31xx->sysData.otpData = &pUg31xx->otpData;
@@ -405,7 +435,7 @@ GGSTATUS upiGG_ReadDeviceInfo(char *pObj, GG_DEVICE_INFO* pExtDeviceInfo)
     }
     pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
     pUg31xx->sysData.curr = (_sys_s16_)pUg31xx->measData.curr;
-    UpiUpdateBatInfoFromIC(&pUg31xx->sysData, (_sys_s16_)pUg31xx->measData.stepCap);
+    UpiUpdateBatInfoFromIC(&pUg31xx->sysData, (_sys_s16_)pUg31xx->measData.stepCap, _UPI_FALSE_);
     
     pUg31xx->batteryInfo.NAC = pUg31xx->sysData.rmFromIC;
     pUg31xx->batteryInfo.LMD = pUg31xx->sysData.fccFromIC;
@@ -494,6 +524,10 @@ void dumpInfo(struct ug31xx_data *pUg31xx)
         UG31_LOGI("ADC1 pos. offset: %d\n", pUg31xx->cellParameter.adc1_pos_offset);
         UG31_LOGI("ADC2 gain: %d\n", pUg31xx->cellParameter.adc2_gain);
         UG31_LOGI("ADC2 offset: %d\n", pUg31xx->cellParameter.adc2_offset);
+        UG31_LOGI("ADC2 vbat2 gain: %d\n", pUg31xx->cellParameter.vbat2_gain);
+        UG31_LOGI("ADC2 vbat2 offset: %d\n", pUg31xx->cellParameter.vbat2_offset);
+        UG31_LOGI("ADC2 vbat3 gain: %d\n", pUg31xx->cellParameter.vbat3_gain);
+        UG31_LOGI("ADC2 vbat3 offset: %d\n", pUg31xx->cellParameter.vbat3_offset);
         UG31_LOGI("R ?? : %d\n", pUg31xx->cellParameter.R);
         for (i=0; i<(int)(sizeof(pUg31xx->cellParameter.rtTable)/sizeof(_upi_u16_)); i++) {
                 UG31_LOGI("RTTable[%02d]: %d\n", i, pUg31xx->cellParameter.rtTable[i]);
@@ -1138,7 +1172,7 @@ GGSTATUS upiGG_Initial(char **pObj, GGBX_FILE_HEADER *pGGBXBuf, unsigned char Fo
     pUg31xx->sysData.voltage = pUg31xx->measData.bat1Voltage;
     pUg31xx->sysData.curr = (_sys_s16_)pUg31xx->measData.curr;
     lastRsocFromIC = pUg31xx->sysData.rsocFromIC;
-    UpiUpdateBatInfoFromIC(&pUg31xx->sysData, deltaQC);
+    UpiUpdateBatInfoFromIC(&pUg31xx->sysData, deltaQC, _UPI_FALSE_);
     CmpCapData(pUg31xx, _UPI_TRUE_);
     pUg31xx->batteryInfo.NAC = (_upi_u16_)pUg31xx->capData.rm;
     pUg31xx->batteryInfo.LMD = (_upi_u16_)pUg31xx->capData.fcc;
@@ -1284,7 +1318,7 @@ GGSTATUS upiGG_PreSuspend(char *pObj)
   pUg31xx->sysData.adc1ConvTime = pUg31xx->measData.adc1ConvertTime;
   pUg31xx->sysData.voltage = pUg31xx->measData.bat1Voltage;
   pUg31xx->sysData.curr = (_sys_s16_)pUg31xx->measData.curr;
-  UpiUpdateBatInfoFromIC(&pUg31xx->sysData, (_sys_s16_) pUg31xx->measData.stepCap);
+  UpiUpdateBatInfoFromIC(&pUg31xx->sysData, (_sys_s16_) pUg31xx->measData.stepCap, _UPI_TRUE_);
 
   pUg31xx->batteryInfo.NAC = pUg31xx->sysData.rmFromIC;
   pUg31xx->batteryInfo.LMD = pUg31xx->sysData.fccFromIC;
@@ -1302,6 +1336,49 @@ GGSTATUS upiGG_PreSuspend(char *pObj)
   pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
   UpiSaveBatInfoTOIC(&pUg31xx->sysData);
   return(Status);
+}
+
+/**
+ * @brief PrintDebugLog
+ *
+ *  Print debug log for capacity module
+ *
+ * @para  ug31xx  address of struct ug31xx_data
+ * @return  NULL
+ */
+void PrintDebugLog(struct ug31xx_data *ug31xx)
+{
+  UG31_LOGE("<BATT> P:%d(%d-%d)%%, V:%dmV, C:%dmA, T:%d.%dC(%d), S:0x%08x(%d%d%d), R:%dmAh, F:%dmAh, Q:%dmAh, CC:%d, P:%d.%d(%d-%d)s, BO:%d, %s:%s-%04x-%s:%s-%s (%d)\n",
+            (int)ug31xx->capData.rsoc,
+            (int)ug31xx->capData.rsoc,
+            (int)ug31xx->capData.predictRsoc,
+            (int)ug31xx->measData.bat1Voltage,
+            (int)ug31xx->measData.curr,
+            (int)(ug31xx->measData.extTemperature/10),
+            (int)(((ug31xx->measData.extTemperature%10) < 0) ? 
+                  (ug31xx->measData.extTemperature*(-1)%10) : 
+                  (ug31xx->measData.extTemperature%10)),
+            (int)ug31xx->measData.intTemperature,
+            (unsigned int)ug31xx->capData.status,
+            (int)ug31xx->capData.fcSts,
+            (int)ug31xx->capData.fcStep100,
+            (int)ug31xx->capData.inSuspend,
+            (int)ug31xx->capData.rm,
+            (int)ug31xx->capData.fcc,
+            (int)ug31xx->measData.cumuCap,
+            (int)ug31xx->measData.cycleCount,
+            (int)(ug31xx->measData.deltaTime/1000),
+            (int)(ug31xx->measData.deltaTime%1000),
+            (int)ug31xx->capData.dsgCharge,
+            (int)ug31xx->capData.reverseCap,
+            (int)(ug31xx->cellParameter.adc1_pos_offset + ug31xx->measData.ccOffsetAdj),
+            UG31XX_DRIVER_VERSION_STR,
+            UG31XX_DRIVER_RELEASE_NOTE,
+            ug31xx->cellParameter.ggb_version,
+            ug31xx->cellParameter.customerSelfDef,
+            ug31xx->cellParameter.projectSelfDef,
+            UG31XX_DRIVER_RELEASE_DATE,
+            (int)ug31xx->capData.tableUpdateIdx);
 }
 
 /**
@@ -1329,6 +1406,7 @@ void upiGG_ShellUpdateCapacity(char *pObj)
   #ifndef UG31XX_SHELL_ALGORITHM
   
     UpiReadCapacity(&pUg31xx->capData);
+    PrintDebugLog(pUg31xx);
 
   #endif  ///< end of UG31XX_SHELL_ALGORITHM
 
@@ -1368,7 +1446,7 @@ void upiGG_ShellUpdateCC(char *pObj)
   }
   pUg31xx->sysData.voltage = (_sys_u16_)pUg31xx->measData.bat1Voltage;
   pUg31xx->sysData.curr = (_sys_s16_)pUg31xx->measData.curr;
-  UpiUpdateBatInfoFromIC(&pUg31xx->sysData, (_sys_s16_)tmp16);
+  UpiUpdateBatInfoFromIC(&pUg31xx->sysData, (_sys_s16_)tmp16, _UPI_FALSE_);
 
   pUg31xx->batteryInfo.NAC = pUg31xx->sysData.rmFromIC;
   pUg31xx->batteryInfo.LMD = pUg31xx->sysData.fccFromIC;
@@ -1414,6 +1492,7 @@ void upiGG_ReadCapacity(char *pObj, GG_CAPACITY *pExtCapacity)
   UpiReadCapacity(&pUg31xx->capData);
   nowCapStsFC = ((pUg31xx->capData.fcSts == CAP_TRUE) ? _UPI_TRUE_ : _UPI_FALSE_);
   UG31_LOGD("[%s]: %d / %d = %d\n", __func__, pUg31xx->capData.rm, pUg31xx->capData.fcc, pUg31xx->capData.rsoc);
+  PrintDebugLog(pUg31xx);
 
   #endif  ///< end of UG31XX_SHELL_ALGORITHM
   
@@ -1508,7 +1587,7 @@ GGSTATUS upiGG_Wakeup(char *pObj, _upi_bool_ dc_in_before)
   /// [AT-PM] : Calculate the RSOC/NAC/LMD from coulomb counter ; 01/27/2013
   pUg31xx->sysData.voltage = pUg31xx->measData.bat1Voltage;
   pUg31xx->sysData.curr = (_sys_s16_)pUg31xx->measData.curr;
-  UpiUpdateBatInfoFromIC(&pUg31xx->sysData, deltaQC);
+  UpiUpdateBatInfoFromIC(&pUg31xx->sysData, deltaQC, _UPI_TRUE_);
 	UG31_LOGI("[%s]: suspend time = %d ms,deltaQ = %d mAh, RSOC =%d, LMD = %d mAh, NAC=%d mAh\n",
 							__func__,
 							totalTime,
@@ -2912,7 +2991,7 @@ void upiGG_AlgorithmSimulatorInit(char **pObj, const wchar_t* GGBFilename,
     deltaQC = (_upi_s16_)pMeasure->stepCap;
     pUg31xx->sysData.voltage = pMeasure->bat1Voltage;
     pUg31xx->sysData.curr = (_sys_s16_)pUg31xx->measData.curr;
-    UpiUpdateBatInfoFromIC(&pUg31xx->sysData, deltaQC);
+    UpiUpdateBatInfoFromIC(&pUg31xx->sysData, deltaQC, _UPI_FALSE_);
     pUg31xx->capData.rm = (_cap_u16_)pUg31xx->sysData.rmFromIC;
     pUg31xx->capData.fcc = (_cap_u16_)pUg31xx->sysData.fccFromIC;
     pUg31xx->capData.rsoc = (_cap_u8_)pUg31xx->sysData.rsocFromIC;
@@ -3387,11 +3466,21 @@ GGSTATUS upiGG_GetNtcStatus(char *pObj)
 
   if(MEAS_NTC_OPEN(pUg31xx->measData.status) == _UPI_TRUE_)
   {
+    #ifdef  STOP_IF_NTC_CHECK_FAIL
+    
+      UpiStopUg31xx();
+
+    #endif  ///< end of STOP_IF_NTC_CHECK_FAIL
     return (UG_MEAS_FAIL_NTC_OPEN);
   }
 
   if(MEAS_NTC_SHORT(pUg31xx->measData.status) == _UPI_TRUE_)
   {
+    #ifdef  STOP_IF_NTC_CHECK_FAIL
+    
+      UpiStopUg31xx();
+
+    #endif  ///< end of STOP_IF_NTC_CHECK_FAIL
     return (UG_MEAS_FAIL_NTC_SHORT);
   }
 
@@ -3496,7 +3585,39 @@ GGSTATUS upiGG_FetchVoltage(char *pObj)
                                                                     pUg31xx->measData.curr, 
                                                                     pUg31xx->cellParameter.offsetR, 
                                                                     0);
-	pUg31xx->deviceInfo.voltage_mV = pUg31xx->deviceInfo.vBat1Average_mV;
+  
+  /// [RY] : multi-cell setting
+  if(pUg31xx->measData.codeBat2 > 0)
+  {
+	  pUg31xx->deviceInfo.v2_mV = pUg31xx->measData.bat2Voltage;
+	  pUg31xx->deviceInfo.vCell2_mV = pUg31xx->measData.bat2Voltage;
+	  pUg31xx->deviceInfo.vBat2Average_mV = CalculateVoltageFromUserReg(pUg31xx, 
+                                                                      pUg31xx->measData.bat2Voltage, 
+                                                                      pUg31xx->measData.curr, 
+                                                                      pUg31xx->cellParameter.offsetR, 
+                                                                      0);
+    pUg31xx->deviceInfo.voltage_mV = pUg31xx->deviceInfo.vBat1Average_mV + 
+                                                          pUg31xx->deviceInfo.vBat2Average_mV;
+  }
+
+  if(pUg31xx->measData.codeBat3 > 0)
+  {
+	  pUg31xx->deviceInfo.v3_mV = pUg31xx->measData.bat3Voltage;
+	  pUg31xx->deviceInfo.vCell3_mV = pUg31xx->measData.bat3Voltage;
+	  pUg31xx->deviceInfo.vBat3Average_mV = CalculateVoltageFromUserReg(pUg31xx, 
+                                                                      pUg31xx->measData.bat3Voltage, 
+                                                                      pUg31xx->measData.curr, 
+                                                                      pUg31xx->cellParameter.offsetR, 
+                                                                      0);
+    pUg31xx->deviceInfo.voltage_mV = pUg31xx->deviceInfo.vBat1Average_mV +
+                                                          pUg31xx->deviceInfo.vBat2Average_mV + 
+                                                          pUg31xx->deviceInfo.vBat3Average_mV;
+  }
+
+  if((pUg31xx->measData.codeBat3 == 0) &&(pUg31xx->measData.codeBat2 == 0))
+  {
+	  pUg31xx->deviceInfo.voltage_mV = pUg31xx->deviceInfo.vBat1Average_mV;
+  }
   return (UG_READ_DEVICE_INFO_SUCCESS);
 }
 
@@ -3964,7 +4085,7 @@ struct ug31xx_uboot_interface ug31xx_uboot_module = {
 
 #ifdef  ANDROID_SHELL_ALGORITHM
 
-#define EXTERNAL_PROGRAM_PATH       ("/sdcard/upi_fg")
+#define EXTERNAL_PROGRAM_PATH       ("/Removable/MicroSD/upi_fg")
 #define EXTERNAL_PROGRAM_KEY_START  (0x9306)
 #define EXTERNAL_PROGRAM_KEY_END    (0x8837)
 
@@ -4517,8 +4638,11 @@ GGSTATUS lkm_update_procedure(_upi_bool_ user_space_response)
   if(rtn == UG_READ_DEVICE_INFO_SUCCESS)
   {
     #ifndef UG31XX_SHELL_ALGORITHM
-    
-    upiGG_ReadCapacity(lkm_gauge, devCapacity);
+
+    if(ug31xx->sysData.adcCheckData.decimateRst == _UPI_FALSE_)
+    {
+      upiGG_ReadCapacity(lkm_gauge, devCapacity);
+    }
 
     #endif  ///< end of UG31XX_SHELL_ALGORITHM
 
@@ -4890,9 +5014,11 @@ char* lkm_get_version(void)
 #define UPI_POLLING_TIME_NEAR_FULL_SOC  (90)
 #define UPI_POLLING_TIME_MINIMUM        (5)
 #define UPI_POLLING_TIME_MAXIMUM        (30)
-#define UPI_POLLING_TIME_NOT_READY      (UPI_POLLING_TIME_MINIMUM - 1)
-#define UPI_POLLING_TIME_VER_MISMATCH   (UPI_POLLING_TIME_NOT_READY - 1)
-#define UPI_POLLING_TIME_FAIL_RETRY     (UPI_POLLING_TIME_VER_MISMATCH - 1)
+#define UPI_POLLING_TIME_NOT_READY      (UPI_POLLING_TIME_MINIMUM - 1)      ///< [AT-PM] : Set to 4s ; 04/02/2014
+#define UPI_POLLING_TIME_VER_MISMATCH   (UPI_POLLING_TIME_NOT_READY - 1)    ///< [AT-PM] : Set to 3s ; 04/02/2014
+#define UPI_POLLING_TIME_FAIL_RETRY     (UPI_POLLING_TIME_VER_MISMATCH - 1) ///< [AT-PM] : Set to 2s ; 04/02/2014
+#define UPI_POLLING_TIME_DECIMATE_RST   (UPI_POLLING_TIME_FAIL_RETRY - 1)   ///< [AT-PM] : Set to 1s ; 04/02/2014
+#define UPI_POLLING_TIME_NTC_ABNORMAL   (60)
 #define UPI_POLLING_TIME_NEAR_OT        (10)
 #define UPI_POLLING_TIME_NEAR_UT        (10)
 #define UPI_POLLING_TIME_OT             (5)
@@ -4928,7 +5054,7 @@ _upi_s32_ polling_time_algorithm(void)
       polling_time = 60;
     }
     else if((ug31xx->measData.curr > 0) &&
-            ((ug31xx->batteryInfo.RSOC >= UPI_POLLING_TIME_NEAR_FULL_SOC) ||
+            ((ug31xx->capData.predictRsoc >= UPI_POLLING_TIME_NEAR_FULL_SOC) ||
              (ug31xx->capData.tpTime > 0)))
     {
       polling_time = UPI_POLLING_TIME_NEAR_FULL;
@@ -4996,6 +5122,30 @@ _upi_s32_ polling_time_algorithm(void)
   else
   {
     lkm_polling_init_cnt = UPI_POLLING_TIME_INIT_THRD;
+  }
+
+  #ifdef  ENABLE_NTC_CHECK
+
+    if(upiGG_GetNtcStatus(lkm_gauge) == UG_MEAS_FAIL_NTC_SHORT)
+    {
+      polling_time = UPI_POLLING_TIME_NTC_ABNORMAL;
+      UG31_LOGE("[%s]: Force polling time to %d seconds because of UG_MEAS_FAIL_NTC_SHORT\n", __func__,
+                polling_time);
+    }
+    if(upiGG_GetNtcStatus(lkm_gauge) == UG_MEAS_FAIL_NTC_OPEN)
+    {
+      polling_time = UPI_POLLING_TIME_NTC_ABNORMAL;
+      UG31_LOGE("[%s]: Force polling time to %d seconds because of UG_MEAS_FAIL_NTC_OPEN\n", __func__,
+                polling_time);
+    }
+
+  #endif  ///< end of ENABLE_NTC_CHECK
+
+  if(ug31xx->sysData.adcCheckData.decimateRst == _UPI_TRUE_)
+  {
+    polling_time = UPI_POLLING_TIME_DECIMATE_RST;
+    UG31_LOGE("[%s]: Force polling time to %d seconds because of DECIMATE_RST\n", __func__,
+              polling_time);
   }
   UG31_LOGN("[%s]: Time interval = %d seconds (%d)\n", __func__,
             polling_time,
@@ -6113,7 +6263,8 @@ int lkm_set_board_offset(int offset, char from_upi_bo)
             ug31xx->cellParameter.adc1_pos_offset,
             ug31xx->measData.ccOffsetAdj);
 
-  if(from_upi_bo == UG31XX_BOARD_OFFSET_FROM_UPI_BO)
+  if((from_upi_bo == UG31XX_BOARD_OFFSET_FROM_UPI_BO) ||
+     (from_upi_bo == UG31XX_BOARD_OFFSET_FROM_UPI_COS))
   {
     UpiSetFactoryBoardOffset(&ug31xx->capData);
   }
@@ -6216,9 +6367,44 @@ int lkm_set_ggb_board_gain(int gain)
   struct ug31xx_data *ug31xx;
 
   ug31xx = (struct ug31xx_data *)lkm_gauge;
+  ug31xx->cellParameter.adc1_pgain = (_upi_s16_)gain;
   ug31xx->cellParameter.adc1_ngain = (_upi_s16_)gain;
-  UG31_LOGE("[%s]: adc1_ngain = %d\n", __func__,
+  UG31_LOGE("[%s]: adc1_pgain = adc1_ngain = %d\n", __func__,
             gain);
+  return (0);
+}
+
+/**
+ * @brief lkm_get_ggb_config
+ *
+ *  Get NacLmdAdjustCfg from GGB
+ *
+ * @return  NacLmdAdjustCfg
+ */
+unsigned int lkm_get_ggb_config(void)
+{
+  struct ug31xx_data *ug31xx;
+
+  ug31xx = (struct ug31xx_data *)lkm_gauge;
+  return ((unsigned int)ug31xx->cellParameter.NacLmdAdjustCfg);
+}
+
+/**
+ * @brief lkm_set_ggb_config
+ *
+ *  Set NacLmdAdjustCfg to GGB
+ *
+ * @para  config  new NacLmdAdjustCfg
+ * @return  0 if success
+ */
+int lkm_set_ggb_config(unsigned int config)
+{
+  struct ug31xx_data *ug31xx;
+
+  ug31xx = (struct ug31xx_data *)lkm_gauge;
+  ug31xx->cellParameter.NacLmdAdjustCfg = (_upi_u32_)config;
+  UG31_LOGE("[%s]: NacLmdAdjustCfg = 0x%x\n", __func__,
+            config);
   return (0);
 }
 
@@ -6493,6 +6679,21 @@ int lkm_restore_pointer(void)
   return (0);
 }
 
+/**
+ * @brief lkm_get_decimate_rst_sts
+ *
+ *  Get DECIMATE_RST status
+ *
+ * @return  UG31XX_DECIMATE_RST_ACTIVE if DECIMATE_RST is active
+ */
+unsigned char lkm_get_decimate_rst_sts(void)
+{
+  struct ug31xx_data *ug31xx;
+
+  ug31xx = (struct ug31xx_data *)lkm_gauge;
+  return ((ug31xx->sysData.adcCheckData.decimateRst == _UPI_TRUE_) ? UG31XX_DECIMATE_RST_ACTIVE : UG31XX_DECIMATE_RST_NOT_ACTIVE);
+}
+
 struct ug31xx_module_interface ug31_module = {
   .initial    = lkm_initial,
   .uninitial  = lkm_uninitial,
@@ -6546,6 +6747,8 @@ struct ug31xx_module_interface ug31_module = {
   .get_cumulative_capacity        = lkm_get_cumulative_capacity,
   .get_standby_current            = lkm_get_standby_current,
   .get_ggb_board_gain             = lkm_get_ggb_board_gain,
+  .get_ggb_config                 = lkm_get_ggb_config,
+  .get_decimate_rst_sts           = lkm_get_decimate_rst_sts,
 
   .set_backup_file                = lkm_set_backup_file,
   .set_charger_full               = lkm_set_charger_full,
@@ -6566,6 +6769,7 @@ struct ug31xx_module_interface ug31_module = {
   .set_ntc_offset                 = lkm_set_ntc_offset,
   .set_standby_current            = lkm_set_standby_current,
   .set_ggb_board_gain             = lkm_set_ggb_board_gain,
+  .set_ggb_config                 = lkm_set_ggb_config,
 
   .chk_backup_file                = lkm_chk_backup_file,
   .enable_save_data               = lkm_saveDataToIC_switch,

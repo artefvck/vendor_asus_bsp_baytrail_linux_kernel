@@ -4,7 +4,7 @@
  *  Header for uG31xx measurement API
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 476 $
+ * @revision  $Revision: 64 $
  */
 
 typedef signed char       _meas_s8_;
@@ -66,7 +66,11 @@ typedef struct MeasDataST {
   
   /// [AT-PM] : Physical value ; 01/23/2013
   _meas_u16_ bat1Voltage;
+  _meas_u16_ bat2Voltage;
+  _meas_u16_ bat3Voltage;
   _meas_u16_ bat1VoltageAvg;
+  _meas_u16_ bat2VoltageAvg;
+  _meas_u16_ bat3VoltageAvg;
   _meas_s16_ curr;
   _meas_s16_ currAvg;
   _meas_s16_ intTemperature;
@@ -80,6 +84,8 @@ typedef struct MeasDataST {
 
   /// [AT-PM] : ADC code ; 01/23/2013
   _meas_u16_ codeBat1;
+  _meas_u16_ codeBat2;
+  _meas_u16_ codeBat3;
   _meas_s16_ codeCurrent;
   _meas_u16_ codeIntTemperature;
   _meas_u16_ codeExtTemperature;
@@ -107,6 +113,11 @@ typedef struct MeasDataST {
   _meas_s32_ adc2OffsetSlope;
   _meas_s32_ adc2OffsetFactorO;
 
+  _meas_s32_ adc2Vbat2Gain;
+  _meas_s32_ adc2Vbat2Offset;
+  _meas_s32_ adc2Vbat3Gain;
+  _meas_s32_ adc2Vbat3Offset;
+
   /// [AT-PM] : Previous information ; 01/25/2013
   _meas_u16_ lastCounter;
   _meas_u32_ lastTimeTick;
@@ -118,6 +129,8 @@ typedef struct MeasDataST {
   _meas_s16_ adc2CodeT25V100;
   _meas_s16_ adc2CodeT25V200;
   _meas_u16_ codeBat1BeforeCal;
+  _meas_u16_ codeBat2BeforeCal;
+  _meas_u16_ codeBat3BeforeCal;
   _meas_s16_ codeCurrentBeforeCal;
   _meas_u16_ codeIntTemperatureBeforeCal;
   _meas_u16_ codeExtTemperatureBeforeCal;

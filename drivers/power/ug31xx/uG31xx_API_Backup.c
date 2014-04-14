@@ -11,7 +11,7 @@
  *  Backup data on uG31xx to a file in system
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 53 $
+ * @revision  $Revision: 62 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,11 +19,11 @@
 
 #ifdef  uG31xx_OS_WINDOWS
 
-  #define BACKUP_VERSION      (_T("Backup $Rev: 53 $ "))
+  #define BACKUP_VERSION      (_T("Backup $Rev: 62 $ "))
 
 #else   ///< else of uG31xx_OS_WINDOWS
 
-  #define BACKUP_VERSION      ("Backup $Rev: 53 $ ")
+  #define BACKUP_VERSION      ("Backup $Rev: 62 $ ")
 
 #endif  ///< end of uG31xx_OS_WINDOWS
 
@@ -63,6 +63,8 @@ void CreateBackupBuffer(BackupDataType *data)
   data->backupBufferSize = data->backupBufferSize + sizeof(data->backupVolt1);
   data->backupBufferSize = data->backupBufferSize + sizeof(data->backupVolt2);
   data->backupBufferSize = data->backupBufferSize + sizeof(data->capData->preDsgCharge);
+  data->backupBufferSize = data->backupBufferSize + CELL_PARAMETER_STRING_LENGTH;
+  data->backupBufferSize = data->backupBufferSize + CELL_PARAMETER_STRING_LENGTH;
   data->backupBufferSize = data->backupBufferSize + sizeof(_backup_u32_);     ///< [AT-PM] : Used for driver version ; 11/07/2013
   UG31_LOGN("[%s]: Total %d bytes need to be created for written to file.\n", __func__, data->backupBufferSize);
 
@@ -91,6 +93,13 @@ void PrepareData(BackupDataType *data)
   driverVer = (_backup_u32_)UG31XX_DRIVER_VERSION;
   UG31_LOGN("[%s]: Driver version = %d (%d)\n", __func__, (int)driverVer, UG31XX_DRIVER_VERSION);
 
+  upi_memcpy(&data->backupCustomerSelfDef[0], (_backup_u8_ *)&data->sysData->ggbParameter->customerSelfDef, CELL_PARAMETER_STRING_LENGTH);
+  UG31_LOGN("[%s]: CustomerSelfDef = %s\n", __func__,
+            data->backupCustomerSelfDef);
+  upi_memcpy(&data->backupProjectSelfDef[0], (_backup_u8_ *)&data->sysData->ggbParameter->projectSelfDef, CELL_PARAMETER_STRING_LENGTH);
+  UG31_LOGN("[%s]: ProjectSelfDef = %s\n", __func__,
+            data->backupProjectSelfDef);
+  
   ptr = data->backupBuffer;
   upi_memcpy(ptr, (_backup_u8_ *)data->capData->encriptTable, (_upi_u32_)data->capData->tableSize);
   ptr = ptr + data->capData->tableSize;
@@ -122,6 +131,10 @@ void PrepareData(BackupDataType *data)
   ptr = ptr + sizeof(data->backupVolt2)/sizeof(_backup_u8_);
   upi_memcpy(ptr, (_backup_u8_ *)&data->capData->preDsgCharge, sizeof(data->capData->preDsgCharge)/sizeof(_backup_u8_));
   ptr = ptr + sizeof(data->capData->preDsgCharge)/sizeof(_backup_u8_);
+  upi_memcpy(ptr, &data->backupCustomerSelfDef[0], CELL_PARAMETER_STRING_LENGTH);
+  ptr = ptr + CELL_PARAMETER_STRING_LENGTH;
+  upi_memcpy(ptr, &data->backupProjectSelfDef[0], CELL_PARAMETER_STRING_LENGTH);
+  ptr = ptr + CELL_PARAMETER_STRING_LENGTH;
   upi_memcpy(ptr, (_backup_u8_ *)&driverVer, sizeof(driverVer)/sizeof(_backup_u8_));
 }
 
@@ -169,6 +182,10 @@ _backup_u32_ ConvertData(BackupDataType *data)
   ptr = ptr + sizeof(data->backupVolt2)/sizeof(_backup_u8_);  
   upi_memcpy((_backup_u8_ *)&data->capData->preDsgCharge, ptr, sizeof(data->capData->preDsgCharge)/sizeof(_backup_u8_));
   ptr = ptr + sizeof(data->capData->preDsgCharge)/sizeof(_backup_u8_);  
+  upi_memcpy(&data->backupCustomerSelfDef[0], ptr, CELL_PARAMETER_STRING_LENGTH);
+  ptr = ptr + CELL_PARAMETER_STRING_LENGTH;
+  upi_memcpy(&data->backupProjectSelfDef[0], ptr, CELL_PARAMETER_STRING_LENGTH);
+  ptr = ptr + CELL_PARAMETER_STRING_LENGTH;
   upi_memcpy((_backup_u8_ *)&driverVer, ptr, sizeof(driverVer)/sizeof(_backup_u8_));
   UG31_LOGI("[%s]: Read driver version = %d (%d)\n", __func__, (int)driverVer, UG31XX_DRIVER_VERSION);
   return (driverVer);
@@ -237,6 +254,12 @@ _backup_u8_ CheckBackupFile(BackupDataType *data)
   if(driverVer != UG31XX_DRIVER_VERSION)
   {
     UG31_LOGN("[%s]: Backup file version mismatched.\n", __func__);
+    rtnU8 = CHECK_BACKUP_FILE_STS_VERSION_MISMATCH;
+  }
+  else if((upi_memcmp(data->backupCustomerSelfDef, data->sysData->ggbParameter->customerSelfDef, CELL_PARAMETER_STRING_LENGTH) != 0) ||
+           (upi_memcmp(data->backupProjectSelfDef, data->sysData->ggbParameter->projectSelfDef, CELL_PARAMETER_STRING_LENGTH) != 0))
+  {
+    UG31_LOGN("[%s]: Backup file cell information mismatched.\n", __func__);
     rtnU8 = CHECK_BACKUP_FILE_STS_VERSION_MISMATCH;
   }
   else if((upi_memcmp(orgCapData, data->capData, sizeof(CapacityDataType)) != 0) ||
