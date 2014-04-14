@@ -34,6 +34,14 @@
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_dp_helper.h>
 
+#define intel_div_round(divident, divisor) ({					\
+	unsigned int quo1, quo2, ret__;					\
+	quo1 = divident / divisor;					\
+	quo2 = ((divident % divisor) * 2) / divisor;			\
+	ret__ = (quo1 + quo2);						\
+	ret__;								\
+})
+
 /**
  * _wait_for - magic (register) wait macro
  *
@@ -976,6 +984,8 @@ bool is_sprite_enabled(struct drm_i915_private *dev_priv,
 bool is_cursor_enabled(struct drm_i915_private *dev_priv,
 			enum pipe pipe);
 bool is_maxfifo_needed(struct drm_i915_private *dev_priv);
+void i915_update_plane_stat(struct drm_i915_private *dev_priv, int pipe,
+		int plane, bool enable, int planes);
 
 extern void intel_unpin_work_fn(struct work_struct *__work);
 extern void intel_unpin_sprite_work_fn(struct work_struct *__work);

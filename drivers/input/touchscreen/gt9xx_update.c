@@ -41,7 +41,7 @@
 #include <linux/mount.h>
 #if ((GTP_AUTO_UPDATE && GTP_HEADER_FW_UPDATE) || GTP_COMPATIBLE_MODE)
 //    #include "gt9xx_firmware.h"
-	#include "GT9271_1012(BB4D).h"
+	#include "GT9271_1020(9083).h"
 #endif
 
 #define GUP_REG_HW_INFO             0x4220
