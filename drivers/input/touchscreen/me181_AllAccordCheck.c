@@ -5,6 +5,7 @@
 #define mul 100000
 u32 all_accord_limit_Jtouch=22000;   //all_accord_limit for Jtouch
 u32 all_accord_limit_Ofilm=22000;    //all_accord_limit for Ofilm
+u32 all_accord_limit_Soe=22000;    //all_accord_limit for Soe
 u32 all_accord_limit=22000;          //all_accord_limit = limit * mul
 u32 AllCheckResult=0;
 u16 all_channel_status[MAX_SENSOR_NUM * MAX_DRIVER_NUM]={0};
