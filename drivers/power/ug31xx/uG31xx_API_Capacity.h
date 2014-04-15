@@ -4,7 +4,7 @@
  *  Header of uG31xx capacity algorithm
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 506 $
+ * @revision  $Revision: 66 $
  */
 
 typedef char            _cap_bool_;
@@ -102,6 +102,11 @@ typedef struct CapacityDataST {
   _cap_u32_ socTimeLock;
   _cap_s32_ socCCStep;
   _cap_s32_ socCCStepBuf;
+
+  _cap_u8_ rsocFilterActiveCnt;
+
+  _cap_s32_ qFromCurr;
+  _cap_s32_ qFromCC;
   
   _cap_s16_ tableNac[SOV_NUMS];
   _cap_s16_ tableNacUpdate[SOV_NUMS];
@@ -237,6 +242,7 @@ extern void UpiSetFactoryBoardOffset(CapacityDataType *data);
  * @return  NULL
  */
 extern void UpiPrintCapacityVersion(void);
+
 /**
  * @brief UpiGetOcvSoc
  *

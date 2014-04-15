@@ -39,6 +39,20 @@
 #include <asm/intel-mid.h>
 #include <asm/intel_mid_thermal.h>
 
+#include <linux/cpu.h>
+#include <asm/cpu.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/sched.h>
+#include <linux/cpu.h>
+#include <linux/topology.h>
+#include <linux/device.h>
+#include <linux/node.h>
+#include <linux/gfp.h>
+#include <linux/slab.h>
+#include <linux/percpu.h>
+
 #define DRIVER_NAME	"soc_thrm"
 
 /* SOC DTS Registers */
@@ -465,6 +479,23 @@ static int disable_dynamic_turbo(struct cooling_device_info *cdev_info)
 	return 0;
 }
 
+static int is_COS(void)
+{
+	char *start;
+	static char COS_CMDLINE[] = "androidboot.mode=charger";
+
+	start = strstr(saved_command_line,COS_CMDLINE);
+	if(start != NULL){
+		return 1;
+	}else{
+		return 0;
+	}		
+}
+
+extern int __ref cpu_down(unsigned int cpu);
+extern struct cpu *cpu1;
+extern struct cpu *cpu2;
+extern struct cpu *cpu3;
 static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 				unsigned long state)
 {
@@ -472,7 +503,9 @@ static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 	struct soc_throttle_data *data;
 	struct cooling_device_info *cdev_info =
 			(struct cooling_device_info *)cdev->devdata;
-
+	int status;
+	ssize_t ret;
+	
 	if (state == DISABLE_DYNAMIC_TURBO)
 		return disable_dynamic_turbo(cdev_info);
 
@@ -482,8 +515,25 @@ static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 	}
 
 	mutex_lock(&cdev_info->lock_state);
-
 	data = &cdev_info->soc_data[state];
+	
+	status = is_COS();
+	if(status == 1){
+		state = 3;
+		data->power_limit = 0x1F;
+		data->floor_freq = 0x01;
+		cpu_hotplug_driver_lock();
+		ret = cpu_down(1);
+		if (!ret)
+			kobject_uevent(&cpu1->dev.kobj, KOBJ_OFFLINE);
+		ret = cpu_down(2);
+		if (!ret)
+			kobject_uevent(&cpu2->dev.kobj, KOBJ_OFFLINE);
+		ret = cpu_down(3);
+		if (!ret)
+			kobject_uevent(&cpu3->dev.kobj, KOBJ_OFFLINE);
+		cpu_hotplug_driver_unlock();
+	}
 
 	rdmsr_on_cpu(0, PKG_TURBO_POWER_LIMIT, &eax, &edx);
 
@@ -696,6 +746,12 @@ static irqreturn_t soc_dts_intrpt_handler(int irq, void *dev_data)
 {
 	return IRQ_WAKE_THREAD;
 }
+struct delayed_work Per_work;
+struct platform_soc_data *per_pdata = NULL;
+static void Do_Per_work(struct work_struct *work)
+{	
+	soc_set_cur_state(per_pdata->soc_cdev,0);
+}
 
 static int soc_thermal_probe(struct platform_device *pdev)
 {
@@ -704,10 +760,13 @@ static int soc_thermal_probe(struct platform_device *pdev)
 	u32 eax, edx;
 	static char *name[SOC_THERMAL_SENSORS] = {"SoC_DTS0", "SoC_DTS1"};
 
+	printk("tantest soc_thermal_probe\n");
+	INIT_DELAYED_WORK(&Per_work, Do_Per_work);
+	schedule_delayed_work(&Per_work, 100*HZ);
 	pdata = kzalloc(sizeof(struct platform_soc_data), GFP_KERNEL);
 	if (!pdata)
 		return -ENOMEM;
-
+	per_pdata = pdata;
 	ret = rdmsr_safe_on_cpu(0, MSR_IA32_TEMPERATURE_TARGET, &eax, &edx);
 	if (ret) {
 		tjmax_temp = TJMAX_TEMP;
@@ -765,7 +824,7 @@ static int soc_thermal_probe(struct platform_device *pdev)
 	enable_soc_dts();
 
 	create_soc_dts_debugfs();
-
+	
 	return 0;
 
 exit_cdev:

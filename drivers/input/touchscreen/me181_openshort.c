@@ -33,7 +33,9 @@ u32 shorttestflag = 0;
 u16 max_limit_value_Jtouch = 2844;     // screen max limit for Jtouch
 u16 min_limit_value_Jtouch = 1470;     // screen min limit fot Jtouch
 u16 max_limit_value_Ofilm = 3004;     // screen max limit for Ofilm
-u16 min_limit_value_Ofilm = 1490;     // screen min limit fot Ofilm
+u16 min_limit_value_Ofilm = 1490;     // screen min limit for Ofilm
+u16 max_limit_value_Soe = 2953;		  // screen max limit for Soe
+u16 min_limit_value_Soe = 1431;		  // screen min limit for Soe
 /*
 u16 max_limit_value_Wintek= 2500;            // screen max limit for Wintek
 u16 min_limit_value_Wintek= 1506;            // screen min limit for Wintek
@@ -68,6 +70,7 @@ extern u8 config[GTP_ADDR_LENGTH + GTP_CONFIG_MAX_LENGTH];
 #if AREA_ACCORD_CHECK
 extern u32 accord_limit_Jtouch;
 extern u32 accord_limit_Ofilm;
+extern u32 accord_limit_Soe;
 /*
 extern u32 accord_limit_Wintek;
 extern u32 accord_limit_Innolux;
@@ -82,6 +85,7 @@ extern u8  special_case_limit;
 #if ALL_ACCORD_CHECK
 extern u32 all_accord_limit_Jtouch;
 extern u32 all_accord_limit_Ofilm;
+extern u32 all_accord_limit_Soe;
 /*
 extern u32 all_accord_limit_Innolux;
 extern u32 all_accord_limit_Wintek;
@@ -1984,6 +1988,17 @@ s32 gt9xx_open_test(struct i2c_client * client)
         all_accord_limit = all_accord_limit_Ofilm;
 #endif
     }
+    else if (rd_cfg_buffer[GTP_ADDR_LENGTH] == 0)   //Soe
+    {
+        max_limit_value = max_limit_value_Soe;
+        min_limit_value = min_limit_value_Soe;
+#if AREA_ACCORD_CHECK
+        accord_limit = accord_limit_Soe;
+#endif
+#if ALL_ACCORD_CHECK
+        all_accord_limit = all_accord_limit_Soe;
+#endif
+    }
 
     SET_INFO_LINE_INFO("Max Limit Value: %d", max_limit_value);
     SET_INFO_LINE_INFO("Min Limit Value: %d", min_limit_value);
@@ -2116,6 +2131,7 @@ static ssize_t gtp_sysfs_opentest_store(struct device *dev,struct device_attribu
     // Jtouch
     // adb shell "echo 5 1800 1200 20000 20000> /sys/gtp_test/opentest"\
 	// Ofilm ???
+	//Soe
 
     printk("Set ID Max Min Area All Limit Value for Opentest\n");
 
@@ -2210,7 +2226,43 @@ static ssize_t gtp_sysfs_opentest_store(struct device *dev,struct device_attribu
         }
         all_accord_limit_Ofilm = val;
 #endif
-    
+    }
+    else if (val == 0)    //Soe
+    {
+     error = kstrtouint((tbuf+2), 10, &val);
+        if (error)
+        {
+            printk("Set Max Limit Value Fail!\n");
+            return error;
+        }
+        max_limit_value_Soe = val;
+
+        error = kstrtouint((tbuf+7), 10, &val);
+        if (error)
+        {
+            printk("Set Min Limit Value Fail!\n");
+            return error;
+        }
+        min_limit_value_Soe = val;
+
+#if AREA_ACCORD_CHECK
+        error = kstrtouint((tbuf+12), 10, &val);
+        if (error)
+        {
+            printk("Set Area Accord Limit Fail!\n");
+            return error;
+        }
+        accord_limit_Soe = val;
+#endif
+#if ALL_ACCORD_CHECK
+        error = kstrtouint((tbuf+18), 10, &val);
+        if (error)
+        {
+            printk("Set All Accord Limit Fail!\n");
+            return error;
+        }
+        all_accord_limit_Soe = val;
+#endif
     }
 
     printk("Set Max Min Limit Value Success!\n");

@@ -172,6 +172,7 @@ int crystal_cove_vbus_on_status(void)
 EXPORT_SYMBOL(crystal_cove_vbus_on_status);
 extern unsigned char volatile VbusDetach ; 
 extern unsigned char vbus_Event ; 
+extern void asus_send_wakeup_key(void);
 static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 {
 	int spwrsrc, mask;
@@ -194,6 +195,7 @@ static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 			dev_dbg(&info->pdev->dev, "VBUS detach event\n");
 			mask = 0;
 			VbusDetach =1;
+			asus_send_wakeup_key();
 			if (info->edev)
 				extcon_set_cable_state(info->edev,
 						PWRSRC_EXTCON_CABLE_USB, false);

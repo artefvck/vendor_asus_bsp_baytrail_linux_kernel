@@ -11,7 +11,7 @@
  *  guG31xx measurement API
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 488 $
+ * @revision  $Revision: 66 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,11 +19,11 @@
 
 #ifdef  uG31xx_OS_WINDOWS
 
-  #define MEASUREMENT_VERSION      (_T("Measurement $Rev: 488 $"))
+  #define MEASUREMENT_VERSION      (_T("Measurement $Rev: 66 $"))
 
 #else   ///< else of uG31xx_OS_WINDOWS
 
-  #define MEASUREMENT_VERSION      ("Measurement $Rev: 488 $")
+  #define MEASUREMENT_VERSION      ("Measurement $Rev: 66 $")
 
 #endif  ///< end of uG31xx_OS_WINDOWS
 
@@ -59,6 +59,9 @@ typedef struct MeasDataInternalST {
   _meas_u16_ codeCounter;
   _meas_s16_ ccOffset;
   _meas_s16_ codeExtTemperatureComp;
+
+  _meas_u16_ codeBat2;
+  _meas_u16_ codeBat3;
 
   _meas_u8_ reg14;
   _meas_u8_ reg9C;
@@ -145,7 +148,11 @@ static AdcDeltaCodeMappingType AdcDeltaCodeMapping[] =
   { 0,      0,      0,     0    },     ///< Index = 31
 };
 
-#define ADC_TEMPERATURE_GAIN_CONST            (1000)
+#ifdef  UG31XX_ADC_NO_TEMP_COMPENSATION
+  #define ADC_TEMPERATURE_GAIN_CONST          (0)
+#else   ///< else of UG31XX_ADC_NO_TEMP_COMPENSATION
+  #define ADC_TEMPERATURE_GAIN_CONST          (1000)
+#endif  ///< end of UG31XX_ADC_NO_TEMP_COMPENSATION
 
 #define ADC1_CODE_100MV_NEGATIVE              (0xFF00)
 #define ADC1_CODE_200MV_NEGATIVE              (0xFE00)
@@ -458,20 +465,15 @@ _meas_s32_ CalibrateAdc1Code(MeasDataInternalType *obj, _meas_s32_ code)
  * @para  code  ADC2 code to be calibrated
  * @return  calibrated code
  */
-_meas_s32_ CalibrateAdc2Code(MeasDataInternalType *obj, _meas_s32_ code)
+_meas_s32_ CalibrateAdc2Code(MeasDataInternalType *obj, _meas_s32_ code, _meas_s32_ gain, _meas_s32_ offset)
 {
   _meas_s64_ tmp64;
   _meas_s32_ tmp32;
   _meas_s32_ deltaIT;
-  _meas_s32_ gain;
-  _meas_s32_ offset;
-
   deltaIT = (_meas_s32_)obj->info->otp->aveIT80;
   deltaIT = deltaIT - obj->info->otp->aveIT25;
 
   /// [AT-PM] : Pre-operation to avoid 64-bit division ; 01/23/2013
-  gain = obj->info->adc2Gain;
-  offset = obj->info->adc2Offset;
   while(1)
   {
     tmp64 = (_meas_s64_)code;
@@ -602,6 +604,62 @@ void ConvertBat1(MeasDataInternalType *obj)
   tmp32 = tmp32 - obj->info->sysData->ggbParameter->adc2_offset;
   tmp32 = tmp32*CALIBRATION_FACTOR_CONST/obj->info->sysData->ggbParameter->adc2_gain;
   obj->info->bat1Voltage = (_meas_u16_)tmp32;
+}
+
+/**
+ * @brief ConvertBat2
+ *
+ *  Convert code of BAT2
+ *
+ * @para  obj address of MeasDataInternalType
+ * @return  _UPI_NULL_
+ */
+void ConvertBat2(MeasDataInternalType *obj)
+{
+  _meas_s32_ tmp32;
+
+  /// [AT-PM] : Convert from calibrated ADC code ; 01/25/2013
+  tmp32 = (_meas_s32_)obj->info->codeBat2;
+  tmp32 = tmp32 - ADC2_IDEAL_CODE_100MV;
+  tmp32 = tmp32*ADC2_VOLTAGE_DELTA/ADC2_IDEAL_CODE_DELTA;
+  tmp32 = tmp32 + ADC2_VOLTAGE_100MV;
+
+  /// [AT-PM] : Apply board factor ; 01/25/2013
+  tmp32 = tmp32 - BoardFactor[GET_PRODUCT_TYPE(obj->info->sysData->ggbParameter->NacLmdAdjustCfg)].voltage_offset;
+  //tmp32 = tmp32*BOARD_FACTOR_CONST/BoardFactor[GET_PRODUCT_TYPE(obj->info->sysData->ggbParameter->NacLmdAdjustCfg)].voltage_gain;
+
+  /// [AT-PM] : Apply calibration parameter ; 01/25/2013
+  tmp32 = tmp32 - obj->info->sysData->ggbParameter->vbat2_offset;
+  //tmp32 = tmp32*CALIBRATION_FACTOR_CONST/obj->info->sysData->ggbParameter->vbat2_gain;
+  obj->info->bat2Voltage = (_meas_u16_)tmp32;
+}
+
+/**
+ * @brief ConvertBat2
+ *
+ *  Convert code of BAT2
+ *
+ * @para  obj address of MeasDataInternalType
+ * @return  _UPI_NULL_
+ */
+void ConvertBat3(MeasDataInternalType *obj)
+{
+  _meas_s32_ tmp32;
+
+  /// [AT-PM] : Convert from calibrated ADC code ; 01/25/2013
+  tmp32 = (_meas_s32_)obj->info->codeBat3;
+  tmp32 = tmp32 - ADC2_IDEAL_CODE_100MV;
+  tmp32 = tmp32*ADC2_VOLTAGE_DELTA/ADC2_IDEAL_CODE_DELTA;
+  tmp32 = tmp32 + ADC2_VOLTAGE_100MV;
+
+  /// [AT-PM] : Apply board factor ; 01/25/2013
+  tmp32 = tmp32 - BoardFactor[GET_PRODUCT_TYPE(obj->info->sysData->ggbParameter->NacLmdAdjustCfg)].voltage_offset;
+  //tmp32 = tmp32*BOARD_FACTOR_CONST/BoardFactor[GET_PRODUCT_TYPE(obj->info->sysData->ggbParameter->NacLmdAdjustCfg)].voltage_gain;
+
+  /// [AT-PM] : Apply calibration parameter ; 01/25/2013
+  tmp32 = tmp32 - obj->info->sysData->ggbParameter->vbat3_offset;
+  //tmp32 = tmp32*CALIBRATION_FACTOR_CONST/obj->info->sysData->ggbParameter->vbat3_gain;
+  obj->info->bat3Voltage = (_meas_u16_)tmp32;
 }
 
 #define ADC1_VOLTAGE_100MV    (-5000)                                   ///< [AT-PM] : Unit in uV ; 01/25/2013
@@ -1240,6 +1298,39 @@ void ReadRegister(MeasDataInternalType *obj)
                REG_INTR_TEMPER_LOW, 
                REG_INTR_TEMPER_HIGH - REG_INTR_TEMPER_LOW + 1, 
                (unsigned char *)&obj->reg50);
+  API_I2C_Read(SEURITY_REGISTER, 
+               UG31XX_I2C_HIGH_SPEED_MODE, 
+               UG31XX_I2C_TEM_BITS_MODE, 
+               REG_INTR_CTRL_A, 
+               1, 
+               (unsigned char *)&obj->reg9B);
+  API_I2C_Read(SEURITY_REGISTER, 
+               UG31XX_I2C_HIGH_SPEED_MODE, 
+               UG31XX_I2C_TEM_BITS_MODE, 
+               REG_CELL_EN, 
+               1, 
+               (unsigned char *)&obj->reg9E);
+  
+  if(obj->reg9E >= APPLICATION_UG3102)
+  {
+    _ReadRegister(REG_VBAT2_LOW,
+                  REG_VBAT2_HIGH - REG_VBAT2_LOW + 1, 
+                  (unsigned char *)&obj->codeBat2);
+  }
+  else
+  {
+    obj->codeBat2 = 0;
+  }
+  if((obj->reg9E & APPLICATION_UG3103_3) == APPLICATION_UG3103_3)
+  {
+    _ReadRegister(REG_VBAT3_LOW,
+                  REG_VBAT3_HIGH - REG_VBAT3_LOW + 1, 
+                  (unsigned char *)&obj->codeBat3);
+  }
+  else
+  {
+    obj->codeBat3 = 0;
+  }
 }
 
 /**
@@ -1654,6 +1745,8 @@ MEAS_RTN_CODE FetchAdcCode(MeasDataInternalType *obj)
     ReadVoltBat3Code();
   }
   obj->info->codeBat1BeforeCal = obj->codeBat1;
+  obj->info->codeBat2BeforeCal = obj->codeBat2;
+  obj->info->codeBat3BeforeCal = obj->codeBat3;
   obj->info->codeCurrentBeforeCal = obj->codeCurrent;
   obj->info->codeIntTemperatureBeforeCal = obj->codeIntTemperature;
   obj->info->codeExtTemperatureBeforeCal = obj->codeExtTemperature;
@@ -1759,8 +1852,9 @@ void CalculateCCOffset(MeasDataInternalType *obj)
   tmp32 = tmp32 + obj->info->ccOffsetAdj;
   tmp32 = tmp32*BoardFactor[GET_PRODUCT_TYPE(obj->info->sysData->ggbParameter->NacLmdAdjustCfg)].current_gain/BOARD_FACTOR_CONST;
   tmp32 = tmp32 + BoardFactor[GET_PRODUCT_TYPE(obj->info->sysData->ggbParameter->NacLmdAdjustCfg)].current_offset;
-  UG31_LOGN("[%s]: Offset from board and calibration factor = %d x %d / %d + %d = %d\n", __func__,
+  UG31_LOGN("[%s]: Offset from board and calibration factor = (%d + %d) x %d / %d + %d = %d\n", __func__,
             obj->info->sysData->ggbParameter->adc1_pos_offset,
+            obj->info->ccOffsetAdj,
             BoardFactor[GET_PRODUCT_TYPE(obj->info->sysData->ggbParameter->NacLmdAdjustCfg)].current_gain,
             BOARD_FACTOR_CONST,
             BoardFactor[GET_PRODUCT_TYPE(obj->info->sysData->ggbParameter->NacLmdAdjustCfg)].current_offset,
@@ -1902,6 +1996,17 @@ void UpiResetCoulombCounter(MeasDataType *data)
 #define COULOMB_COUNTER_RESET_THRESHOLD_CHARGE_CHG  (30000)
 #define COULOMB_COUNTER_RESET_THREDHOLD_CHARGE_DSG  (-30000)
 
+_meas_s32_ AvgVoltage(_meas_u16_ currVoltage, _meas_u16_ avgVoltage)
+{
+  _meas_s32_ tmp32;
+
+  tmp32 = (_meas_s32_)currVoltage;
+  tmp32 = tmp32 + avgVoltage;
+  tmp32 = tmp32/2;
+  //obj->info->bat1VoltageAvg = (_meas_u16_)tmp32;
+  return tmp32;
+  }
+
 /**
  * @brief UpiMeasurement
  *
@@ -1937,8 +2042,6 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
   /// [AT-PM] : Get ADC code ; 06/04/2013
   rtn = FetchAdcCode(obj);
 
-
-  
   UG31_LOGE("[%s]: (%d-%d) V=%d, I=%d, IT=%d, ET=%d, CH=%d, CT=%d, %02x%02x %02x%02x%02x%02x %02x%02x%02x %02x%02x %02x%02x %02x%02x\n", __func__, 
               select, obj->info->fetchRetryCnt, obj->codeBat1, obj->codeCurrent, 
               obj->codeIntTemperature, obj->codeExtTemperature, obj->codeCharge, obj->codeCounter,
@@ -1993,7 +2096,9 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
   /// [AT-PM] : Calibrate ADC code ; 01/23/2013
   if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_VOLTAGE) || (select == MEAS_SEL_INITIAL))
   {
-    data->codeBat1 = (_meas_u16_)CalibrateAdc2Code(obj, (_meas_s32_)obj->codeBat1);
+    data->codeBat1 = (_meas_u16_)CalibrateAdc2Code(obj, (_meas_s32_)obj->codeBat1, obj->info->adc2Gain, obj->info->adc2Offset);
+    data->codeBat2 = (_meas_u16_)CalibrateAdc2Code(obj, (_meas_s32_)obj->codeBat2, obj->info->adc2Gain, obj->info->adc2Offset);
+    data->codeBat3 = (_meas_u16_)CalibrateAdc2Code(obj, (_meas_s32_)obj->codeBat3, obj->info->adc2Gain, obj->info->adc2Offset);
     UG31_LOGN("[%s]: VBat1 Code = %d -> %d\n", __func__, obj->codeBat1, data->codeBat1);
   }
   if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_CURRENT) || (select == MEAS_SEL_INITIAL))
@@ -2021,17 +2126,21 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
   if((select == MEAS_SEL_ALL) || (select == MEAS_SEL_VOLTAGE) || (select == MEAS_SEL_INITIAL))
   {
     ConvertBat1(obj);
+    ConvertBat2(obj);
+    ConvertBat3(obj);
 
     if((select == MEAS_SEL_INITIAL) || (MEAS_IN_SUSPEND_MODE(obj->info->status) == _UPI_TRUE_))
     {
       obj->info->bat1VoltageAvg = obj->info->bat1Voltage;
+      obj->info->bat2VoltageAvg = obj->info->bat2Voltage;
+      obj->info->bat3VoltageAvg = obj->info->bat3Voltage;
     }
     else
     {
-      tmp32 = (_meas_s32_)obj->info->bat1Voltage;
-      tmp32 = tmp32 + obj->info->bat1VoltageAvg;
-      tmp32 = tmp32/2;
-      obj->info->bat1VoltageAvg = (_meas_u16_)tmp32;
+      obj->info->bat1VoltageAvg = (_meas_u16_)AvgVoltage(obj->info->bat1Voltage, obj->info->bat1VoltageAvg);
+      obj->info->bat2VoltageAvg = (_meas_u16_)AvgVoltage(obj->info->bat2Voltage, obj->info->bat2VoltageAvg);
+      obj->info->bat3VoltageAvg = (_meas_u16_)AvgVoltage(obj->info->bat3Voltage, obj->info->bat3VoltageAvg);
+
       UG31_LOGN("[%s]: Average voltage = %d (%d)\n", __func__,
                 obj->info->bat1VoltageAvg,
                 obj->info->bat1Voltage);

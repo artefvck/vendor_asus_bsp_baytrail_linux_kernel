@@ -953,12 +953,15 @@ static void create_panel_type_proc_file(void)
 #endif
 //sean_lu@asus.com ----
 
-//sean_lu@asusu.com ++++ for create panel_id_proc_file
+//sean_lu@asusu.com ++++ for create panel_id_proc_file & me181_sku_id_proc_file
 //#if IS_ENABLED(CONFIG_FACTORY_ITEMS) //only factory version, create it
 #ifdef CONFIG_PRO_ME181_PANEL
 #define PANEL_ID_PROC_FILE  "driver/panel_id"
+#define SKU_ID_PROC_FILE "driver/sku_id"
 static struct proc_dir_entry *panel_id_proc_file;
+static struct proc_dir_entry *sku_id_proc_file;
 
+//panel_id
 static ssize_t panel_id_proc_read(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
 	int err = 0;
@@ -966,7 +969,7 @@ static ssize_t panel_id_proc_read(struct file *filp, char __user *buffer, size_t
 	ssize_t ret = 0;
 	char *buff;
 	int desc = 0;
-	char auo[] = "1";
+	char auo[] = "1"; // or ivo
 	char inn[] = "0";
 
 	buff = kmalloc(10,GFP_KERNEL);
@@ -1015,6 +1018,66 @@ static void create_panel_id_proc_file(void)
     if(!panel_id_proc_file)
 	{
 		printk("create driver/panel_id fail\n");
+	}
+}
+
+//sku_id
+static ssize_t sku_id_proc_read(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
+{
+	u8 sku_id = 1;
+	u8 project_stage = 0;
+	ssize_t ret = 0;
+	char *buff;
+	int desc = 0;
+	char cx[] = "1";
+	char c[] = "0";
+
+	buff = kmalloc(10,GFP_KERNEL);
+
+	if(!buff)
+	{
+		return -ENOMEM;
+	}
+
+	project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+
+	if(project_stage) //PR
+	{
+		sku_id = intel_mid_pmic_readb(0x45);//GPIOxxxCTLI GPIO1P2  /PCB_ID5  //ME181C(GPIO1P2=0)/ME181CX(GPIO1P2=1)
+	}
+	else //ER
+	{
+		sku_id = 0; // ME181 ER stage only C sku
+	}
+
+	if(sku_id)
+	{
+		desc += sprintf(buff + desc,"%s\n",cx);
+		sean_debug("%s:----sean test----sku_id_proc_read----%d\n", __func__,__LINE__);
+	}
+	else
+	{
+		desc += sprintf(buff + desc,"%s\n",c);
+		sean_debug("%s:----sean test----sku_id_proc_read----%d\n", __func__,__LINE__);
+	}
+
+	ret = simple_read_from_buffer(buffer,count,ppos,buff,desc);
+
+	kfree(buff);
+    return ret;
+}
+
+static struct file_operations sku_id_proc_ops = {
+    .read = sku_id_proc_read,
+};
+
+static void create_sku_id_proc_file(void)
+{
+    sean_debug("%s:----sean test----create_me181_sku_id_proc_file----%d\n", __func__,__LINE__);
+    sku_id_proc_file = proc_create(SKU_ID_PROC_FILE, 0666,NULL, &sku_id_proc_ops);
+    if(!sku_id_proc_file)
+	{
+		sean_debug("create driver/me181_sku_id fail\n");
 	}
 }
 #endif
@@ -1184,6 +1247,7 @@ bool intel_dsi_init(struct drm_device *dev)
 		//dev_priv->mipi_panel_id = i915_mipi_panel_id; //sean --
 
 //#if IS_ENABLED(CONFIG_FACTORY_ITEMS) //only factory version, create it
+		create_sku_id_proc_file();	//sean_lu ++++ for sku_id_proc_create
 		create_panel_id_proc_file();//sean_lu ++++ for panel_id_proc_create
 //#endif
 

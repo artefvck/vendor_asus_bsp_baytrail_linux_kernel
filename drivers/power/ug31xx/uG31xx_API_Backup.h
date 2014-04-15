@@ -4,7 +4,7 @@
  *  Header of uG31xx_API_Backup.cpp
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 53 $
+ * @revision  $Revision: 62 $
  */
 
 #define BACKUP_BOOL_TRUE      (1)
@@ -51,6 +51,8 @@ typedef struct BackupDataST {
   _backup_u8_ backupBufferSize;
   _backup_u8_ backupFileRetryCnt;
   _backup_u32_ backupNacLmdAdjustCfg;
+  _backup_u8_ backupCustomerSelfDef[CELL_PARAMETER_STRING_LENGTH];
+  _backup_u8_ backupProjectSelfDef[CELL_PARAMETER_STRING_LENGTH];
 
   _backup_u8_ backupSuspendIdx;
   BackupSuspendDataType backupSuspendData[BACKUP_MAX_LOG_SUSPEND_DATA];

@@ -745,6 +745,20 @@ static int gpio_keys_get_devtree_pdata(struct device *dev,
 
 #endif
 
+static struct input_dev *nrpt_dev;
+
+void asus_send_wakeup_key(void)
+{
+	if (!nrpt_dev) {
+		printk(KERN_ERR "nrpt_dev is null\n");
+		return;
+	}
+	input_report_key(nrpt_dev, KEY_WAKEUP, 1);
+	input_sync(nrpt_dev);
+	input_report_key(nrpt_dev, KEY_WAKEUP, 0);
+	input_sync(nrpt_dev);
+}
+
 static void gpio_remove_key(struct gpio_button_data *bdata)
 {
 	free_irq(bdata->irq, bdata);
@@ -826,10 +840,17 @@ static int gpio_keys_probe(struct platform_device *pdev)
 		goto fail2;
 	}
 
+	if (!strcmp(input->name, "gpio-lesskey-nrpt")) {
+		input->evbit[0] = BIT_MASK(EV_KEY);
+		set_bit(KEY_WAKEUP, input->keybit);
+		nrpt_dev = input;
+	}
+
 	error = input_register_device(input);
 	if (error) {
 		dev_err(dev, "Unable to register input device, error: %d\n",
 			error);
+		nrpt_dev = NULL;
 		goto fail3;
 	}
 
