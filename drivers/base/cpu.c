@@ -268,10 +268,19 @@ static void cpu_device_release(struct device *dev)
  *
  * Initialize and register the CPU device.
  */
+struct cpu *cpu1 = NULL;
+struct cpu *cpu2 = NULL;
+struct cpu *cpu3 = NULL;
 int __cpuinit register_cpu(struct cpu *cpu, int num)
 {
 	int error;
 
+	if(num == 1) 
+		cpu1 = cpu;
+	if(num == 2) 
+		cpu2 = cpu;
+	if(num == 3) 
+		cpu3 = cpu;
 	cpu->node_id = cpu_to_node(num);
 	memset(&cpu->dev, 0x00, sizeof(struct device));
 	cpu->dev.id = num;

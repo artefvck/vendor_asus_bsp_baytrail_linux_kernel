@@ -38,7 +38,8 @@
 #include <linux/init.h> 		    //tan
 #include <linux/timer.h>
 #include <linux/hrtimer.h>
-
+#include <linux/switch.h>
+#include "ug31xx_version.h"
 //#define	UPI_CALLBACK_FUNC	            ///< [AT-PM] : Used for removing callback function ; 04/15/2013
 #define	UG31XX_DYNAMIC_POLLING	      ///< [AT-PM] : Used for dynamic polling time ; 04/30/2013
 //#define UG31XX_WAIT_CHARGER_FC        ///< [AT-PM] : Used for full charge status decided by charger ; 07/25/2013
@@ -1158,7 +1159,7 @@ static void check_backup_file_routine(void)
 }
 
 #ifdef	UG31XX_REGISTER_POWERSUPPLY
-
+static int Status=0;
 static int ug31xx_update_psp(enum power_supply_property psp,
 			     union power_supply_propval *val)
 {
@@ -1190,26 +1191,41 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 		}
 	}
 	if(psp == POWER_SUPPLY_PROP_VOLTAGE_NOW)
-	{
-		mutex_lock(&ug31->info_update_lock);
-		val->intval = ug31_module.get_voltage_now();
-		mutex_unlock(&ug31->info_update_lock);
-		val->intval = val->intval * 1000;
+	{	
+		if(Status == 1)
+			val->intval = ug31->batt_volt * 1000;
+		else{
+			mutex_lock(&ug31->info_update_lock);
+			val->intval = ug31_module.get_voltage_now();
+			mutex_unlock(&ug31->info_update_lock);
+			val->intval = val->intval * 1000;
+		}
+		
 	}
 	if(psp == POWER_SUPPLY_PROP_VOLTAGE_AVG)
 	{
 		val->intval = ug31->batt_volt * 1000;
 	}
 	if(psp == POWER_SUPPLY_PROP_CURRENT_NOW)
-	{
-		mutex_lock(&ug31->info_update_lock);
-		val->intval = ug31_module.get_current_now();
-		mutex_unlock(&ug31->info_update_lock);
-		if((is_charging() == false) && (val->intval > 0))
-		{
-			val->intval = 0;
+	{	
+		if(Status == 1){
+			val->intval = ug31->batt_current * 1000;
+			if((is_charging() == false) && (val->intval > 0))
+			{
+				val->intval = 0;
+			}
 		}
-		val->intval = val->intval * 1000;
+		else{
+			mutex_lock(&ug31->info_update_lock);
+			val->intval = ug31_module.get_current_now();
+			mutex_unlock(&ug31->info_update_lock);
+			
+			if((is_charging() == false) && (val->intval > 0))
+			{
+				val->intval = 0;
+			}
+			val->intval = val->intval * 1000;
+		}
 	}
 	if(psp == POWER_SUPPLY_PROP_CURRENT_AVG)
 	{
@@ -1540,7 +1556,18 @@ static void asus_print_all(void)
 
 
 #define MAX_BATTERY_UPDATE_INTERVAL     (600)
+static int is_COS(void)
+{
+	char *start;
+	static char COS_CMDLINE[] = "androidboot.mode=charger";
 
+	start = strstr(saved_command_line,COS_CMDLINE);
+	if(start != NULL){
+		return 1;
+	}else{
+		return 0;
+	}		
+}
 static void show_update_batt_status(void)
 {
 	ug31->batt_capacity_last	= ug31->batt_capacity;
@@ -1548,7 +1575,11 @@ static void show_update_batt_status(void)
 
 #ifdef  UG31XX_DYNAMIC_POLLING
 	ug31->polling_time		= (u32)ug31_module.get_polling_time();
+if(Status == 0)
 	ug31->update_time		= (u32)ug31_module.get_update_time();
+else{ 
+		ug31->update_time	= 120;
+	}
 #else   ///< else of UG31XX_DYNAMIC_POLLING
 	ug31->polling_time		= 5;
 	ug31->update_time		= 5;
@@ -1709,6 +1740,11 @@ static void batt_info_update_work_func(struct work_struct *work)
 	int prev_fc_sts;
 	int now_fc_sts;
 
+	if(Status == 1)
+	{
+		if(is_charging_full() == true)
+			return 0;
+	}
 	ug31_dev = container_of(work, struct ug31xx_gauge, batt_info_update_work.work);
 
 	gg_status = 0;
@@ -1958,7 +1994,7 @@ int ug31xx_get_proc_rsoc(struct file *filp, char __user *buffer, size_t count, l
   return ret;
 }
 
-int ug31xx_get_proc_psoc(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
+int ug31xx_get_version(struct file *filp, char __user *buffer, size_t count, loff_t *ppos)
 {
   int len = 0;
   ssize_t ret = 0;
@@ -1967,7 +2003,7 @@ int ug31xx_get_proc_psoc(struct file *filp, char __user *buffer, size_t count, l
   buff = kmalloc(100,GFP_KERNEL);
   if(!buff)
 	return -ENOMEM;
-  len += sprintf(buff+len, "%d\n", ug31_module.get_relative_state_of_charge());  
+  len += sprintf(buff+len, "%s:%s\n", UG31XX_DRIVER_VERSION_STR,UG31XX_DRIVER_RELEASE_NOTE);  
   ret = simple_read_from_buffer(buffer,count,ppos,buff,len);
   kfree(buff);
   return ret;
@@ -2319,6 +2355,12 @@ static void shell_timeout_work_func(struct work_struct *work)
 
 static void shell_backup_work_func(struct work_struct *work)
 {
+
+  if(Status == 1)
+	{
+		if(is_charging_full() == true)
+			return 0;
+	}
   ug31xx_backup_file_status = ug31_module.shell_backup();
   
   if((ug31xx_backup_file_status > 0) && (!(op_options & LKM_OPTIONS_FORCE_RESET)))
@@ -2637,8 +2679,8 @@ static void batt_probe_work_func(struct work_struct *work)
 	static struct file_operations Aug31xx_get_proc_rsoc = {
 	    .read = ug31xx_get_proc_rsoc,
 	};
-	static struct file_operations Aug31xx_get_proc_psoc = {
-	    .read = ug31xx_get_proc_psoc,
+	static struct file_operations Aug31xx_get_version = {
+	    .read = ug31xx_get_version,
 	};
 	static struct file_operations Aug31xx_get_proc_rm = {
 	    .read = ug31xx_get_proc_rm,
@@ -2662,10 +2704,10 @@ static void batt_probe_work_func(struct work_struct *work)
 	    .read = ug31xx_get_proc_kbo_stop,
 	};
 
-	ent = proc_create("BMSSOC", 0744,NULL, &Aug31xx_get_proc_rsoc); 
+	ent = proc_create("VERSION", 0744,NULL, &Aug31xx_get_version); 
 	if(!ent)
 	{
-		GAUGE_err("create /proc/BMSSOC fail\n");
+		GAUGE_err("create /proc/VERSION fail\n");
 	}
 	ent = proc_create("RSOC", 0744, NULL, &Aug31xx_get_proc_rsoc);
 	if(!ent)
@@ -2719,10 +2761,10 @@ static void batt_probe_work_func(struct work_struct *work)
 	batt_dev.name = "battery";
 	batt_dev.print_name = batt_switch_name;
 	/// tan
-	//if (switch_dev_register(&batt_dev) < 0) {
-	//	GAUGE_err("%s: fail to register battery switch\n", __func__);
-	//	goto pwr_supply_fail;
-	//}
+	if (switch_dev_register(&batt_dev) < 0) {
+		GAUGE_err("%s: fail to register battery switch\n", __func__);
+		goto pwr_supply_fail;
+	}
 	ug31xx_config_earlysuspend(ug31);
 
 	if((is_charging() == true) &&
@@ -2764,7 +2806,7 @@ static int ug31xx_i2c_probe(struct i2c_client *client,
 	{
 		return -EIO;
 	} 
-
+	Status = is_COS();
 	ug31 = kzalloc(sizeof(*ug31), GFP_KERNEL);
 	if (!ug31)
 	{
@@ -2794,7 +2836,7 @@ static int ug31xx_i2c_probe(struct i2c_client *client,
   hrtimer_init(&ug31->kbo_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
   ug31->kbo_timer.function = kbo_timer_func;
   hrtimer_init(&ug31->auto_kbo_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-  //ug31->auto_kbo_timer.function = auto_kbo_timer_func;
+ // ug31->auto_kbo_timer.function = auto_kbo_timer_func;
   
 	//INIT_DELAYED_WORK_DEFERRABLE(&ug31->batt_probe_work, batt_probe_work_func);
 	INIT_DELAYED_WORK(&ug31->batt_probe_work, batt_probe_work_func); //tan

@@ -2787,10 +2787,25 @@ Input:
 Output:
     Executive Outcomes. 0---succeed.
 ********************************************************/
+static int is_COS(void)
+{
+	char *start;
+	static char COS_CMDLINE[] = "androidboot.mode=charger";
+
+	printk("tan test command line : %s\n",saved_command_line);
+	start = strstr(saved_command_line,COS_CMDLINE);
+	if(start != NULL){
+		return 1;
+	}else{
+		return 0;
+	}		
+}
 static int goodix_ts_init(void)
 {
     s32 ret;
-
+    int status;
+    if(status == 1)
+	  return 0;
     GTP_DEBUG_FUNC();   
     GTP_INFO("GTP driver installing...");
     goodix_wq = create_singlethread_workqueue("goodix_wq");
