@@ -396,7 +396,7 @@ static int ug31xx_misc_release(struct inode *inode, struct file *file)
   UG31_LOGN("[%s]\n", __func__);
   return 0;
 }
-
+static int Status=0;
 static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
   int rc = 0;
@@ -608,7 +608,14 @@ static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long
         UG31_LOGE("[%s] copy_from_user fail\n", __func__);
       }
       ug31_module.restore_pointer();
-      schedule_delayed_work(&ug31->shell_backup_work, 0*HZ);
+      
+      if(Status == 1){
+	  	if(is_charging_full() == true)
+      			schedule_delayed_work(&ug31->shell_backup_work, 3600*HZ);
+		else
+			schedule_delayed_work(&ug31->shell_backup_work, 0*HZ);
+	} else
+		schedule_delayed_work(&ug31->shell_backup_work, 0*HZ);
       break;
 
     case UG31XX_IOCTL_ALGORITHM_BACKUP_BUFFER:
@@ -1159,7 +1166,6 @@ static void check_backup_file_routine(void)
 }
 
 #ifdef	UG31XX_REGISTER_POWERSUPPLY
-static int Status=0;
 static int ug31xx_update_psp(enum power_supply_property psp,
 			     union power_supply_propval *val)
 {
@@ -1575,11 +1581,14 @@ static void show_update_batt_status(void)
 
 #ifdef  UG31XX_DYNAMIC_POLLING
 	ug31->polling_time		= (u32)ug31_module.get_polling_time();
-if(Status == 0)
-	ug31->update_time		= (u32)ug31_module.get_update_time();
-else{ 
-		ug31->update_time	= 120;
-	}
+	if(Status == 0)
+	{ 
+		if(is_charging_full() == true)
+			ug31->update_time	= 3600;
+		else
+			ug31->update_time	= (u32)ug31_module.get_update_time();
+	}else
+		ug31->update_time		= (u32)ug31_module.get_update_time();
 #else   ///< else of UG31XX_DYNAMIC_POLLING
 	ug31->polling_time		= 5;
 	ug31->update_time		= 5;
@@ -1742,8 +1751,8 @@ static void batt_info_update_work_func(struct work_struct *work)
 
 	if(Status == 1)
 	{
-		if(is_charging_full() == true)
-			return 0;
+		//if(is_charging_full() == true)
+		//	return 0;
 	}
 	ug31_dev = container_of(work, struct ug31xx_gauge, batt_info_update_work.work);
 
@@ -2358,8 +2367,8 @@ static void shell_backup_work_func(struct work_struct *work)
 
   if(Status == 1)
 	{
-		if(is_charging_full() == true)
-			return 0;
+		//if(is_charging_full() == true)
+		//	return 0;
 	}
   ug31xx_backup_file_status = ug31_module.shell_backup();
   
