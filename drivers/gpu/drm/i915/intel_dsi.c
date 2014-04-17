@@ -909,7 +909,9 @@ static ssize_t panel_type_proc_read(struct file *filp, char __user *buffer, size
 		return -ENOMEM;
 	}
 
-	project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+	//project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+	//GPIO0P6 & GPIO1P4 & GPIO1P5 //if only one is 1 ->PR  else ->ER
+	project_stage = intel_mid_pmic_readb(0x39) || intel_mid_pmic_readb(0x47) || intel_mid_pmic_readb(0x48);
 
 	if(project_stage) //PR
 	{
@@ -1039,7 +1041,9 @@ static ssize_t sku_id_proc_read(struct file *filp, char __user *buffer, size_t c
 		return -ENOMEM;
 	}
 
-	project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+	//project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+	//GPIO0P6 & GPIO1P4 & GPIO1P5 //if only one is 1 ->PR  else ->ER
+	project_stage = intel_mid_pmic_readb(0x39) || intel_mid_pmic_readb(0x47) || intel_mid_pmic_readb(0x48);
 
 	if(project_stage) //PR
 	{
@@ -1163,7 +1167,9 @@ bool intel_dsi_init(struct drm_device *dev)
 		int gpio_lcm_id = 68;
 		int fact_panel_id = 6;
 
-		project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+		//project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+		//GPIO0P6 & GPIO1P4 & GPIO1P5 //if only one is 1 ->PR  else ->ER
+		project_stage = intel_mid_pmic_readb(0x39) || intel_mid_pmic_readb(0x47) || intel_mid_pmic_readb(0x48);
 
 		sean_debug("%s:----sean test----m181_init i915_init----\n", __func__);
 		err = gpio_request(gpio_lcm_id, "LCM_ID");	//GPIO_S0[68] /LCM_ID
