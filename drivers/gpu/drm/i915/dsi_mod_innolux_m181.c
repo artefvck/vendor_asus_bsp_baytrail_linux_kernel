@@ -164,19 +164,28 @@ void m181_disable_panel_power(struct intel_dsi_device *dsi)
     int err;
     err = gpio_request(69, "sd_pwr_en1");
 	if (err){
-		printk("%s:----sean test----m176_panel_request fail----\n",__func__);
+		printk("%s:----sean test----m181_panel_request fail----\n",__func__);
 	}
 
-	msleep(110);	//sean test t15 >= 100
+	msleep(100);	//sean test t12 >= 50
 
 	gpio_direction_output(69, 0);
 	gpio_set_value(69, 0);	//RESX low
-	gpio_free(69);
-	msleep(10);	//sean test t12 >= 0
+	//sean_debug("%s:----sean test----ivo_m181_disable_panel_power----%d\n", __func__,__LINE__);
+	//gpio_free(69);
 
-    sean_debug("%s:----sean test----m181_innolux_panel_disable_power----\n", __func__);
-    intel_mid_pmic_setb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 
-    intel_mid_pmic_writeb(0x52,0);//PANEL_EN
+	//msleep(5);	//sean test t13 =< 50
+
+    //sean_debug("%s:----sean test----ivo_m181_disable_panel_power----%d\n", __func__,__LINE__);
+    intel_mid_pmic_writeb(0x52,0x00);//PANEL_EN 3.3v
+    usleep_range(16000,17000); //sean test t15 <= 10
+    intel_mid_pmic_writeb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 1.8v
+    sean_debug("%s:----sean test----panel 1.8V set low----%d\n", __func__,__LINE__);
+
+    err =  intel_mid_pmic_readb(0x52);
+    sean_debug("%s:----sean test----ivo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,err);
+
+    gpio_free(69);
     msleep(160);	//sean test t9 >= 150
 }
 
