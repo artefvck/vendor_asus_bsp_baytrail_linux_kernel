@@ -86,7 +86,7 @@
 #define BYT_BUTTON_EN_DELAY             1500
 
 #define ME176C_ME181C_BOARD_ER				0
-#define ME176C_ME181C_BOARD_PR				1
+//#define ME176C_ME181C_BOARD_PR				1
 
 struct byt_mc_private {
 #ifdef CONFIG_SND_SOC_COMMS_SSP
@@ -1360,12 +1360,24 @@ static void remove_audio_debug_proc_file(void)
 static int get_Board_Type(void)
 {
 	int gpio0p6;
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
+	int gpio1p5;
+	intel_mid_pmic_writeb(0x31,0x14);//PMIC GPIO0P6 CTLO
+	intel_mid_pmic_writeb(0x40,0x14);//PMIC GPIO1P5 CTLO
+
+	msleep(10);
+	gpio0p6 = intel_mid_pmic_readb(0x39) & 0x01;//PMIC GPIO0P6 CTLI
+	gpio1p5 = intel_mid_pmic_readb(0x48) & 0x01;//PMIC GPIO1P5 CTLI
+
+	return (gpio0p6|gpio1p5);//when these 2 gpios all equal 0,board is ER
+#else
 	intel_mid_pmic_writeb(0x31,0x14);//PMIC GPIO0P6 CTLO
 
 	msleep(10);
 	gpio0p6 = intel_mid_pmic_readb(0x39) & 0x01;//PMIC GPIO0P6 CTLI
 
 	return gpio0p6;
+#endif
 }
 
 static void PMIC_enable_codec(void)
