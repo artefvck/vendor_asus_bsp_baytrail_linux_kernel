@@ -909,7 +909,9 @@ static ssize_t panel_type_proc_read(struct file *filp, char __user *buffer, size
 		return -ENOMEM;
 	}
 
-	project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+	//project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+	//GPIO0P6 & GPIO1P5 //if only one is 1 ->PR  else ->ER
+	project_stage = intel_mid_pmic_readb(0x39) || intel_mid_pmic_readb(0x48);
 
 	if(project_stage) //PR
 	{

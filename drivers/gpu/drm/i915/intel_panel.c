@@ -569,6 +569,7 @@ u32 max;
 #ifdef CONFIG_PRO_ME181_PANEL
 
 		project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
+
 		if(project_stage) //PR
 		{
 			intel_mid_pmic_writeb(0x4E, level*0xff/max);
