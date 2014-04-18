@@ -266,9 +266,7 @@ i915_dpst_init(struct drm_device *dev,
 
 	gpio_free(68);
 
-	//project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
-	//GPIO0P6 & GPIO1P4 & GPIO1P5 //if only one is 1 ->PR  else ->ER
-	project_stage = intel_mid_pmic_readb(0x39) || intel_mid_pmic_readb(0x47) || intel_mid_pmic_readb(0x48);
+	project_stage = intel_mid_pmic_readb(0x39);//GPIO0P6 /0=ER /1=PR
 
 	if(project_stage) //PR
 	{
