@@ -28,10 +28,18 @@
 #define GPIO1P0CTLI (GPIO1CTLI_BASE+0)
 #define GPIO0P6CTLO (GPIO0CTLO_BASE+6)
 #define GPIO0P6CTLI (GPIO0CTLI_BASE+6)
+#define GPIO1P4CTLO (GPIO1CTLO_BASE+4)
+#define GPIO1P4CTLI (GPIO1CTLI_BASE+4)
+#define GPIO1P5CTLO (GPIO1CTLO_BASE+5)
+#define GPIO1P5CTLI (GPIO1CTLI_BASE+5)
 #define HALL_PMIC_CTLO GPIO1P0CTLO
 #define HALL_PMIC_CTLI GPIO1P0CTLI
-#define BOARD_ID_CTLO GPIO0P6CTLO
-#define BOARD_ID_CTLI GPIO0P6CTLI
+#define BOARD_ID_2_CTLO GPIO0P6CTLO
+#define BOARD_ID_2_CTLI GPIO0P6CTLI
+#define BOARD_ID_3_CTLO GPIO1P4CTLO
+#define BOARD_ID_3_CTLI GPIO1P4CTLI
+#define BOARD_ID_4_CTLO GPIO1P5CTLO
+#define BOARD_ID_4_CTLI GPIO1P5CTLI
 //bit[0]<-->hall,
 #define MGPIO1P0IRQS0 0x1A
 //bit[0]<-->hall,
@@ -104,10 +112,15 @@ static int board_id ;
 #define PR 1
 static int get_board_id()
 {
-	if((intel_mid_pmic_readb(BOARD_ID_CTLO)&0x20) == 1){
-		intel_mid_pmic_writeb(BOARD_ID_CTLO,0x14) ;
+	if((intel_mid_pmic_readb(BOARD_ID_2_CTLO)&0x20) == 1){
+		intel_mid_pmic_writeb(BOARD_ID_2_CTLO,0x14) ;
 	}
-	switch( intel_mid_pmic_readb(BOARD_ID_CTLI)&0x01 )
+	if((intel_mid_pmic_readb(BOARD_ID_4_CTLO)&0x20) == 1){
+		intel_mid_pmic_writeb(BOARD_ID_4_CTLO,0x14) ;
+	}
+	switch( (intel_mid_pmic_readb(BOARD_ID_2_CTLI)
+		|intel_mid_pmic_readb(BOARD_ID_4_CTLI))
+		&0x01 )
 	{
 	case 0:return board_id = ER;break;
 	case 1:return board_id = PR;break;
@@ -159,7 +172,7 @@ void _set_pmic_hall_ioctlreg()
 {
 //	HALL_PMIC_CTLO WR
 //	HALL_PMIC_CTLI WR
-//	intel_mid_pmic_writeb(BOARD_ID_CTLO,0x1c) ;
+//	intel_mid_pmic_writeb(BOARD_ID_2_CTLO,0x1c) ;
 	intel_mid_pmic_writeb(HALL_PMIC_CTLO,0x5e) ;
 	intel_mid_pmic_writeb(HALL_PMIC_CTLI,0x0e) ;
 }
