@@ -119,7 +119,11 @@ static struct rt5640_init_reg init_list[] = {
 /*	{RT5640_SPO_R_MIXER	, 0x1800},//DAC -> SPORMIX*/
 /*	{RT5640_I2S1_SDP	, 0xD000},//change IIS1 and IIS2*/
 	/*record */
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
 	{RT5640_IN1_IN2, 0x5080},	/*IN1 boost 40db and differential mode */
+#else
+	{RT5640_IN1_IN2, 0x4080},	/*IN1 boost 40db and differential mode */
+#endif
 //#ifdef CONFIG_ME176C_CODEC_PARAMETER
 	{RT5640_IN3_IN4, 0x0400},	/*IN2 boost 40db and signal ended mode */
 //#else
