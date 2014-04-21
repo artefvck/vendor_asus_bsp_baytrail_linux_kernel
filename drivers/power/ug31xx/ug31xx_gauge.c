@@ -1581,7 +1581,7 @@ static void show_update_batt_status(void)
 
 #ifdef  UG31XX_DYNAMIC_POLLING
 	ug31->polling_time		= (u32)ug31_module.get_polling_time();
-	if(Status == 0)
+	if(Status == 1)
 	{ 
 		if(is_charging_full() == true)
 			ug31->update_time	= 3600;
