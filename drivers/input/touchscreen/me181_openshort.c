@@ -32,7 +32,7 @@ u32 shorttestflag = 0;
 // open test
 u16 max_limit_value_Jtouch = 2844;     // screen max limit for Jtouch
 u16 min_limit_value_Jtouch = 1470;     // screen min limit fot Jtouch
-u16 max_limit_value_Ofilm = 3004;     // screen max limit for Ofilm
+u16 max_limit_value_Ofilm = 3054;     // screen max limit for Ofilm
 u16 min_limit_value_Ofilm = 1490;     // screen min limit for Ofilm
 u16 max_limit_value_Soe = 2953;		  // screen max limit for Soe
 u16 min_limit_value_Soe = 1431;		  // screen min limit for Soe
