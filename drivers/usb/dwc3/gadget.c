@@ -2931,42 +2931,38 @@ static void dwc3_gadget_hibernation_interrupt(struct dwc3 *dwc)
 
 static void dwc3_do_extra_change(struct dwc3 *dwc);
 
-static void dwc3_soft_reset_work(struct work_struct *data)
+static void dwc3_reconnect_work(struct work_struct *work)
 {
-	struct dwc3 *dwc = container_of((struct delayed_work *)data,
-			struct dwc3, soft_reset);
+	struct dwc3 *dwc = container_of(work, struct dwc3, reconnect_work);
 	unsigned long		flags;
 
-	dev_info(dwc->dev, "%s\n", __func__);
+	dev_info(dwc->dev, "Recover Erratic Error via soft-reconnect\n");
 
 	/* Workaround Erratic Error via soft-reconnection */
 	spin_lock_irqsave(&dwc->lock, flags);
+	if (dwc->pm_state == PM_DISCONNECTED) {
+		spin_unlock_irqrestore(&dwc->lock, flags);
+		return;
+	}
 
 	dwc3_gadget_disable_irq(dwc);
 	__dwc3_gadget_ep_disable(dwc->eps[0]);
 	__dwc3_gadget_ep_disable(dwc->eps[1]);
-	dwc3_gadget_run_stop(dwc, 0);
-
-	spin_unlock_irqrestore(&dwc->lock, flags);
-#if 0
 	dwc3_stop_active_transfers(dwc);
-#endif
+	dwc3_gadget_run_stop(dwc, 0);
 
 	dwc3_core_init(dwc);
 	dwc3_do_extra_change(dwc);
-
-	spin_lock_irqsave(&dwc->lock, flags);
 	dwc3_event_buffers_setup(dwc);
 	dwc3_init_for_enumeration(dwc);
 	dwc3_gadget_run_stop(dwc, 1);
 	spin_unlock_irqrestore(&dwc->lock, flags);
+
 }
 
 static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 		const struct dwc3_event_devt *event)
 {
-	u32	reg;
-
 	switch (event->type) {
 	case DWC3_DEVICE_EVENT_DISCONNECT:
 		dwc3_gadget_disconnect_interrupt(dwc);
@@ -2996,26 +2992,10 @@ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 	case DWC3_DEVICE_EVENT_ERRATIC_ERROR:
 		dev_vdbg(dwc->dev, "Erratic Error\n");
 
-		if (dwc->last_event_type == DWC3_DEVICE_EVENT_ERRATIC_ERROR)
-		{
-#if 0
-			/* Controller may generate too many Erratic Errors Messages,
-			 * Disable it until we find a way to recover the failure.
-			 */
-			reg = dwc3_readl(dwc->regs, DWC3_DEVTEN);
-			reg &= ~DWC3_DEVTEN_ERRTICERREN;
-			dwc3_writel(dwc->regs, DWC3_DEVTEN, reg);
-			dev_info(dwc->dev, "Erratic Error Event disabled\n");
-#endif
-			dev_info(dwc->dev, "Erratic Error Event ignored\n");
-		} else {
-			dev_info(dwc->dev, "Erratic Recovery\n");
+		/* Disable all events before error recovery for erratic event */
+		dwc3_gadget_disable_irq(dwc);
+		schedule_work(&dwc->reconnect_work);
 
-			/* Disable all events before error recovery for erratic event */
-			dwc3_gadget_disable_irq(dwc);
-
-			schedule_delayed_work(&dwc->soft_reset, msecs_to_jiffies(500));
-		}
 		break;
 	case DWC3_DEVICE_EVENT_CMD_CMPL:
 		dev_vdbg(dwc->dev, "Command Complete\n");
@@ -3026,8 +3006,6 @@ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 	default:
 		dev_dbg(dwc->dev, "UNKNOWN IRQ %d\n", event->type);
 	}
-
-	dwc->last_event_type = event->type;
 }
 
 static void dwc3_process_event_entry(struct dwc3 *dwc,
@@ -3235,7 +3213,7 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 	dwc->gadget.name		= "dwc3-gadget";
 
 	INIT_DELAYED_WORK(&dwc->link_work, link_state_change_work);
-	INIT_DELAYED_WORK(&dwc->soft_reset, dwc3_soft_reset_work);
+	INIT_WORK(&dwc->reconnect_work, dwc3_reconnect_work);
 
 	/*
 	 * REVISIT: Here we should clear all pending IRQs to be
