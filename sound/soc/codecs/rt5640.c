@@ -88,10 +88,12 @@ static struct rt5640_init_reg init_list[] = {
 	{RT5640_PRIV_DATA, 0x6115},
 	{RT5640_PRIV_INDEX, 0x0023},	/*PR23 = 0804'h */
 	{RT5640_PRIV_DATA, 0x0804},
-//#ifdef CONFIG_ME176C_CODEC_PARAMETER
-	{RT5640_PRIV_INDEX	, 0x006e},//PR6e = 3319'h
+	{RT5640_PRIV_INDEX	, 0x006e},//ME176C:PR6e = 3319'h,ME181C:PR6e = 3119'h,
+#ifdef CONFIG_ME176C_CODEC_PARAMETER
 	{RT5640_PRIV_DATA	, 0x3319},
-//#endif
+#else
+	{RT5640_PRIV_DATA	, 0x3119},
+#endif
 	/*playback */
 	{RT5640_STO_DAC_MIXER, 0x0404},	/*Dig inf 1 -> Sto DAC mixer -> DACL */
 	{RT5640_OUT_L3_MIXER, 0x01fe},	/*DACL1 -> OUTMIXL */
