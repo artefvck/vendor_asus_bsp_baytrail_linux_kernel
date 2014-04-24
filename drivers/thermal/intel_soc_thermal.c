@@ -478,7 +478,7 @@ static int disable_dynamic_turbo(struct cooling_device_info *cdev_info)
 	mutex_unlock(&cdev_info->lock_state);
 	return 0;
 }
-
+#ifndef CONFIG_FACTORY_ITEMS
 static int is_COS(void)
 {
 	char *start;
@@ -496,6 +496,7 @@ extern int __ref cpu_down(unsigned int cpu);
 extern struct cpu *cpu1;
 extern struct cpu *cpu2;
 extern struct cpu *cpu3;
+#endif
 static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 				unsigned long state)
 {
@@ -503,8 +504,10 @@ static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 	struct soc_throttle_data *data;
 	struct cooling_device_info *cdev_info =
 			(struct cooling_device_info *)cdev->devdata;
+	#ifndef CONFIG_FACTORY_ITEMS
 	int status;
 	ssize_t ret;
+	#endif
 	
 	if (state == DISABLE_DYNAMIC_TURBO)
 		return disable_dynamic_turbo(cdev_info);
@@ -516,7 +519,7 @@ static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 
 	mutex_lock(&cdev_info->lock_state);
 	data = &cdev_info->soc_data[state];
-	
+	#ifndef CONFIG_FACTORY_ITEMS
 	status = is_COS();
 	if(status == 1){
 		state = 3;
@@ -534,7 +537,7 @@ static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 			kobject_uevent(&cpu3->dev.kobj, KOBJ_OFFLINE);
 		cpu_hotplug_driver_unlock();
 	}
-
+	#endif
 	rdmsr_on_cpu(0, PKG_TURBO_POWER_LIMIT, &eax, &edx);
 
 	/* Set bits[0:14] of eax to 'data->power_limit' */
@@ -746,27 +749,31 @@ static irqreturn_t soc_dts_intrpt_handler(int irq, void *dev_data)
 {
 	return IRQ_WAKE_THREAD;
 }
+#ifndef CONFIG_FACTORY_ITEMS
 struct delayed_work Per_work;
 struct platform_soc_data *per_pdata = NULL;
 static void Do_Per_work(struct work_struct *work)
 {	
 	soc_set_cur_state(per_pdata->soc_cdev,0);
 }
-
+#endif
 static int soc_thermal_probe(struct platform_device *pdev)
 {
 	struct platform_soc_data *pdata;
 	int i, ret;
 	u32 eax, edx;
 	static char *name[SOC_THERMAL_SENSORS] = {"SoC_DTS0", "SoC_DTS1"};
-
+	#ifndef CONFIG_FACTORY_ITEMS
 	printk("tantest soc_thermal_probe\n");
 	INIT_DELAYED_WORK(&Per_work, Do_Per_work);
 	schedule_delayed_work(&Per_work, 100*HZ);
+	#endif
 	pdata = kzalloc(sizeof(struct platform_soc_data), GFP_KERNEL);
 	if (!pdata)
 		return -ENOMEM;
+	#ifndef CONFIG_FACTORY_ITEMS
 	per_pdata = pdata;
+	#endif
 	ret = rdmsr_safe_on_cpu(0, MSR_IA32_TEMPERATURE_TARGET, &eax, &edx);
 	if (ret) {
 		tjmax_temp = TJMAX_TEMP;

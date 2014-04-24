@@ -2787,6 +2787,7 @@ Input:
 Output:
     Executive Outcomes. 0---succeed.
 ********************************************************/
+#ifndef CONFIG_FACTORY_ITEMS
 static int is_COS(void)
 {
 	char *start;
@@ -2800,12 +2801,17 @@ static int is_COS(void)
 		return 0;
 	}		
 }
+#endif
 static int goodix_ts_init(void)
 {
     s32 ret;
     int status;
+
+#ifndef CONFIG_FACTORY_ITEMS
+    status = is_COS();
     if(status == 1)
 	  return 0;
+#endif
     GTP_DEBUG_FUNC();   
     GTP_INFO("GTP driver installing...");
     goodix_wq = create_singlethread_workqueue("goodix_wq");
