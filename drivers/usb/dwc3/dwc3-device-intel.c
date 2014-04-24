@@ -388,6 +388,7 @@ int dwc3_stop_peripheral(struct usb_gadget *g)
 	mutex_unlock(&_dev_data->mutex);
 
 	cancel_delayed_work_sync(&dwc->link_work);
+	cancel_work_sync(&dwc->reconnect_work);
 
 	wake_unlock(&_dev_data->wake_lock);
 
