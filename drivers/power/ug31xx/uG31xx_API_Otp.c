@@ -11,7 +11,7 @@
  *  Convert OTP registers into readable value
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 503 $
+ * @revision  $Revision: 53 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,11 +19,11 @@
 
 #ifdef  uG31xx_OS_WINDOWS
 
-  #define OTP_VERSION      (_T("OTP $Rev: 503 $ "))
+  #define OTP_VERSION      (_T("OTP $Rev: 53 $ "))
 
 #else   ///< else of uG31xx_OS_WINDOWS
 
-  #define OTP_VERSION      ("OTP $Rev: 503 $ ")
+  #define OTP_VERSION      ("OTP $Rev: 53 $ ")
 
 #endif  ///< end of uG31xx_OS_WINDOWS
 

@@ -107,7 +107,6 @@ typedef struct CapacityDataST {
 
   _cap_s32_ qFromCurr;
   _cap_s32_ qFromCC;
-  _cap_s32_ qFromCurrBuf;
   
   _cap_s16_ tableNac[SOV_NUMS];
   _cap_s16_ tableNacUpdate[SOV_NUMS];
@@ -243,6 +242,7 @@ extern void UpiSetFactoryBoardOffset(CapacityDataType *data);
  * @return  NULL
  */
 extern void UpiPrintCapacityVersion(void);
+
 /**
  * @brief UpiGetOcvSoc
  *

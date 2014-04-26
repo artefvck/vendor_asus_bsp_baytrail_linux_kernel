@@ -11,7 +11,7 @@
  *  Backup data on uG31xx to a file in system
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 16 $
+ * @revision  $Revision: 62 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,11 +19,11 @@
 
 #ifdef  uG31xx_OS_WINDOWS
 
-  #define BACKUP_VERSION      (_T("Backup $Rev: 413 $ "))
+  #define BACKUP_VERSION      (_T("Backup $Rev: 62 $ "))
 
 #else   ///< else of uG31xx_OS_WINDOWS
 
-  #define BACKUP_VERSION      ("Backup $Rev: 413 $ ")
+  #define BACKUP_VERSION      ("Backup $Rev: 62 $ ")
 
 #endif  ///< end of uG31xx_OS_WINDOWS
 

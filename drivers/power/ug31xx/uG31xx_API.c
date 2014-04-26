@@ -25,11 +25,11 @@ _upi_bool_ MPK_active = _UPI_FALSE_;
 
 #if defined (uG31xx_OS_WINDOWS)
 
-  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 590 $"))
+  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 73 $"))
 
 #else
 
-  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 590 $")
+  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 73 $")
 
 #endif
 
@@ -401,12 +401,6 @@ GGSTATUS upiGG_ReadDeviceInfo(char *pObj, GG_DEVICE_INFO* pExtDeviceInfo)
                                                                     pUg31xx->measData.curr, 
                                                                     pUg31xx->cellParameter.offsetR, 
                                                                     0);
-  /// [RY] : get the differ cell voltage
-  pUg31xx->deviceInfo.vBat3Average_mV = pUg31xx->deviceInfo.vBat3Average_mV - 	pUg31xx->deviceInfo.vBat2Average_mV ;
-  pUg31xx->deviceInfo.vBat2Average_mV = pUg31xx->deviceInfo.vBat2Average_mV - pUg31xx->deviceInfo.vBat1Average_mV;
-  pUg31xx->deviceInfo.vCell3_mV = pUg31xx->deviceInfo.vCell3_mV - pUg31xx->deviceInfo.vCell2_mV;
-  pUg31xx->deviceInfo.vCell2_mV = pUg31xx->deviceInfo.vCell2_mV - pUg31xx->deviceInfo.vCell1_mV;
-  
   /// [RY] : multi - cell setting
   if(pUg31xx->measData.codeBat3 > 0)
   {
@@ -456,7 +450,6 @@ GGSTATUS upiGG_ReadDeviceInfo(char *pObj, GG_DEVICE_INFO* pExtDeviceInfo)
     if(tmp > RESET_COULOMB_COUNTER_DELTA_CAP)
     {
       UpiResetCoulombCounter(&pUg31xx->measData);
-      UpiAdcStatus(&pUg31xx->sysData);
       pUg31xx->sysData.cycleCount = (_sys_u16_)pUg31xx->measData.cycleCount;
     }
 
@@ -818,22 +811,27 @@ void ChkResumeData(struct ug31xx_data *pUg31xx, GG_BATTERY_INFO *pOldBatInfo, _u
 {
   _upi_s32_ tmp32;
   
-  /// [AT-PM] : Check capacity has to be decreased ; 10/25/2013
-  if(deltaQC > 0)
-  {
-    tmp32 = (_upi_s32_)pOldBatInfo->NAC;
-    deltaQC = deltaQC*(-1);
-    tmp32 = tmp32 + deltaQC;
-    UG31_LOGN("[%s]: Estimated capacity = %d (%d)\n", __func__,
-              (int)tmp32, 
-              (int)deltaQC);
+  tmp32 = (_upi_s32_)(totalTime/TIME_MSEC_TO_SEC);
+  tmp32 = tmp32*(pUg31xx->cellParameter.standbyCurrent)/2/TIME_SEC_TO_HOUR*(-1);
+  UG31_LOGN("[%s]: Estimated capacity = %d\n", __func__, tmp32);
 
-    tmp32 = tmp32 + pUg31xx->capData.rm;
-    tmp32 = (tmp32 < 0) ? 0 : tmp32;
-    tmp32 = tmp32/2;
+  /// [AT-PM] : Check capacity has to be decreased ; 10/25/2013
+  if(deltaQC > tmp32)
+  {
+    tmp32 = (tmp32 + deltaQC)/2;
+    if(tmp32 > 0)
+    {
+      tmp32 = 0;
+    }
+    tmp32 = tmp32 + pOldBatInfo->NAC;
+    if(tmp32 < 0)
+    {
+      tmp32 = 0;
+    }
     UG31_LOGN("[%s]: Adjust capacity = %d -> %d\n", __func__, pOldBatInfo->NAC, tmp32);
+    pOldBatInfo->NAC = (_upi_u16_)tmp32;
     
-    pUg31xx->capData.rm = (_cap_u16_)tmp32;
+    pUg31xx->capData.rm = (_cap_u16_)pOldBatInfo->NAC;
     pUg31xx->capData.fcc = (_cap_u16_)pOldBatInfo->LMD;
     pUg31xx->capData.rsoc = (_cap_u8_)CalculateRsoc((_cap_u32_)pUg31xx->capData.rm, pUg31xx->capData.fcc);
     UG31_LOGN("[%s]: Capacity after resume = %d / %d = %d\n", __func__, pUg31xx->capData.rm, pUg31xx->capData.fcc, pUg31xx->capData.rsoc);
@@ -1180,7 +1178,6 @@ GGSTATUS upiGG_Initial(char **pObj, GGBX_FILE_HEADER *pGGBXBuf, unsigned char Fo
     pUg31xx->batteryInfo.LMD = (_upi_u16_)pUg31xx->capData.fcc;
     pUg31xx->batteryInfo.RSOC = (_upi_u16_)pUg31xx->capData.rsoc;
     UpiResetCoulombCounter(&pUg31xx->measData);
-    UpiAdcStatus(&pUg31xx->sysData);
     pUg31xx->sysData.cycleCount = (_sys_u16_)pUg31xx->measData.cycleCount;
   }
   UpiInitDsgCharge(&pUg31xx->capData);
@@ -1310,7 +1307,6 @@ GGSTATUS upiGG_PreSuspend(char *pObj)
 
   UG31_LOGN("[%s]: Reset Coulomb Counter.\n", __func__);
   UpiResetCoulombCounter(&pUg31xx->measData);
-  UpiAdcStatus(&pUg31xx->sysData);
   pUg31xx->sysData.cycleCount = (_sys_u16_)pUg31xx->measData.cycleCount;
 
   /// [AT-PM] : Save battery information to IC ; 01/31/2013
@@ -1343,6 +1339,49 @@ GGSTATUS upiGG_PreSuspend(char *pObj)
 }
 
 /**
+ * @brief PrintDebugLog
+ *
+ *  Print debug log for capacity module
+ *
+ * @para  ug31xx  address of struct ug31xx_data
+ * @return  NULL
+ */
+void PrintDebugLog(struct ug31xx_data *ug31xx)
+{
+  UG31_LOGE("<BATT> P:%d(%d-%d)%%, V:%dmV, C:%dmA, T:%d.%dC(%d), S:0x%08x(%d%d%d), R:%dmAh, F:%dmAh, Q:%dmAh, CC:%d, P:%d.%d(%d-%d)s, BO:%d, %s:%s-%04x-%s:%s-%s (%d)\n",
+            (int)ug31xx->capData.rsoc,
+            (int)ug31xx->capData.rsoc,
+            (int)ug31xx->capData.predictRsoc,
+            (int)ug31xx->measData.bat1Voltage,
+            (int)ug31xx->measData.curr,
+            (int)(ug31xx->measData.extTemperature/10),
+            (int)(((ug31xx->measData.extTemperature%10) < 0) ? 
+                  (ug31xx->measData.extTemperature*(-1)%10) : 
+                  (ug31xx->measData.extTemperature%10)),
+            (int)ug31xx->measData.intTemperature,
+            (unsigned int)ug31xx->capData.status,
+            (int)ug31xx->capData.fcSts,
+            (int)ug31xx->capData.fcStep100,
+            (int)ug31xx->capData.inSuspend,
+            (int)ug31xx->capData.rm,
+            (int)ug31xx->capData.fcc,
+            (int)ug31xx->measData.cumuCap,
+            (int)ug31xx->measData.cycleCount,
+            (int)(ug31xx->measData.deltaTime/1000),
+            (int)(ug31xx->measData.deltaTime%1000),
+            (int)ug31xx->capData.dsgCharge,
+            (int)ug31xx->capData.reverseCap,
+            (int)(ug31xx->cellParameter.adc1_pos_offset + ug31xx->measData.ccOffsetAdj),
+            UG31XX_DRIVER_VERSION_STR,
+            UG31XX_DRIVER_RELEASE_NOTE,
+            ug31xx->cellParameter.ggb_version,
+            ug31xx->cellParameter.customerSelfDef,
+            ug31xx->cellParameter.projectSelfDef,
+            UG31XX_DRIVER_RELEASE_DATE,
+            (int)ug31xx->capData.tableUpdateIdx);
+}
+
+/**
  * @brief upiGG_ShellUpdateCapacity
  *
  *  Run capacity algorithm to update capacity
@@ -1367,6 +1406,7 @@ void upiGG_ShellUpdateCapacity(char *pObj)
   #ifndef UG31XX_SHELL_ALGORITHM
   
     UpiReadCapacity(&pUg31xx->capData);
+    PrintDebugLog(pUg31xx);
 
   #endif  ///< end of UG31XX_SHELL_ALGORITHM
 
@@ -1437,10 +1477,8 @@ void upiGG_ShellUpdateCC(char *pObj)
 void upiGG_ReadCapacity(char *pObj, GG_CAPACITY *pExtCapacity)
 {
   struct ug31xx_data *pUg31xx;
-  #ifndef UG31XX_SHELL_ALGORITHM
-    _upi_u8_ prevCapStsFC;
-    _upi_u8_ nowCapStsFC;
-  #endif  ///< end of UG31XX_SHELL_ALGORITHM
+  _upi_u8_ prevCapStsFC;
+  _upi_u8_ nowCapStsFC;
 
   pUg31xx = (struct ug31xx_data *)pObj;
 
@@ -1454,6 +1492,7 @@ void upiGG_ReadCapacity(char *pObj, GG_CAPACITY *pExtCapacity)
   UpiReadCapacity(&pUg31xx->capData);
   nowCapStsFC = ((pUg31xx->capData.fcSts == CAP_TRUE) ? _UPI_TRUE_ : _UPI_FALSE_);
   UG31_LOGD("[%s]: %d / %d = %d\n", __func__, pUg31xx->capData.rm, pUg31xx->capData.fcc, pUg31xx->capData.rsoc);
+  PrintDebugLog(pUg31xx);
 
   #endif  ///< end of UG31XX_SHELL_ALGORITHM
   
@@ -1490,7 +1529,6 @@ void upiGG_ReadCapacity(char *pObj, GG_CAPACITY *pExtCapacity)
     pUg31xx->measData.sysData = &pUg31xx->sysData;
     pUg31xx->measData.otp = &pUg31xx->otpData;
     UpiResetCoulombCounter(&pUg31xx->measData);
-    UpiAdcStatus(&pUg31xx->sysData);
     pUg31xx->sysData.cycleCount = (_sys_u16_)pUg31xx->measData.cycleCount;
   }
   
@@ -1582,7 +1620,6 @@ GGSTATUS upiGG_Wakeup(char *pObj, _upi_bool_ dc_in_before)
 
   /// [AT-PM] : Reset coulomb counter ; 10/25/2013  
   UpiResetCoulombCounter(&pUg31xx->measData);
-  UpiAdcStatus(&pUg31xx->sysData);
   pUg31xx->sysData.cycleCount = (_sys_u16_)pUg31xx->measData.cycleCount;
 
   /// [AT-PM] : Save battery information to IC ; 01/31/2013
@@ -4143,69 +4180,6 @@ void upi_lib_debug_switch(unsigned char op_option)
   upiGG_DebugSwitch(LKM_OPTIONS_DEBUG_LEVEL(op_option));
 }
 
-/**
- * @brief PrintDebugLog
- *
- *  Print debug log for capacity module
- *
- * @para  ug31xx  address of struct ug31xx_data
- * @para  action  string of kernel driver action
- * @return  NULL
- */
-void PrintDebugLog(struct ug31xx_data *ug31xx, const char *action)
-{
-  UG31_LOGE("<BATT> M:%s, P:%d(%d-%d)%%, V:%dmV, C:%dmA, T:%d.%dC(%d), S:0x%08x(%d%d%d), R:%dmAh, F:%dmAh, Q:%dmAh, CC:%d, P:%d.%d(%d-%d)s, BO:%d, %s:%s-%04x-%s:%s-%s (%d)\n",
-            action,
-            (int)ug31xx->capData.rsoc,
-            (int)ug31xx->capData.rsoc,
-            (int)ug31xx->capData.predictRsoc,
-            (int)ug31xx->measData.bat1Voltage,
-            (int)ug31xx->measData.curr,
-            (int)(ug31xx->measData.extTemperature/10),
-            (int)(((ug31xx->measData.extTemperature%10) < 0) ? 
-                  (ug31xx->measData.extTemperature*(-1)%10) : 
-                  (ug31xx->measData.extTemperature%10)),
-            (int)ug31xx->measData.intTemperature,
-            (unsigned int)ug31xx->capData.status,
-            (int)ug31xx->capData.fcSts,
-            (int)ug31xx->capData.fcStep100,
-            (int)ug31xx->capData.inSuspend,
-            (int)ug31xx->capData.rm,
-            (int)ug31xx->capData.fcc,
-            (int)ug31xx->measData.cumuCap,
-            (int)ug31xx->measData.cycleCount,
-            (int)(ug31xx->measData.deltaTime/1000),
-            (int)(ug31xx->measData.deltaTime%1000),
-            (int)ug31xx->capData.dsgCharge,
-            (int)ug31xx->capData.reverseCap,
-            (int)(ug31xx->cellParameter.adc1_pos_offset + ug31xx->measData.ccOffsetAdj),
-            UG31XX_DRIVER_VERSION_STR,
-            UG31XX_DRIVER_RELEASE_NOTE,
-            ug31xx->cellParameter.ggb_version,
-            ug31xx->cellParameter.customerSelfDef,
-            ug31xx->cellParameter.projectSelfDef,
-            UG31XX_DRIVER_RELEASE_DATE,
-            (int)ug31xx->capData.tableUpdateIdx);
-}
-
-/**
- * @brief upi_lib_print_log
- *
- *  Print debug log
- *
- * @para  obj address of memory buffer from kernel
- * @para  action  string of kernel driver action
- * @return  NULL
- */
-void upi_lib_print_log(char *obj, const char *action)
-{
-  struct ug31xx_data *pUg31xx;
-
-  pUg31xx = (struct ug31xx_data *)obj;
-
-  PrintDebugLog(pUg31xx, action);
-}
-
 static bool upi_lib_first_update_capacity = true;
 
 /**
@@ -4331,7 +4305,6 @@ enum  LKM_OPERATION_MODE {
 #define LKM_AVG_TEMPERATURE_COUNT         (4)
 #define LKM_AVG_TEMPERATURE_INIT_WITH_25  (LKM_AVG_TEMPERATURE_COUNT/2)
 #define LKM_MAX_OPERATION_FAIL_CNT        (3)
-#define LKM_MAX_DECIMATE_RST_CNT          (10)
 
 static _upi_u8_ lkm_alarm_status;
 static _upi_u8_ lkm_battery_removed;
@@ -4349,7 +4322,6 @@ static char *lkm_shell_ap_name = _UPI_NULL_;
 static _upi_u8_ lkm_operation_fail_cnt = 0;
 static _upi_u32_ lkm_last_update_time_tag = 0;
 static _upi_u8_ lkm_polling_init_cnt = 0;
-static _upi_u8_ lkm_decimate_rst_cnt = 0;
 
 #define GGB_VERSION_LENGTH      (4)
 
@@ -4593,7 +4565,6 @@ int lkm_suspend(char dc_in)
 {
   GGSTATUS rtn;
 
-  rtn = 0;
   upiGG_BackupFileSwitch(_UPI_FALSE_);
 
   lkm_last_update_time_tag = GetSysTickCount();
@@ -4606,13 +4577,11 @@ int lkm_suspend(char dc_in)
     lkm_operation_mode = LKM_OPERATION_MODE_ENTER_SUSPEND;
     lkm_suspend_update_delay = 0;
     upiGG_InternalSuspendMode(lkm_gauge, _UPI_TRUE_);
-#ifndef FEATURE_DISABLE_SUSPEND_OPERATION
     rtn = upiGG_PreSuspend(lkm_gauge);
     rtn = lkm_check_fail_cnt((rtn == UG_READ_DEVICE_INFO_SUCCESS) ? _UPI_TRUE_ : _UPI_FALSE_);
     return (rtn);
-#endif  ///< end of FEATURE_DISABLE_SUSPEND_OPERATION
   }
-  return (rtn);
+  return (0);
 }
 
 /**
@@ -4722,7 +4691,6 @@ int lkm_resume(char user_space_response)
   GGSTATUS rtn;
   GG_DEVICE_INFO *devInfo;
 
-  rtn = 0;
   lkm_last_update_time_tag = GetSysTickCount();
 
   if(lkm_operation_mode == LKM_OPERATION_MODE_ENTER_SUSPEND)
@@ -4736,13 +4704,13 @@ int lkm_resume(char user_space_response)
     {
       return (-1);
     }
-#ifndef FEATURE_DISABLE_SUSPEND_OPERATION
+    
     rtn = upiGG_Wakeup(lkm_gauge, lkm_dc_in_before_suspend);
     if(rtn == UG_READ_DEVICE_INFO_SUCCESS)
     {
       rtn = upiGG_GetAlarmStatus(lkm_gauge, &lkm_alarm_status);
     }
-#endif  ///< end of FEATURE_DISABLE_SUSPEND_OPERATION
+
     upiGG_InternalSuspendMode(lkm_gauge, _UPI_FALSE_);
     
     if(rtn == UG_MEAS_FAIL_BATTERY_REMOVED)
@@ -4977,6 +4945,9 @@ int lkm_get_full_charge_capacity(void)
   return ((int)ug31xx->batteryInfo.LMD);
 }
 
+#define LKM_RSOC_REMAP_TO_100     (99)
+#define LKM_RSOC_REMAP_TO_0       (5)
+
 /**
  * @brief lkm_get_relative_state_of_charge
  *
@@ -4987,9 +4958,43 @@ int lkm_get_full_charge_capacity(void)
 int lkm_get_relative_state_of_charge(void)
 {
   struct ug31xx_data *ug31xx;
+  int rmUpper;
+  int rmLower;
+  int rmRemap;
 
   ug31xx = (struct ug31xx_data *)lkm_gauge;
-  return ((int)ug31xx->batteryInfo.RSOC);
+
+  if(!(lkm_options & LKM_OPTIONS_RSOC_REMAP))
+  {
+    return ((int)ug31xx->batteryInfo.RSOC);
+  }
+
+  rmUpper = LKM_RSOC_REMAP_TO_100*ug31xx->batteryInfo.LMD/CONST_PERCENTAGE;
+  rmLower = LKM_RSOC_REMAP_TO_0*ug31xx->batteryInfo.NAC/CONST_PERCENTAGE;
+  
+  /// [AT-PM] : RSOC >= LKM_RSOC_REMAP_TO_100 -> report to 100% ; 02/20/2014
+  if(ug31xx->batteryInfo.NAC >= rmUpper)
+  {
+    UG31_LOGI("[%s]: Remap to 100 from RM = %d\n", __func__,
+              ug31xx->batteryInfo.NAC);
+    return (100);
+  }
+
+  /// [AT-PM] : RSOC <= LKM_RSOC_REMAP_TO_0 -> report to 0% ; 02/20/2014
+  if(ug31xx->batteryInfo.NAC <= rmLower)
+  {
+    UG31_LOGI("[%s]: Remap to 0 from RM = %d\n", __func__,
+              ug31xx->batteryInfo.NAC);
+    return (0);
+  }
+
+  rmRemap = (int)ug31xx->batteryInfo.NAC;
+  rmRemap = rmRemap - rmLower;
+  rmRemap = (int)CalculateRsoc((_cap_u32_)rmRemap, (_cap_u16_)(rmUpper - rmLower));
+  UG31_LOGI("[%s]: Remap to %d from %d\n", __func__,
+            rmRemap,
+            ug31xx->batteryInfo.RSOC);
+  return (rmRemap);
 }
 
 /**
@@ -5392,7 +5397,6 @@ int lkm_set_charger_full(char is_full)
   ug31xx->measData.sysData = &ug31xx->sysData;
   ug31xx->measData.otp = &ug31xx->otpData;
   UpiResetCoulombCounter(&ug31xx->measData);
-  UpiAdcStatus(&ug31xx->sysData);
   ug31xx->sysData.cycleCount = (_sys_u16_)ug31xx->measData.cycleCount;
 
   /// [AT-PM] : Save battery information to IC ; 01/31/2013
@@ -5460,6 +5464,7 @@ int lkm_get_taper_current(void)
 int lkm_get_full_charge_status(void)
 {
   struct ug31xx_data *ug31xx;
+  _upi_bool_ fc_sts;
 
   ug31xx = (struct ug31xx_data *)lkm_gauge;
 
@@ -5610,7 +5615,6 @@ int lkm_change_to_pri_batt(char *ggb, char pri_batt)
   ug31xx->measData.sysData = &ug31xx->sysData;
   ug31xx->measData.otp = &ug31xx->otpData;
   UpiResetCoulombCounter(&ug31xx->measData);
-  UpiAdcStatus(&ug31xx->sysData);
   ug31xx->sysData.cycleCount = (_sys_u16_)ug31xx->measData.cycleCount;
   /// Inital capacity
   UpiInitCapacity(&ug31xx->capData);    
@@ -6543,7 +6547,7 @@ int lkm_shell_backup(void)
 unsigned char * lkm_shell_memory(int *mem_size)
 {
   *mem_size = (int)sizeof(struct ug31xx_data);
-  UG31_LOGN("[%s]: memory[0] = %02x (%x-%d)\n", __func__, lkm_gauge[0], (unsigned int)lkm_gauge, (*mem_size));
+  UG31_LOGN("[%s]: memory[0] = %02x (%x-%d)\n", __func__, lkm_gauge[0], lkm_gauge, (*mem_size));
   return (lkm_gauge);
 }
 
@@ -6562,7 +6566,7 @@ unsigned char * lkm_shell_backup_memory(int *mem_size)
   ug31xx = (struct ug31xx_data *)lkm_gauge;
   
   *mem_size = ug31xx->backupData.backupBufferSize;
-  UG31_LOGN("[%s]: memory[0] = %02x (%x-%d)\n", __func__, ug31xx->backupData.backupBuffer[0], (unsigned int)ug31xx->backupData.backupBuffer, (*mem_size));
+  UG31_LOGN("[%s]: memory[0] = %02x (%x-%d)\n", __func__, ug31xx->backupData.backupBuffer[0], ug31xx->backupData.backupBuffer, (*mem_size));
   return (ug31xx->backupData.backupBuffer);
 }
 
@@ -6581,7 +6585,7 @@ unsigned char * lkm_shell_table_memory(int *mem_size)
   ug31xx = (struct ug31xx_data *)lkm_gauge;
   
   *mem_size = ug31xx->capData.tableSize;
-  UG31_LOGN("[%s]: memory[0] = %02x (%x-%d)\n", __func__, ug31xx->capData.encriptBuf[0], (unsigned int)ug31xx->capData.encriptBuf, (*mem_size));
+  UG31_LOGN("[%s]: memory[0] = %02x (%x-%d)\n", __func__, ug31xx->capData.encriptBuf[0], ug31xx->capData.encriptBuf, (*mem_size));
   return (ug31xx->capData.encriptBuf);
 }
 
@@ -6600,7 +6604,7 @@ unsigned char * lkm_shell_table_buf_memory(int *mem_size)
   ug31xx = (struct ug31xx_data*)lkm_gauge;
   
   *mem_size = ug31xx->capData.tableSize;
-  UG31_LOGN("[%s]: memory[0] = %02x (%x-%d)\n", __func__, ug31xx->capData.encriptBuf[0], (unsigned int)ug31xx->capData.encriptBuf, (*mem_size));
+  UG31_LOGN("[%s]: memory[0] = %02x (%x-%d)\n", __func__, ug31xx->capData.encriptBuf[0], ug31xx->capData.encriptBuf, (*mem_size));
   return (ug31xx->capData.encriptBuf);
 }
 
@@ -6613,6 +6617,7 @@ static GGBX_FILE_HEADER *sys_ggbXBuf;
 static CELL_PARAMETER *sys_ggbParameter;
 static CELL_TABLE *sys_ggbCellTable;
 static OtpDataType *sys_otpData;
+static CapacityDataType *backup_capData;
 static SystemDataType *backup_sysData;
 static MeasDataType *backup_measData;
 
@@ -6640,6 +6645,8 @@ int lkm_backup_pointer(void)
   sys_otpData = ug31xx->sysData.otpData;
   backup_sysData = ug31xx->backupData.sysData;
   backup_measData = ug31xx->backupData.measData;
+  UG31_LOGN("[%s]: cap_ggbParameter, cap_ggbTable, cap_measurement = %d, %d, %d\n", __func__, 
+            cap_ggbParameter, cap_ggbTable, cap_measurement);
   return (0);
 }
 
@@ -6667,6 +6674,8 @@ int lkm_restore_pointer(void)
   ug31xx->sysData.otpData = sys_otpData;
   ug31xx->backupData.sysData = backup_sysData;
   ug31xx->backupData.measData = backup_measData;
+  UG31_LOGN("[%s]: cap_ggbParameter, cap_ggbTable, cap_measurement = %d, %d, %d\n", __func__, 
+            ug31xx->capData.ggbParameter, ug31xx->capData.ggbTable, ug31xx->capData.measurement);
   return (0);
 }
 
@@ -6682,20 +6691,7 @@ unsigned char lkm_get_decimate_rst_sts(void)
   struct ug31xx_data *ug31xx;
 
   ug31xx = (struct ug31xx_data *)lkm_gauge;
-
-  if(ug31xx->sysData.adcCheckData.decimateRst == _UPI_TRUE_)
-  {
-    lkm_decimate_rst_cnt = lkm_decimate_rst_cnt + 1;
-    if(lkm_decimate_rst_cnt > LKM_MAX_DECIMATE_RST_CNT)
-    {
-      lkm_decimate_rst_cnt = 0;
-    }
-  }
-  else
-  {
-    lkm_decimate_rst_cnt = 0;
-  }
-  return ((lkm_decimate_rst_cnt != 0) ? UG31XX_DECIMATE_RST_ACTIVE : UG31XX_DECIMATE_RST_NOT_ACTIVE);
+  return ((ug31xx->sysData.adcCheckData.decimateRst == _UPI_TRUE_) ? UG31XX_DECIMATE_RST_ACTIVE : UG31XX_DECIMATE_RST_NOT_ACTIVE);
 }
 
 struct ug31xx_module_interface ug31_module = {
