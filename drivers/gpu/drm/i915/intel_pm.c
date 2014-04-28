@@ -1318,28 +1318,25 @@ static bool vlv_compute_drain_latency(struct drm_device *dev,
 	clock = crtc->mode.clock;	/* VESA DOT Clock */
 	if (enable.plane_enabled) {
 		pixel_size = crtc->fb->bits_per_pixel / 8;	/* BPP */
-		entries = intel_div_round(clock, 1000) * pixel_size;
+		entries = DIV_ROUND_UP(clock, 1000) * pixel_size;
 		*plane_prec_mult = (entries > 256) ?
 			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
-		*plane_dl = intel_div_round((64 * (*plane_prec_mult) * 4),
-				(entries));
+		*plane_dl = (64 * (*plane_prec_mult) * 4) / entries;
 		latencyprogrammed = true;
 	}
 
 	if (enable.cursor_enabled) {
-		entries = (clock / 1000) * 4;	/* BPP is always 4 for cursor */
+		entries = DIV_ROUND_UP(clock, 1000) * 4;	/* BPP is always 4 for cursor */
 		*cursor_prec_mult = (entries > 256) ?
 			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
-		*cursor_dl = (64 * (*cursor_prec_mult) * 4) / ((clock / 1000) *
-							4);
+		*cursor_dl = (64 * (*cursor_prec_mult) * 4) / entries;
 		latencyprogrammed = true;
 	}
 	if (enable.sprite_enabled) {
-		entries = intel_div_round(clock, 1000) * sprite_pixel_size;
+		entries = DIV_ROUND_UP(clock, 1000) * sprite_pixel_size;
 		*sprite_prec_mult = (entries > 256) ?
 			DRAIN_LATENCY_PRECISION_64 : DRAIN_LATENCY_PRECISION_32;
-		*sprite_dl = intel_div_round((64 * (*sprite_prec_mult) * 4),
-				(entries));
+		*sprite_dl = (64 * (*sprite_prec_mult) * 4) / entries;
 		latencyprogrammed = true;
 	}
 
