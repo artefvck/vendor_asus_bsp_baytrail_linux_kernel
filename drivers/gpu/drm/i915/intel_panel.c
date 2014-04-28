@@ -401,6 +401,7 @@ static u32 intel_panel_get_max_backlight(struct drm_device *dev)
 	}
 
 	DRM_DEBUG_DRIVER("max backlight PWM = %d\n", max);
+	sean_debug("%s:----sean test---- max:%d\n", __func__,max);
 
 	return max;
 }
@@ -573,26 +574,26 @@ u32 max;
 		if(project_stage) //PR
 		{
 			intel_mid_pmic_writeb(0x4E, level*0xff/max);
-			sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
+			sean_debug("%s:----sean test----line:%d,level:%d,max:%d\n", __func__,__LINE__,level,max);
 		}
 		else //ER
 		{
 			if(lcm_id) //AUO
 			{
 				intel_mid_pmic_writeb(0x4E, level*0xff/max);
-				sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
+				sean_debug("%s:----sean test----line:%d,level:%d,max:%d\n", __func__,__LINE__,level,max);
 			}
 			else //INX
 			{
 				level = level*0xff/max;
 				level = (level+45)*(level+45) / (300*300/204); //max is 80%
 				intel_mid_pmic_writeb(0x4E, level);
-				sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
+				sean_debug("%s:----sean test----line:%d,level:%d,max:%d\n", __func__,__LINE__,level,max);
 			}
 		}
 #else
 	intel_mid_pmic_writeb(0x4E, level*0xff/max);
-	sean_debug("%s:----sean test----%d\n", __func__,__LINE__);
+	sean_debug("%s:----sean test----line:%d,level:%d,max:%d\n", __func__,__LINE__,level,max);
 #endif
 	}
 #else

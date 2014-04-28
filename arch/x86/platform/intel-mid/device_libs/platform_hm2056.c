@@ -180,17 +180,18 @@ static int hm2056_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 	hm2056_gpio_init();
 
 	if (flag){
+		
+        if (camera_power_down >= 0){
+            gpio_set_value(camera_power_down, 0);
+            printk("<<< camera_power_down = 0\n");
+            msleep(1);
+        }
         if (camera_reset >= 0){
             gpio_set_value(camera_reset, 0);
 			msleep(20);
 			gpio_set_value(camera_reset, 1);
 			printk("<<< camera_reset = 1\n");
 			msleep(10);
-        }
-        if (camera_power_down >= 0){
-            gpio_set_value(camera_power_down, 0);
-            printk("<<< camera_power_down = 0\n");
-            msleep(1);
         }
     }
     else{

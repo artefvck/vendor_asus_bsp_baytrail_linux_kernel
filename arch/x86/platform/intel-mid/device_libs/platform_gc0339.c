@@ -49,7 +49,7 @@ static int gc0339_i2c_gpio_set_alt(int flag)
 
 	    if (camera_I2C_3_SCL < 0) {
 	        ret = camera_sensor_gpio(SIO_I2C3_SCL, GP_I2C_3_SCL,
-	                GPIOF_DIR_OUT, 0);
+	                GPIOF_DIR_OUT, 1);
 	        if (ret < 0){
 	            printk("%s not available.\n", GP_I2C_3_SCL);
 	            return ret;
@@ -59,7 +59,7 @@ static int gc0339_i2c_gpio_set_alt(int flag)
 
 	    if (camera_I2C_3_SDA < 0) {
 	        ret = camera_sensor_gpio(SIO_I2C3_SDA, GP_I2C_3_SDA,
-	                GPIOF_DIR_OUT, 0);
+	                GPIOF_DIR_OUT, 1);
 	        if (ret < 0){
 	            printk("%s not available.\n", GP_I2C_3_SDA);
 	            return ret;

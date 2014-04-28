@@ -93,9 +93,9 @@ bool ivo_m181_init(struct intel_dsi_device *dsi)
 	intel_dsi->video_frmt_cfg_bits = DISABLE_VIDEO_BTA;
 	intel_dsi->dphy_reg = 0x1B0D340B; //sean test ivo
 
-	intel_dsi->backlight_off_delay = 20;	
+	intel_dsi->backlight_off_delay = 68;	//sean test t5 >= 68
 	intel_dsi->send_shutdown = true;
-	intel_dsi->backlight_on_delay = 134;	//sean test
+	intel_dsi->backlight_on_delay = 210;	//sean test t5 >= 210
 	intel_dsi->shutdown_pkt_delay = 134;	//sean test
 	
 	intel_dsi->clock_stop = true;	//seantest no continue more
@@ -168,18 +168,13 @@ void ivo_m181_disable_panel_power(struct intel_dsi_device *dsi)
 		printk("%s:----sean test----m181_ivo_panel_request fail----\n",__func__);
 	}
 
-	err =  intel_mid_pmic_readb(0x52);
-    sean_debug("%s:----sean test----ivo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,err);
-
-	msleep(100);	//sean test t12 >= 50
-
 	gpio_direction_output(69, 0);
 	gpio_set_value(69, 0);	//RESX low
 
-	msleep(50);
+	//msleep(50);
 
     intel_mid_pmic_writeb(0x52,0x00);//PANEL_EN 3.3v
-    usleep_range(16000,17000); //sean test t15 <= 10
+    usleep_range(9000,10000);	//sean test t6 <= 10
     intel_mid_pmic_writeb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 1.8v
     sean_debug("%s:----sean test----panel 1.8V set low----%d\n", __func__,__LINE__);
 
