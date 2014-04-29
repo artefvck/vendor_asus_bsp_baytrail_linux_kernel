@@ -722,6 +722,10 @@ static int kxtj2_setup_polled_device(struct kxtj2_data *tj2)
 	poll_dev->open = kxtj2_polled_input_open;
 	poll_dev->close = kxtj2_polled_input_close;
 
+	poll_dev->poll_interval = 100 ;
+	tj2->last_poll_interval = 100 ;
+	kxtj2_update_odr(tj2, 100);
+
 	kxtj2_init_input_device(tj2, poll_dev->input);
 
 	err = input_register_polled_device(poll_dev);
