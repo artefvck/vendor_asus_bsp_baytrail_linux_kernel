@@ -4,7 +4,7 @@
  *  Header of uG31xx_API_Backup.cpp
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 62 $
+ * @revision  $Revision: 14 $
  */
 
 #define BACKUP_BOOL_TRUE      (1)

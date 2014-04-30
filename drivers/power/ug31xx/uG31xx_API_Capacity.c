@@ -11,7 +11,7 @@
  *  Capacity algorithm
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 57 $
+ * @revision  $Revision: 84 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,7 +19,7 @@
 
 #ifdef  uG31xx_OS_ANDROID
 
-  #define CAPACITY_VERSION      ("Capacity $Rev: 57 $")
+  #define CAPACITY_VERSION      ("Capacity $Rev: 84 $")
   //#define CAP_LOG_UPDATE_TABLE                              ///< [AT-PM] : Log updated table to a file ; 03/25/2013
 
   #ifdef  CAP_LOG_UPDATE_TABLE
@@ -32,11 +32,11 @@
 
   #if defined(BUILD_UG31XX_LIB)
 
-    #define CAPACITY_VERSION      ("Capacity $Rev: 57 $")
+    #define CAPACITY_VERSION      ("Capacity $Rev: 84 $")
     
   #else   ///< else of defined(BUILD_UG31XX_LIB)
   
-    #define CAPACITY_VERSION      (_T("Capacity $Rev: 57 $"))
+    #define CAPACITY_VERSION      (_T("Capacity $Rev: 84 $"))
     
   #endif  ///< end of defined(BUILD_UG31XX_LIB)
   
@@ -148,8 +148,8 @@ _cap_s32_ LimitValue(_cap_s32_ input, _cap_s32_ reference, _cap_u8_ percent)
     }
 
     UG31_LOGE("[%s]: Lower than boundary (%d < %d) (%d%%)\n", __func__,
-              input,
-              reference,
+              (int)input,
+              (int)reference,
               percent);
     return (reference);
   }
@@ -162,8 +162,8 @@ _cap_s32_ LimitValue(_cap_s32_ input, _cap_s32_ reference, _cap_u8_ percent)
   }
 
   UG31_LOGE("[%s]: Higher than boundary (%d > %d) (%d%%)\n", __func__,
-            input,
-            reference,
+            (int)input,
+            (int)reference,
             percent);
   return (reference);
 }
@@ -254,7 +254,6 @@ void CapStatusFCSet(CapacityDataType *info)
 {
   info->status = info->status | CAP_STS_FC;
   info->fcSts = CAP_TRUE;
-  info->fcStep100 = CAP_TRUE;
 }
 
 /**
@@ -315,31 +314,20 @@ _cap_u8_ CalChgRsocWithCurrent(CapacityInternalDataType *obj)
   _cap_s16_ curr;
   _cap_u8_ rsoc;
   _cap_s16_ currStep;
-  _cap_s16_ deltaCurrStep;
-  _cap_s16_ maxCurrStep;
+  _cap_u16_ minCurrStep;
 
-  /// [AT-PM] : Calculate current step ; 08/02/2013
-  maxCurrStep = (_cap_s16_)obj->info->ggbParameter->TPCurrent;
-  if(maxCurrStep <= 0)
-  {
-    maxCurrStep = 1;
-  }
-  deltaCurrStep = maxCurrStep/CHG_PREDICT_SOC_STEP_RATIO;
-  if(deltaCurrStep <= 0)
-  {
-    deltaCurrStep = 1;
-  }
-  
-  UG31_LOGD("[%s]: (0x%08x) %d -> %d (%d) \n", __func__, 
-            (unsigned int)obj->info->status, 
-            (int)obj->info->measurement->currAvg, 
-            (int)obj->info->ggbParameter->TPCurrent, 
-            (int)maxCurrStep);
-  
-  /// [AT-PM] : Find the target RSOC ; 01/26/2013
-  rsoc = FULL_CHARGE_RSOC - 1;
   curr = obj->info->measurement->currAvg;
-  currStep = obj->info->ggbParameter->standbyCurrent;
+  rsoc = FULL_CHARGE_RSOC;
+  currStep = obj->info->ggbParameter->TPCurrent;
+  minCurrStep = obj->info->fcc;
+  minCurrStep = minCurrStep / CONST_PERCENTAGE;
+  UG31_LOGD("[%s]: curr = %d, rsoc = %d, currStep = %d, minCurrStep = %d, obj->info->fcc = %d\n", __func__,
+            curr,
+            rsoc,
+            currStep,
+            minCurrStep,
+            obj->info->fcc);
+
   while(rsoc)
   {
     curr = curr - currStep;
@@ -347,16 +335,21 @@ _cap_u8_ CalChgRsocWithCurrent(CapacityInternalDataType *obj)
     {
       break;
     }
-    currStep = currStep + deltaCurrStep;
-    if(currStep > maxCurrStep)
-    {
-      currStep = maxCurrStep;
-    }
+
     rsoc = rsoc - 1;
+    currStep = currStep / 2;
+    if(currStep < minCurrStep)
+    {
+      currStep = minCurrStep;
+    }
   }
-  UG31_LOGD("[%s]: RSOC = %d (%d)\n", __func__, 
-            (int)rsoc, 
-            (int)obj->info->rsoc);
+
+  UG31_LOGN("[%s]: RSOC = %d(%d), curr = %d, currSTep = %d, minCurrStep = %d\n", __func__,
+            rsoc,
+            obj->info->rsoc,
+            curr,
+            currStep,
+            minCurrStep);
   return (rsoc);
 }
 
@@ -744,7 +737,7 @@ void ChargeSpeedDown(CapacityInternalDataType *obj)
   if(IsSuspendOperation(obj) == CAP_TRUE)
   {
     UG31_LOGN("[%s]: In suspend operation. (%d)\n", __func__,
-              obj->info->measurement->deltaTime);
+              (int)obj->info->measurement->deltaTime);
     return;
   }
 
@@ -778,7 +771,7 @@ void ChargeSpeedDown(CapacityInternalDataType *obj)
   {
     tmp32 = tmp32 * obj->fcc / CONST_PERCENTAGE;
     UG31_LOGN("[%s]: Limit RM = %d from %d (%d - %d).\n", __func__,
-              tmp32,
+              (int)tmp32,
               obj->rm,
               rsoc,
               obj->info->fcc);
@@ -808,6 +801,113 @@ void FullChargeSet(CapacityInternalDataType *obj)
   obj->rm = obj->fcc;
 }
 
+/**
+ * @brief CapStatusFCStep100Set
+ *
+ * Set fcStep100 status
+ *
+ * @para data address of data strcture CapacityDataType
+ * @return NULL
+ */
+void CapStatusFCStep100Set(CapacityDataType *data)
+{
+  data->status = data->status | CAP_STS_FORCE_STEP_TO_100;
+  data->fcStep100 = CAP_TRUE;
+}
+
+#ifndef UG31XX_SHELL_ALGORITHM
+
+/**
+ * @brief CapStatusFCStep100Clear
+ *
+ * Clear fcStep100 status
+ *
+ * @para data address of data strcture CapacityDataType
+ * @return NULL
+ */
+void CapStatusFCStep100Clear(CapacityDataType *data)
+{
+  data->status = data->status & (~CAP_STS_FORCE_STEP_TO_100);
+  data->fcStep100 = CAP_FALSE;
+}
+
+/**
+ * @brief FullChargeCheck
+ *
+ *  Check full charge state
+ *
+ * @para  obj address of CapacityInternalDataType
+ * @return  _UPI_NULL_
+ */
+void FullChargeCheck(CapacityInternalDataType *obj)
+{
+  _cap_u32_ tmp32;
+
+  /// [AT-PM] : Operation for CV mode ; 09/12/2013
+  if(obj->info->status & CAP_STS_CHG_CV_MODE)
+  {
+    obj->rm = obj->info->avgRM;
+    UG31_LOGD("[%s]: Adjust RM = %d\n", __func__, obj->rm);
+  }
+  else
+  {
+    /// [AT-PM] : Count new RM from coulomb counter ; 02/09/2014
+    obj->rm = obj->rm + obj->stepCap;
+    
+    /// [AT-PM] : Initialize average RM if not in CV mode ; 09/12/2013
+    obj->info->avgRM = obj->rm;
+  }
+
+  /// [AT-PM] : If full charge reached, do not check again ; 01/25/2013
+  if(CapStatusFCGet(obj->info) == CAP_TRUE)
+  {
+    ResetSelfLearning(obj);
+    return;
+  }
+
+  /// [AT-PM] : Check taper voltage ; 01/25/2013
+  if(obj->info->avgVoltage < obj->info->ggbParameter->TPVoltage)
+  {
+    /// [AT-PM] : Release full charge ; 01/25/2013
+    FullChargeRelease(obj);
+    /// [FC] : Limit RSOC incresing speed during charging mode ; 06/19/2013
+    ChargeSpeedDown(obj);
+    return;
+  }
+
+  /// [AT-PM] : Check taper current ; 01/25/2013
+  if(obj->info->measurement->currAvg > obj->info->ggbParameter->TPCurrent)
+  {
+    /// [AT-PM] : Predict charging capacity ; 01/26/2013
+    PredictChargeCapacity(obj);
+
+    /// [AT-PM] : Release full charge ; 01/25/2013
+    FullChargeRelease(obj);
+    return;
+  }
+
+  /// [AT-PM] : Set RSOC to 99% if taper current is reached ; 02/27/2014
+  tmp32 = FULL_CHARGE_RSOC - 1;
+  tmp32 = tmp32*(obj->fcc)/CONST_PERCENTAGE;
+  obj->rm = (_cap_u16_)tmp32;
+  
+  /// [AT-PM] : Check taper time ; 01/25/2013
+  if(!(obj->info->status & CAP_STS_INIT_TIMER_PASS))
+  {
+    UG31_LOGE("[%s]: Delta time is not stable -> No taper time calculation\n", __func__);
+    return;
+  }
+  obj->info->tpTime = obj->info->tpTime + (_cap_u32_)obj->info->measurement->deltaTime;
+  tmp32 = obj->info->tpTime/TIME_MSEC_TO_SEC;
+  UG31_LOGD("[%s]: TP delay time = %d/%d\n", __func__, (int)obj->info->tpTime, obj->info->ggbParameter->TPTime);
+  if(tmp32 >= obj->info->ggbParameter->TPTime)
+  {
+    FullChargeSet(obj);
+    CapStatusFCStep100Set(obj->info);
+  }
+}
+
+#endif  ///< end of UG31XX_SHELL_ALGORITHM
 
 /**
  * @brief FindIdxTemperatureVer0
@@ -2041,24 +2141,6 @@ void UpdateCCRecord(CapacityInternalDataType *obj)
 
   obj->info->ccRecord[obj->info->tableUpdateIdx] = (_cap_s16_)tmp32;
 
-  /// [AT-PM] : Check minimum value ; 03/05/2014
-  tmp32 = (_cap_s32_)obj->tableNac[obj->info->tableUpdateIdx]*MIN_RATIO_OF_CC_RECORD_WITH_TABLE;
-  if(obj->info->ccRecord[obj->info->tableUpdateIdx] < tmp32)
-  {
-    UG31_LOGE("[%s]: Limit to minimum value = %d from %d\n", __func__,
-              tmp32, obj->info->ccRecord[obj->info->tableUpdateIdx]);
-    obj->info->ccRecord[obj->info->tableUpdateIdx] = (_cap_s16_)tmp32;
-  }
-
-  /// [AT-PM] : Check maximum value ; 03/05/2014
-  tmp32 = (_cap_s32_)obj->tableNac[obj->info->tableUpdateIdx]*MAX_RATIO_OF_CC_RECORD_WITH_TABLE;
-  if(obj->info->ccRecord[obj->info->tableUpdateIdx] > tmp32)
-  {
-    UG31_LOGE("[%s]: Limit to maximum value = %d from %d\n", __func__,
-              tmp32, obj->info->ccRecord[obj->info->tableUpdateIdx]);
-    obj->info->ccRecord[obj->info->tableUpdateIdx] = (_cap_s16_)tmp32;
-  }
-
   obj->info->ccRecord[0] = 0;
   idx = 1;
   while(idx < SOV_NUMS)
@@ -2283,23 +2365,63 @@ void UpdateTable(CapacityInternalDataType *obj)
   return;
 }
 
+enum RSOC_FILTER_FLAG {
+  RSOC_FILTER_FLAG_RESET_ALL = 0,
+  RSOC_FILTER_FLAG_RESET_STEP,
+  RSOC_FILTER_FLAG_RESET_FULL,
+  RSOC_FILTER_FLAG_RESET_LOCK,
+  RSOC_FILTER_FLAG_SET_1_STEP,
+  RSOC_FILTER_FLAG_SET_1_FULL,
+};
+
 /**
  * @brief RsocFilterReset
  *
  *  Reset timer
  *
  * @para  obj address of CapacityInternalDataType
+ * @para  flag  RSOC_FILTER_FLAG
  * @return  NULL
  */
-void RsocFilterReset(CapacityInternalDataType *obj)
+void RsocFilterReset(CapacityInternalDataType *obj, _cap_u8_ flag)
 {
-  obj->info->status = obj->info->status & (~CAP_STS_FILTER_LOCK_OVER);
-  obj->info->socTimeStep = 0;
-  obj->info->socTimeStepOverCnt = 0;
-  obj->info->socTimeFull = 0;
-  obj->info->socTimeFullOverCnt = 0;
-  obj->info->socTimeLock = 0;
-  obj->info->socCCStep = 0;
+  switch(flag)
+  {
+    case RSOC_FILTER_FLAG_RESET_ALL:
+      obj->info->status = obj->info->status & (~CAP_STS_FILTER_LOCK_OVER);
+      obj->info->socTimeStep = 0;
+      obj->info->socTimeStepOverCnt = 0;
+      obj->info->socTimeFull = 0;
+      obj->info->socTimeFullOverCnt = 0;
+      obj->info->socTimeLock = 0;
+      obj->info->socCCStep = 0;
+      break;
+    case RSOC_FILTER_FLAG_RESET_STEP:
+      obj->info->socTimeStep = 0;
+      obj->info->socTimeStepOverCnt = 0;
+      obj->info->socCCStep = 0;
+      break;
+    case RSOC_FILTER_FLAG_RESET_FULL:
+      obj->info->socTimeFull = 0;
+      obj->info->socTimeFullOverCnt = 0;
+      break;
+    case RSOC_FILTER_FLAG_RESET_LOCK:
+      obj->info->status = obj->info->status & (~CAP_STS_FILTER_LOCK_OVER);
+      obj->info->socTimeLock = 0;
+      break;
+    case RSOC_FILTER_FLAG_SET_1_STEP:
+      if(obj->info->socTimeStepOverCnt > 0)
+      {
+        obj->info->socTimeStepOverCnt = 1;
+      }
+      break;
+    case RSOC_FILTER_FLAG_SET_1_FULL:
+      if(obj->info->socTimeFullOverCnt > 0)
+      {
+        obj->info->socTimeFullOverCnt = 1;
+      }
+      break;
+  }
 }
 
 
@@ -2480,7 +2602,7 @@ void UpiInitCapacity(CapacityDataType *data)
   /// [AT-PM] : Initialize record CC array ; 02/19/2013
   InitCCRecord(obj);
   /// [AT-PM] : Reset RSOC filter ; 02/07/2014  
-  RsocFilterReset(obj);
+  RsocFilterReset(obj, RSOC_FILTER_FLAG_RESET_ALL);
   
   data->status = data->status & (~CAP_STS_INIT_PROCEDURE);
   #ifdef  UG31XX_SHELL_ALGORITHM
@@ -2663,7 +2785,7 @@ void UpiSetChargerFullStep(CapacityDataType *data, GG_BATTERY_INFO *orgData)
   data->rm = (_cap_u16_)orgData->NAC;
   data->fcc = (_cap_u16_)orgData->LMD;
   data->rsoc = (_cap_u8_)orgData->RSOC;
-  data->status = data->status | CAP_STS_FORCE_STEP_TO_100;
+  CapStatusFCStep100Set(data);
 }
 
 /**
@@ -2679,6 +2801,7 @@ void UpiInitDsgCharge(CapacityDataType *data)
   data->dsgCharge = 0;
   data->qFromCurr = (_cap_s32_)data->ggbParameter->ILMD;
   data->qFromCC = 0;
+  data->qFromCurrBuf = 0;
   data->status = data->status | CAP_STS_DSGCHARGE_INITED;
   UG31_LOGD("[%s]: Initial discharge charge counter = %d\n", __func__, (int)data->dsgCharge);
 }
@@ -2732,8 +2855,8 @@ _cap_u16_ CalculateRsoc(_cap_u32_ rm, _cap_u16_ fcc)
   {
     tmp32 = rm*CONST_PERCENTAGE*CONST_ROUNDING;    
     UG31_LOGE("[%s]: FCC = 0. (%d <-> %d)\n", __func__,
-              tmp32,
-              rm);
+              (int)tmp32,
+              (int)rm);
   }
   else
   {
