@@ -687,7 +687,7 @@ static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long
       ug31->daemon_uevent_count = 0;
       #ifdef FEATRUE_K_BOARD_OFFSET
         kbo_file_exist = false;
-        schedule_delayed_work(&ug31->kbo_check_work, UG31XX_CALI_BO_FACTORY_DELAY*HZ);
+        schedule_delayed_work(&ug31->kbo_check_work, msecs_to_jiffies(UG31XX_CALI_BO_FACTORY_DELAY));
       #endif ///< for FEATRUE_K_BOARD_OFFSET
       break;
 
@@ -1984,7 +1984,7 @@ static void batt_info_update_work_func(struct work_struct *work)
   /// [AT-PM] : Check board offset calibration file exist ; 02/13/2014
   if(kbo_file_exist == true)
   {
-    schedule_delayed_work(&ug31->kbo_check_work, UG31XX_CALI_BO_FACTORY_DELAY*HZ);
+    schedule_delayed_work(&ug31->kbo_check_work, msecs_to_jiffies(UG31XX_CALI_BO_FACTORY_DELAY));
   }
 #endif ///< for FEATRUE_K_BOARD_OFFSET
 }
