@@ -11,7 +11,7 @@
  *  uG31xx system control
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 73 $
+ * @revision  $Revision: 590 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,7 +19,7 @@
 
 #if defined(uG31xx_OS_WINDOWS)
 
-#define SYSTEM_VERSION      (_T("System $Rev: 73 $"))
+#define SYSTEM_VERSION      (_T("System $Rev: 590 $"))
 
 _upi_bool_ ReadGGBFileToCellDataAndInitSetting(SystemDataType *obj)
 {
@@ -54,7 +54,7 @@ _upi_bool_ ReadGGBFileToCellDataAndInitSetting(SystemDataType *obj)
 
 #else   ///< else of defined(uG31xx_OS_WINDOWS)
 
-#define SYSTEM_VERSION      ("System $Rev: 73 $")
+#define SYSTEM_VERSION      ("System $Rev: 590 $")
 
 _upi_bool_ ReadGGBXFileToCellDataAndInitSetting(SystemDataType *obj)
 {
@@ -162,6 +162,7 @@ _sys_bool_ CheckAdcChopFunction(SystemDataType *data)
 {
   _sys_u8_ buf;
 
+  buf = 0;
   API_I2C_Read(SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
@@ -217,6 +218,10 @@ _sys_bool_ CheckAdc1Queue(SystemDataType *data)
 {
   _sys_u8_ adcQueue[4];
 
+  adcQueue[0] = 0;
+  adcQueue[1] = 0;
+  adcQueue[2] = 0;
+  adcQueue[3] = 0;
   API_I2C_Read(SECURITY, 
                UG31XX_I2C_HIGH_SPEED_MODE, 
                UG31XX_I2C_TEM_BITS_MODE, 
@@ -314,6 +319,9 @@ _sys_bool_ CheckAdc2Queue(SystemDataType *data)
   _sys_u8_ adc2Queue[3];
   _sys_u8_ *adc2QueuePtr;
 
+  adc2Queue[0] = 0;
+  adc2Queue[1] = 0;
+  adc2Queue[2] = 0;
   /// [AT-PM] : Set cell type ; 01/31/2013
   if(data->cellNum == 1)
   {
@@ -481,7 +489,8 @@ void ConfigureGpio(SystemDataType *data)
                 &data->ggbParameter->gpio34);
 }
 
-#define ADC_FAIL_CRITERIA     (5)
+#define ADC1_FAIL_CRITERIA    (0)
+#define ADC2_FAIL_CRITERIA    (5)
 #define ADC_FAIL_MIN_IT_CODE  (IT_IDEAL_CODE_25/2)
 #define ADC_FAIL_MAX_IT_CODE  (IT_IDEAL_CODE_80*11/10)
 
@@ -543,12 +552,12 @@ _upi_bool_ CheckAdcStatusFail(SystemDataType *data)
   data->adcCheckData.lastVBat1Ave = data->adcCheckData.regVbat1Ave;
 
   /// [AT-PM] : Check ADC fail criteria ; 01/27/2013
-  if(data->adcCheckData.failCounterCurrent > ADC_FAIL_CRITERIA)
+  if(data->adcCheckData.failCounterCurrent > ADC1_FAIL_CRITERIA)
   {
     data->adcCheckData.failCounterCurrent = 0;
     return (_UPI_TRUE_);
   }
-  if(data->adcCheckData.failCounterVoltage > ADC_FAIL_CRITERIA)
+  if(data->adcCheckData.failCounterVoltage > ADC2_FAIL_CRITERIA)
   {
     data->adcCheckData.failCounterVoltage = 0;
     return (_UPI_TRUE_);
@@ -1164,6 +1173,8 @@ void UpiCalculateOscFreq(SystemDataType *data)
   UG31_LOGN("[%s]: OSC frequency = %dHz\n", __func__, (int)data->oscFreq);
 }
 
+#define DECIMATE_RST_MIN_TIME     (500)
+
 /**
  * @brief UpiAdcStatus
  *
@@ -1174,10 +1185,43 @@ void UpiCalculateOscFreq(SystemDataType *data)
  */
 void UpiAdcStatus(SystemDataType *data)
 {
+  _upi_u32_ deltaTime;
+  
   data->adcCheckData.decimateRst = CheckAdcStatusFail(data);
 	if(data->adcCheckData.decimateRst == _UPI_TRUE_)      //check ADC Code frozen 
 	{
+    #if defined(uG31xx_OS_ANDROID)
+      deltaTime = GetSysTickCount();
+    #else   ///< else of defined(uG31xx_OS_ANDROID)
+      #if defined(BUILD_UG31XX_LIB)
+        deltaTime = GetSysTickCount();
+      #else   ///< else of defined(BUILD_UG31XX_LIB)
+        deltaTime = GetTickCount();
+      #endif  ///< end of defined(BUILD_UG31XX_LIB)
+    #endif  ///< end of defined(uG31xx_OS_ANDROID)
+    if(deltaTime > data->adcCheckData.decimateRstTime)
+    {
+      deltaTime = deltaTime - data->adcCheckData.decimateRstTime;
+      if(deltaTime < DECIMATE_RST_MIN_TIME)
+      {
+        UG31_LOGI("[%s]: No DecimateRst because time interval = %d < %d\n", __func__,
+                  deltaTime,
+                  DECIMATE_RST_MIN_TIME);
+        return;
+      }
+    }
+    
     DecimateRst();
+    
+    #if defined(uG31xx_OS_ANDROID)
+      data->adcCheckData.decimateRstTime = GetSysTickCount();
+    #else   ///< else of defined(uG31xx_OS_ANDROID)
+      #if defined(BUILD_UG31XX_LIB)
+        data->adcCheckData.decimateRstTime = GetSysTickCount();
+      #else   ///< else of defined(BUILD_UG31XX_LIB)
+        data->adcCheckData.decimateRstTime = GetTickCount();
+      #endif  ///< end of defined(BUILD_UG31XX_LIB)
+    #endif  ///< end of defined(uG31xx_OS_ANDROID)
 	}			
 }
 
@@ -1222,14 +1266,15 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
   u8Ptr = (_sys_u8_ *)&data->timeTagFromIC;
   *u8Ptr = 0;
   *(u8Ptr + 1) = 0;
-  API_I2C_Read(SECURITY,
+
+  API_I2C_Read((BACKUP_TIME_BYTE2 < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_TIME_BYTE2,
                1,
                &u8Temp);
   *(u8Ptr + 2) = u8Temp;
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_TIME_BYTE3 < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_TIME_BYTE3,
@@ -1238,13 +1283,13 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
   *(u8Ptr + 3) = u8Temp;
 
   //Load the NAC    
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_NAC_HIGH < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_NAC_HIGH,
                1,
                &u8TempHigh);
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_NAC_LOW < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_NAC_LOW,
@@ -1254,13 +1299,13 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
   data->rmFromIC = data->rmFromIC*256 + u8Temp;
 
   // Load LMD  
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_LMD_HIGH < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_LMD_HIGH,
                1,
                &u8TempHigh);
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_LMD_LOW < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_LMD_LOW,
@@ -1276,7 +1321,7 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
              data->fccFromIC);
 
   /// [AT-PM] : Load table update index ; 02/10/2013
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_TABLE_UPDATE_IDX < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_TABLE_UPDATE_IDX,
@@ -1286,13 +1331,13 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
   UG31_LOGN("[%s]: Table Update Index From IC = %d\n", __func__, data->tableUpdateIdxFromIC);
 
   /// [AT-PM] : Load delta capacity ; 02/10/2013
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_DELTA_CAP_HIGH < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_DELTA_CAP_HIGH,
                1,
                &u8TempHigh);
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_DELTA_CAP_LOW < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_DELTA_CAP_LOW,
@@ -1303,13 +1348,13 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
   UG31_LOGN("[%s]: Delta Capacity From IC = %d (0x%02x%02x)\n", __func__, data->deltaCapFromIC, u8TempHigh, u8Temp);
 
   /// [AT-PM] : Load ADC1 conversion time ; 02/10/2013
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_ADC1_CONV_TIME_HIGH < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_ADC1_CONV_TIME_HIGH,
                1,
                &u8TempHigh);
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_ADC1_CONV_TIME_LOW < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_ADC1_CONV_TIME_LOW,
@@ -1319,13 +1364,13 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
   UG31_LOGN("[%s]: ADC1 Conversion Time From IC = %d\n", __func__, data->adc1ConvTime);
 
   /// [AT-PM] : Load cycle count ; 10/14/2013
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_CYCLE_COUNT_LOW < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_CYCLE_COUNT_LOW,
                1,
                &u8Temp);
-  API_I2C_Read(SECURITY,
+  API_I2C_Read(( BACKUP_CYCLE_COUNT_HIGH< 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_CYCLE_COUNT_HIGH,
@@ -1337,7 +1382,7 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
 
   /// [AT-PM] : Load cc offset ; 12/10/2013
   u8Ptr = (_sys_u8_ *)&data->ccOffset;
-  API_I2C_Read(SECURITY,
+  API_I2C_Read((BACKUP_CC_OFFSET < 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_CC_OFFSET,
@@ -1347,7 +1392,7 @@ void UpiLoadBatInfoFromIC(SystemDataType *data)
 
   /// [AT-PM] : Load standby ratio ; 01/03/2014
   u8Ptr = (_sys_u8_ *)&data->standbyDsgRatio;
-  API_I2C_Read(SECURITY,
+  API_I2C_Read(( BACKUP_STANDBY_RATIO< 0x80)? NORMAL: SECURITY,
                UG31XX_I2C_HIGH_SPEED_MODE,
                UG31XX_I2C_TEM_BITS_MODE,
                BACKUP_STANDBY_RATIO,
@@ -1555,13 +1600,13 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
 
   //save the time tag
   u8Ptr = (_sys_u8_ *)&data->timeTagFromIC;
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_TIME_BYTE2 < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_TIME_BYTE2,
                 1,
                 (u8Ptr + 2));
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_TIME_BYTE3 < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_TIME_BYTE3,
@@ -1570,14 +1615,14 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
 
    //save the NAC					
   u8Temp = (_sys_u8_)((data->rmFromIC & 0xff00)/256);
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_NAC_HIGH < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_NAC_HIGH,
                 1,
                 &u8Temp);
   u8Temp = (_sys_u8_)(data->rmFromIC & 0x00ff); 
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_NAC_LOW < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_NAC_LOW,
@@ -1586,14 +1631,14 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
   
   // save LMD	
   u8Temp = (_sys_u8_)((data->fccFromIC & 0xff00)/256);
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_LMD_HIGH < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_LMD_HIGH,
                 1,
                 &u8Temp);
   u8Temp = (_sys_u8_)(data->fccFromIC & 0x00ff); 
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_LMD_LOW < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_LMD_LOW,
@@ -1602,7 +1647,7 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
 
   /// [AT-PM] : Save table update index ; 02/10/2013
   u8Temp = data->tableUpdateIdxFromIC;
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_TABLE_UPDATE_IDX < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_TABLE_UPDATE_IDX,
@@ -1612,14 +1657,14 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
   /// [AT-PM] : Save delta capacity ; 02/10/2013
   u16Temp = (_sys_u16_)data->deltaCapFromIC;
   u8Temp = (_sys_u8_)(u16Temp >> 8);
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_DELTA_CAP_HIGH < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_DELTA_CAP_HIGH,
                 1,
                 &u8Temp);
   u8Temp1 = (_sys_u8_)(u16Temp & 0x00ff);
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_DELTA_CAP_LOW < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_DELTA_CAP_LOW,
@@ -1629,14 +1674,14 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
 
   /// [AT-PM] : Save adc1 conversion time ; 02/10/2013
   u8Temp = data->adc1ConvTime >> 8;
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_ADC1_CONV_TIME_HIGH < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_ADC1_CONV_TIME_HIGH,
                 1,
                 &u8Temp);
   u8Temp = data->adc1ConvTime & 0x00ff;
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_ADC1_CONV_TIME_LOW < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_ADC1_CONV_TIME_LOW,
@@ -1646,14 +1691,14 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
 
   /// [AT-PM] : Save cycle count ; 10/14/2013
   u8Temp = data->cycleCount >> 8;
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_CYCLE_COUNT_HIGH < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_CYCLE_COUNT_HIGH,
                 1,
                 &u8Temp);  
   u8Temp = data->cycleCount & 0x00ff;
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_CYCLE_COUNT_LOW < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_CYCLE_COUNT_LOW,
@@ -1663,7 +1708,7 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
 
   /// [AT-PM] : Save coulomb counter offset ; 12/10/2013
   u8Ptr = (_sys_u8_ *)&data->ccOffset;
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_CC_OFFSET < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_CC_OFFSET,
@@ -1673,7 +1718,7 @@ void UpiSaveBatInfoTOIC(SystemDataType *data)
 
   /// [AT-PM] : Save standby ratio ; 01/03/2014
   u8Ptr = (_sys_u8_ *)&data->standbyDsgRatio;
-  API_I2C_Write(SECURITY,
+  API_I2C_Write((BACKUP_STANDBY_RATIO < 0x80)? NORMAL: SECURITY,
                 UG31XX_I2C_HIGH_SPEED_MODE,
                 UG31XX_I2C_TEM_BITS_MODE,
                 BACKUP_STANDBY_RATIO,
