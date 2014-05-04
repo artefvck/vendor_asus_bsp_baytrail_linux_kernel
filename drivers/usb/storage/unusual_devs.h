@@ -825,7 +825,7 @@ UNUSUAL_DEV(  0x05e3, 0x0723, 0x9451, 0x9451,
 		"Genesys Logic",
 		"USB to SATA",
 		USB_SC_DEVICE, USB_PR_DEVICE, NULL,
-		US_FL_SANE_SENSE ),
+		US_FL_SANE_SENSE | US_FL_INITIAL_READ10 ),
 
 /* Reported by Hanno Boeck <hanno@gmx.de>
  * Taken from the Lycoris Kernel */
