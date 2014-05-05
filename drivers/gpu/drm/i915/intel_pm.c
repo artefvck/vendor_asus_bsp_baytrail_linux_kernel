@@ -1374,10 +1374,7 @@ static void vlv_update_drain_latency(struct drm_device *dev)
 				DDL_PLANEA_PRECISION_32 :
 				DDL_PLANEA_PRECISION_64;
 
-		if (((I915_READ(DSPCNTR(0))) & DISPPLANE_TILED) | dev_priv->is_tiled)
-			I915_WRITE_BITS(VLV_DDL1, planea_prec | planea_dl, 0x000000ff);
-		else
-			I915_WRITE_BITS(VLV_DDL1, 0x0000, 0x000000ff);
+		I915_WRITE_BITS(VLV_DDL1, 0x0000, 0x000000ff);
 	} else
 		I915_WRITE_BITS(VLV_DDL1, 0x0000, 0x000000ff);
 
