@@ -49,6 +49,26 @@ static struct soc_throttle_data tng_soc_data[] = {
 };
 
 static struct soc_throttle_data vlv2_soc_data[] = {
+
+#ifdef CONFIG_PRO_ME176_THERMAL
+	{
+		.power_limit = 0x6D, /* 3.5W */
+		.floor_freq = 0x01,
+	},
+	{
+		.power_limit = 0x28, /* 1.3W */
+		.floor_freq = 0x01,
+	},
+	{
+		.power_limit = 0x10, /* 0.5W */
+		.floor_freq = 0x01,
+	},
+	{
+		.power_limit = 0x10, /* 0.5W */
+		.floor_freq = 0x01,
+	},
+#endif
+#ifdef CONFIG_PRO_ME181_THERMAL
 	{
 		.power_limit = 0xDA, /* 7W */
 		.floor_freq = 0x01,
@@ -57,17 +77,6 @@ static struct soc_throttle_data vlv2_soc_data[] = {
 		.power_limit = 0x6D, /* 3.5W */
 		.floor_freq = 0x01,
 	},
-#ifdef CONFIG_PRO_ME176_THERMAL
-	{
-		.power_limit = 0x28, /* 1.3W */
-		.floor_freq = 0x01,
-	},
-	{
-		.power_limit = 0x28, /* 1.3W */
-		.floor_freq = 0x01,
-	},
-#endif
-#ifdef CONFIG_PRO_ME181_THERMAL
 	{
 		.power_limit = 0x2E, /* 1.5W */
 		.floor_freq = 0x01,
