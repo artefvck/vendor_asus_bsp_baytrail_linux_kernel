@@ -338,6 +338,7 @@ static void watchdog_interrupt_count(void)
 static int watchdog_nmi_enable(unsigned int cpu);
 static void watchdog_nmi_disable(unsigned int cpu);
 
+extern void dump_all_cpu_cstate(void);
 /* watchdog kicker functions */
 static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 {
@@ -345,6 +346,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 	struct pt_regs *regs = get_irq_regs();
 	int duration;
 
+	printk(KERN_ERR "** %s [CPU:%d] **\n", __func__, smp_processor_id());
 	/* kick the hardlockup detector */
 	watchdog_interrupt_count();
 
@@ -396,6 +398,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 		printk(KERN_EMERG "BUG: soft lockup - CPU#%d stuck for %us! [%s:%d]\n",
 			smp_processor_id(), duration,
 			current->comm, task_pid_nr(current));
+		dump_all_cpu_cstate();
 		print_modules();
 		print_irqtrace_events(current);
 		if (regs)
