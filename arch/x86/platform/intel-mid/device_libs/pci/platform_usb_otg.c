@@ -123,7 +123,11 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 			INTEL_MID_BOARD(3, TABLET, BYT, BLK, ENG, 8PR1)) {
 			dwc_otg_pdata.gpio_cs = 54;
 			dwc_otg_pdata.gpio_reset = 144;
+#ifdef CONFIG_PRO_ME176_OTG_PHYVS1
+			dwc_otg_pdata.ti_phy_vs1 = 0x4f;
+#else
 			dwc_otg_pdata.ti_phy_vs1 = 0x7f;
+#endif
 			dwc_otg_pdata.sdp_charging = 1;
 			dwc_otg_pdata.charging_compliance =
 				!dwc_otg_byt_get_usbspecoverride();

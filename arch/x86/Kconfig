@@ -2418,3 +2418,9 @@ config PRO_ME181_THERMAL
 	default n
 	help
 	me181 thermal
+
+config PRO_ME176_OTG_PHYVS1
+	bool "me176 phy_vs1"
+	default n
+	help
+	me176 otg phy_vs1
