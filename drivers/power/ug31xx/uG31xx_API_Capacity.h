@@ -104,6 +104,7 @@ typedef struct CapacityDataST {
   _cap_s32_ socCCStepBuf;
 
   _cap_u8_ rsocFilterActiveCnt;
+  _cap_u32_ inSuspendMilliSec;
 
   _cap_s32_ qFromCurr;
   _cap_s32_ qFromCC;

@@ -2401,11 +2401,18 @@ MEAS_RTN_CODE UpiMeasurement(MeasDataType *data, MEAS_SEL_CODE select)
     standbyLower = standbyUpper*(-1);
     if((obj->codeCharge > COULOMB_COUNTER_RESET_THRESHOLD_CHARGE_CHG) ||
        (obj->codeCharge < COULOMB_COUNTER_RESET_THREDHOLD_CHARGE_DSG) ||
+#ifdef  UG31XX_RESET_CC_IN_STANDBY
        ((obj->info->curr < standbyUpper) && 
         (obj->info->curr > standbyLower) && 
-        (obj->codeCounter > CONST_CONVERSION_COUNT_THRESHOLD*RESET_CC_CURRENT_MAGIC_NUMBER)) ||
+        (obj->info->deltaCap != 0)) ||
+#endif  ///< end of UG31XX_RESET_CC_IN_STANDBY
        (obj->info->deltaTime > RESET_CC_DELTA_TIME))
     {
+      UG31_LOGN("[%s]: Reset coulomb counter (%d - %d - %d - %d)\n", __func__,
+                obj->codeCharge,
+                obj->info->curr,
+                obj->info->deltaCap,
+                obj->info->deltaTime);
       ResetCoulombCounter(obj);
       data->lastDeltaCap = 0;
 
