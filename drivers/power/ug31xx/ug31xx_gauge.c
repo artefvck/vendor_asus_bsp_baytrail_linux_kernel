@@ -407,7 +407,9 @@ static int ug31xx_misc_release(struct inode *inode, struct file *file)
   UG31_LOGN("[%s]\n", __func__);
   return 0;
 }
+#ifndef CONFIG_FACTORY_ITEMS
 static int Status=0;
+#endif
 static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
   int rc = 0;
@@ -619,14 +621,17 @@ static long ug31xx_misc_ioctl(struct file *file, unsigned int cmd, unsigned long
         UG31_LOGE("[%s] copy_from_user fail\n", __func__);
       }
       ug31_module.restore_pointer();
-      
+      #ifndef CONFIG_FACTORY_ITEMS
       if(Status == 1){
-	  	if(is_charging_full() == true)
+	  	if(ug31->batt_capacity == 100)
       			schedule_delayed_work(&ug31->shell_backup_work, 3600*HZ);
 		else
 			schedule_delayed_work(&ug31->shell_backup_work, 0*HZ);
 	} else
 		schedule_delayed_work(&ug31->shell_backup_work, 0*HZ);
+	#else
+		schedule_delayed_work(&ug31->shell_backup_work, 0*HZ);
+	#endif
       break;
 
     case UG31XX_IOCTL_ALGORITHM_BACKUP_BUFFER:
@@ -1302,15 +1307,28 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 	}
 	if(psp == POWER_SUPPLY_PROP_VOLTAGE_NOW)
 	{	
-		if(Status == 1)
-			val->intval = ug31->batt_volt * 1000;
-		else{
+		#ifndef CONFIG_FACTORY_ITEMS
+		if(Status == 1){
+			if(ug31->batt_capacity == 100)
+				val->intval = ug31->batt_volt * 1000;
+			else{
+					mutex_lock(&ug31->info_update_lock);
+					val->intval = ug31_module.get_voltage_now();
+					mutex_unlock(&ug31->info_update_lock);
+					val->intval = val->intval * 1000;
+				}
+		}else{
 			mutex_lock(&ug31->info_update_lock);
 			val->intval = ug31_module.get_voltage_now();
 			mutex_unlock(&ug31->info_update_lock);
 			val->intval = val->intval * 1000;
 		}
-		
+		#else
+			mutex_lock(&ug31->info_update_lock);
+			val->intval = ug31_module.get_voltage_now();
+			mutex_unlock(&ug31->info_update_lock);
+			val->intval = val->intval * 1000;
+		#endif
 	}
 	if(psp == POWER_SUPPLY_PROP_VOLTAGE_AVG)
 	{
@@ -1318,12 +1336,25 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 	}
 	if(psp == POWER_SUPPLY_PROP_CURRENT_NOW)
 	{	
+		#ifndef CONFIG_FACTORY_ITEMS
 		if(Status == 1){
-			val->intval = ug31->batt_current * 1000;
-			if((is_charging() == false) && (val->intval > 0))
-			{
-				val->intval = 0;
-			}
+			if(ug31->batt_capacity == 100){
+				val->intval = ug31->batt_current * 1000;
+				if((is_charging() == false) && (val->intval > 0))
+				{
+					val->intval = 0;
+				}
+			}else{
+					mutex_lock(&ug31->info_update_lock);
+					val->intval = ug31_module.get_current_now();
+					mutex_unlock(&ug31->info_update_lock);
+					
+					if((is_charging() == false) && (val->intval > 0))
+					{
+						val->intval = 0;
+					}
+					val->intval = val->intval * 1000;
+				}
 		}
 		else{
 			mutex_lock(&ug31->info_update_lock);
@@ -1336,6 +1367,17 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 			}
 			val->intval = val->intval * 1000;
 		}
+		#else
+			mutex_lock(&ug31->info_update_lock);
+			val->intval = ug31_module.get_current_now();
+			mutex_unlock(&ug31->info_update_lock);
+			
+			if((is_charging() == false) && (val->intval > 0))
+			{
+				val->intval = 0;
+			}
+			val->intval = val->intval * 1000;
+		#endif
 	}
 	if(psp == POWER_SUPPLY_PROP_CURRENT_AVG)
 	{
@@ -1343,9 +1385,9 @@ static int ug31xx_update_psp(enum power_supply_property psp,
 	}
 	if(psp == POWER_SUPPLY_PROP_STATUS)
 	{
-		if(cur_cable_status) 
+		if(is_charging()) 
 		{
-			if (ug31->batt_capacity == 100)
+			if(is_charging_full())
 			{
 				ug31->batt_status = POWER_SUPPLY_STATUS_FULL;
 			}
@@ -1688,14 +1730,18 @@ static void show_update_batt_status(void)
 
 #ifdef  UG31XX_DYNAMIC_POLLING
 	ug31->polling_time		= (u32)ug31_module.get_polling_time();
+	#ifndef CONFIG_FACTORY_ITEMS
 	if(Status == 1)
 	{ 
-		if(is_charging_full() == true)
+		if(ug31->batt_capacity == 100)
 			ug31->update_time	= 3600;
 		else
 			ug31->update_time	= (u32)ug31_module.get_update_time();
 	}else
 		ug31->update_time		= (u32)ug31_module.get_update_time();
+	#else
+		ug31->update_time		= (u32)ug31_module.get_update_time();
+	#endif
 #else   ///< else of UG31XX_DYNAMIC_POLLING
 	ug31->polling_time		= 5;
 	ug31->update_time		= 5;
@@ -3002,7 +3048,9 @@ static int ug31xx_i2c_probe(struct i2c_client *client,
 	{
 		return -EIO;
 	} 
+	#ifndef CONFIG_FACTORY_ITEMS
 	Status = is_COS();
+	#endif
 	ug31 = kzalloc(sizeof(*ug31), GFP_KERNEL);
 	if (!ug31)
 	{

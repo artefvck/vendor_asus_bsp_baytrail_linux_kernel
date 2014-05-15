@@ -694,7 +694,7 @@ void FindOcvRM(CapacityInternalDataType *obj, _cap_u8_ tableIdx, _cap_u16_ volta
   obj->rm = (_cap_u16_)tmp32;
 }
 
-#define IS_SUSPEND_OPERATION_DELAT_TIME     (5*TIME_SEC_TO_MIN*TIME_MSEC_TO_SEC)
+#define IS_SUSPEND_OPERATION_DELAT_TIME     (1*TIME_SEC_TO_MIN*TIME_MSEC_TO_SEC)
 
 /**
  * @brief IsSuspendOperation
@@ -2564,6 +2564,7 @@ void UpiInitCapacity(CapacityDataType *data)
   data->standbyDsgRatio = 0;
   data->standbyMilliSec = 0;
   data->standbyHour = 0;
+  data->inSuspendMilliSec = 0;
 
   #ifdef  UG31XX_SHELL_ALGORITHM
     obj = (CapacityInternalDataType *)upi_malloc(sizeof(CapacityInternalDataType));
