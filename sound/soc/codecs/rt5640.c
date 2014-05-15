@@ -127,7 +127,7 @@ static struct rt5640_init_reg init_list[] = {
 	{RT5640_IN1_IN2, 0x4080},	/*IN1 boost 40db and differential mode */
 #endif
 //#ifdef CONFIG_ME176C_CODEC_PARAMETER
-	{RT5640_IN3_IN4, 0x0400},	/*IN2 boost 40db and signal ended mode */
+	{RT5640_IN3_IN4, 0x0100},	/*IN2 boost 40db and signal ended mode */
 //#else
 //	{RT5640_IN3_IN4, 0x0000},	/*IN2 boost 40db and signal ended mode */
 //#endif
