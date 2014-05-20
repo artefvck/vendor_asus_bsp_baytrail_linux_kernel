@@ -515,6 +515,14 @@ static ssize_t kxtj2_delay_store(struct device *dev, struct device_attribute *at
         /* Lock the device to prevent races with open/close (and itself) */
         mutex_lock(&input_dev->mutex);
 
+        if( interval < poll_dev->poll_interval_min ) {
+                interval = poll_dev->poll_interval_min;
+        }
+
+        if(interval > poll_dev->poll_interval_max) {
+                interval = poll_dev->poll_interval_max;
+        }
+
         if( interval >= poll_dev->poll_interval_min
                 &&
                 interval <= poll_dev->poll_interval_max)        {
