@@ -372,13 +372,14 @@ static void lid_report_function(int type)
 static irqreturn_t hall_pmic_interrupt_handler(int irq, void *dev_id)
 {
 	p_debug("[%s] hal_pmic_interrupt_handler->GPIO report value = %d\n", DRIVER_NAME, hall_get_din());
-
+	udelay(1);
 	lid_report_function(HALL_PMIC);
 	return IRQ_HANDLED;
 }
 static irqreturn_t hall_gpio_interrupt_handler(int irq, void *dev_id)
 {
 	p_debug("[%s] hal_sensor_interrupt_handler-> GPIO report value = %d\n", DRIVER_NAME, gpio_get_value(hall_sensor_dev->gpio));
+	udelay(1);
 	lid_report_function(HALL_GPIO);
 	return IRQ_HANDLED;
 }
