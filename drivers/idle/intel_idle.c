@@ -69,14 +69,6 @@
 #include <asm/hypervisor.h>
 #include <asm/xen/hypercall.h>
 
-// Andrew 0428 [
-#include <linux/init.h>
-#include <linux/workqueue.h>
-#include <linux/proc_fs.h>
-#include <linux/delay.h>
-#include <linux/interrupt.h>
-// ]
-
 
 #define INTEL_IDLE_VERSION "0.4"
 #define PREFIX "intel_idle: "
@@ -86,21 +78,12 @@
 #define DISABLE_CORE_C6_DEMOTION	0x0
 #define DISABLE_MODULE_C6_DEMOTION	0x0
 
-#define DISABLE_C6_DEMOTION		0x0f0f0f01
-
 static struct cpuidle_driver intel_idle_driver = {
 	.name = "intel_idle",
 	.owner = THIS_MODULE,
 };
 /* intel_idle.max_cstate=0 disables driver */
 static int max_cstate = CPUIDLE_STATE_MAX - 1;
-
-// Andrew 0428 [
-static int disable_bootup_C6 = 1;
-
-struct delayed_work mdwq;
-struct workqueue_struct *mwq;
-// ]
 
 static unsigned int mwait_substates;
 
@@ -788,79 +771,6 @@ static unsigned int get_target_residency(unsigned int cstate)
 }
 #endif
 
-struct cpu_cstate {
-	unsigned int eax;
-	unsigned int ecx;
-	unsigned int enter_exit;
-	char time_1[50];
-	char time_2[50];
-	char time_3[50];
-	char time_4[50];
-	char time_5[50];
-	char time_6[50];
-	char time_7[50];
-};
-#define UNIT_MAX	(~0U)
-static volatile unsigned int IDLE_CPU = UNIT_MAX;
-static struct cpu_cstate dump_cpu_cstate[4];
-
-void update_time_stamp(char *tbuf)
-{
-	unsigned tlen;
-	unsigned long long t;
-	unsigned long nanosec_rem;
-
-	if (tbuf == NULL)
-		return;
-	memset(tbuf, 0, 50);
-	t = cpu_clock(IDLE_CPU);
-	nanosec_rem = do_div(t, 1000000000);
-	tlen = sprintf(tbuf, "[%5lu.%06lu]",
-			(unsigned long) t, nanosec_rem / 1000);
-}
-
-void dump_all_cpu_cstate(void)
-{
-	int i = 0;
-	printk(KERN_ERR "******** %s enter ********\n", __func__);
-	for (i = 0; i < 4; i++) {
-		printk(KERN_ERR " CPU_C_STATE[%d]: eax = 0x%x ecx = 0x%x flag = 0x%x\n",
-			i, dump_cpu_cstate[i].eax, dump_cpu_cstate[i].ecx,
-			dump_cpu_cstate[i].enter_exit);
-		printk(KERN_ERR " Intel-Idle[%d]: %s - %s - %s - %s - %s - %s - %s\n", i,
-			dump_cpu_cstate[i].time_1, dump_cpu_cstate[i].time_2,
-			dump_cpu_cstate[i].time_3, dump_cpu_cstate[i].time_4,
-			dump_cpu_cstate[i].time_5, dump_cpu_cstate[i].time_6,
-			dump_cpu_cstate[i].time_7);
-	}
-	printk(KERN_ERR "******** %s exit ********\n", __func__);
-}
-
-// Andrew 0428 [
-
-#define MWAIT_C0_CSTATE	0xF0
-#define MWAIT_C1_CSTATE	0x00
-#define MWAIT_C4_CSTATE	0x30
-#define MWAIT_C6_CSTATE	0x52
-#define MWAIT_C7_CSTATE	0x60
-#define MWAIT_C9_CSTATE	0x64
-
-#define CONFIG_C6_BOOTUP_DEBUG 1
-
-void delay_work_func(struct work_struct *work)
-{
-	printk("[IDLE] delay_work_func+\n");
-
-	msleep(120000);
-
-	disable_bootup_C6 = 0;
-	printk("[IDLE] disable_bootup_C6=0\n");
-	printk("[IDLE] delay_work_func-\n");
-}
-
-// ]
-
-
 /**
  * intel_idle
  * @dev: cpuidle_device
@@ -878,9 +788,6 @@ static int intel_idle(struct cpuidle_device *dev,
 	unsigned int cstate;
 	int cpu = smp_processor_id();
 
-	dump_cpu_cstate[cpu].enter_exit = 0x6;
-	update_time_stamp(dump_cpu_cstate[cpu].time_1);
-
 #if (defined(CONFIG_REMOVEME_INTEL_ATOM_MRFLD_POWER) && \
 	defined(CONFIG_PM_DEBUG))
 	{
@@ -892,22 +799,6 @@ static int intel_idle(struct cpuidle_device *dev,
 		eax	= flg2MWAIT(drv->states[index].flags);
 	}
 #endif
-
-
-// Andrew 0428 [
-#if CONFIG_C6_BOOTUP_DEBUG
-{
-	if (disable_bootup_C6 && ((eax == MWAIT_C4_CSTATE) ||
-														(eax == MWAIT_C6_CSTATE) ||
-														(eax == MWAIT_C7_CSTATE) ||
-														(eax == MWAIT_C9_CSTATE)
-													 )) {
-		eax = MWAIT_C1_CSTATE;
-	}
-}
-#endif
-// Andrew 0428 ]
-
 	cstate = (((eax) >> MWAIT_SUBSTATE_SIZE) & MWAIT_CSTATE_MASK) + 1;
 
 	/*
@@ -920,9 +811,6 @@ static int intel_idle(struct cpuidle_device *dev,
 	if (!(lapic_timer_reliable_states & (1 << (cstate))))
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
 
-	dump_cpu_cstate[cpu].enter_exit = 0x5;
-	update_time_stamp(dump_cpu_cstate[cpu].time_2);
-
 	if (!need_resched()) {
 #ifdef CONFIG_XEN
 		HYPERVISOR_mwait_op(eax, ecx,
@@ -931,21 +819,8 @@ static int intel_idle(struct cpuidle_device *dev,
 #else
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		smp_mb();
-
-		dump_cpu_cstate[cpu].enter_exit = 0x4;
-		update_time_stamp(dump_cpu_cstate[cpu].time_3);
-
-		if (!need_resched()) {
-			dump_cpu_cstate[cpu].eax = eax;
-			dump_cpu_cstate[cpu].ecx = ecx;
-			dump_cpu_cstate[cpu].enter_exit = 0x3;
-			update_time_stamp(dump_cpu_cstate[cpu].time_4);
-
+		if (!need_resched())
 			__mwait(eax, ecx);
-
-			dump_cpu_cstate[cpu].enter_exit = 0x2;
-			update_time_stamp(dump_cpu_cstate[cpu].time_5);
-		}
 #if defined(CONFIG_REMOVEME_INTEL_ATOM_MDFLD_POWER) || \
 	defined(CONFIG_REMOVEME_INTEL_ATOM_CLV_POWER)
 		if (!need_resched() && is_irq_pending() == 0)
@@ -954,14 +829,8 @@ static int intel_idle(struct cpuidle_device *dev,
 #endif /* CONFIG_XEN */
 	}
 
-	dump_cpu_cstate[cpu].enter_exit = 0x1;
-	update_time_stamp(dump_cpu_cstate[cpu].time_6);
-
 	if (!(lapic_timer_reliable_states & (1 << (cstate))))
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
-
-	dump_cpu_cstate[cpu].enter_exit = 0x0;
-	update_time_stamp(dump_cpu_cstate[cpu].time_7);
 
 	return index;
 }
@@ -1318,31 +1187,10 @@ static int intel_idle_cpu_init(int cpu)
 static int __init intel_idle_init(void)
 {
 	int retval, i;
-	int ret; // Andrew 0428
-
-	printk("[IDLE] %s+\n", __func__); // Andrew 0428
 
 	/* Do not load intel_idle at all for now if idle= is passed */
 	if (boot_option_idle_override != IDLE_NO_OVERRIDE)
 		return -ENODEV;
-
-	// Andrew 0428 [
-	printk("[IDLE] %s create_workqueue+\n", __func__);
-
-	mwq = create_workqueue("my workqueue");
-	if (!mwq) {
-		printk("[IDLE] %s: Create workqueue failed!\n", __func__);
-	}
-	else {
-		printk("[IDLE] %s: Create workqueue successful!\n", __func__);
-
-		INIT_DELAYED_WORK(&mdwq, delay_work_func);
-		ret = queue_delayed_work(mwq, &mdwq, 0);
-		printk(KERN_INFO "first ret=%d!\n", ret);
-	}
-	printk("[IDLE] %s create_workqueue-\n", __func__);
-	// ]
-
 
 	retval = intel_idle_probe();
 	if (retval)
@@ -1379,24 +1227,14 @@ static int __init intel_idle_init(void)
 					DISABLE_MODULE_C6_DEMOTION, 0x0))
 				pr_err("Error to disable module C6 demotion");
 		}
-#if 0
-		if (platform_is(INTEL_ATOM_BYT))
-			if (wrmsr_on_cpu(i, CLPU_CR_C6_POLICY_CONFIG,
-					DISABLE_C6_DEMOTION, 0x0))
-				pr_debug(PREFIX "Error to disable C6 demotion");
-#endif
 	}
 	register_cpu_notifier(&cpu_hotplug_notifier);
-
-	printk("[IDLE] %s-\n", __func__); // Andrew 0428
 
 	return 0;
 }
 
 static void __exit intel_idle_exit(void)
 {
-	int ret; // Andrew 0428
-
 	intel_idle_cpuidle_devices_uninit();
 	cpuidle_unregister_driver(&intel_idle_driver);
 
@@ -1404,15 +1242,6 @@ static void __exit intel_idle_exit(void)
 	if (lapic_timer_reliable_states != LAPIC_TIMER_ALWAYS_RELIABLE)
 		on_each_cpu(__setup_broadcast_timer, (void *)false, 1);
 	unregister_cpu_notifier(&cpu_hotplug_notifier);
-
-	// Andrew 0428 [
-	if (mwq) {
-		ret = cancel_delayed_work(&mdwq);
-		flush_workqueue(mwq);
-		destroy_workqueue(mwq);
-	}
-	printk("[IDLE] %: Exit! ret=%d\n", __func__, ret);
-	// ]
 
 	return;
 }
