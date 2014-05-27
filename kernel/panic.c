@@ -63,7 +63,6 @@ void __weak panic_smp_self_stop(void)
 		cpu_relax();
 }
 
-extern void dump_all_cpu_cstate(void);
 /**
  *	panic - halt the system
  *	@fmt: The text string to print
@@ -101,7 +100,6 @@ void panic(const char *fmt, ...)
 	if (!spin_trylock(&panic_lock))
 		panic_smp_self_stop();
 
-	dump_all_cpu_cstate();
 	console_verbose();
 	bust_spinlocks(1);
 	va_start(args, fmt);
