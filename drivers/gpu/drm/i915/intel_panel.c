@@ -534,6 +534,7 @@ u32 max;
 	int err = 0;
 	int lcm_id = 0;
 	int project_stage = 0;
+	int project_type = 0;
 #endif
 
 	DRM_DEBUG_DRIVER("set backlight PWM = %d\n", level);
@@ -573,10 +574,43 @@ u32 max;
 
 		if(project_stage) //PR
 		{
-			intel_mid_pmic_writeb(0x4E, level*0xff/max);
+			//intel_mid_pmic_writeb(0x4E, level*0xff/max);
 			sean_debug("%s:----sean test----line:%d,level:%d,max:%d\n", __func__,__LINE__,level,max);
+			project_type = intel_mid_pmic_readb(0x45); //GPIOxxxCTLI GPIO1P2 /PCB_ID5 //ME181C(GPIO1P2=0)/ME181CX(GPIO1P2=1)
+			//level = level*0xff/max;
+			if(project_type) //ME181CX
+			{
+				if(lcm_id) //IVO
+				{
+					sean_debug("%s:----sean test----line:%d,level:%d\n", __func__,__LINE__,level);
+					level = (int)(level*243/255 + 2); //max is 243
+					intel_mid_pmic_writeb(0x4E, level);
+					sean_debug("%s:----sean test----line:%d,level:%d\n", __func__,__LINE__,level);
+				}
+				else //INX
+				{
+					level = (int)(level*246/255 + 2); //max is 246
+					intel_mid_pmic_writeb(0x4E, level);
+					sean_debug("%s:----sean test----line:%d,level:%d\n", __func__,__LINE__,level);
+				}
+			}
+			else //ME181C
+			{
+				if(lcm_id) //AUO
+				{
+					level = (int)(level*253/255 + 2); //max is 253
+					intel_mid_pmic_writeb(0x4E, level);
+					sean_debug("%s:----sean test----line:%d,level:%d\n", __func__,__LINE__,level);
+				}
+				else //INX
+				{
+					level = (int)(level*245/255 + 2); //max is 245
+					intel_mid_pmic_writeb(0x4E, level);
+					sean_debug("%s:----sean test----line:%d,level:%d\n", __func__,__LINE__,level);
+				}
+			}
 		}
-		else //ER
+		else //ER only ME181C
 		{
 			if(lcm_id) //AUO
 			{
