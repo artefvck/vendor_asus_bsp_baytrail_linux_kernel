@@ -25,11 +25,11 @@ _upi_bool_ MPK_active = _UPI_FALSE_;
 
 #if defined (uG31xx_OS_WINDOWS)
 
-  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 590 $"))
+  #define UG31XX_API_VERSION      (_T("UG31XX API $Rev: 92 $"))
 
 #else
 
-  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 590 $")
+  #define UG31XX_API_VERSION      ("UG31XX API $Rev: 92 $")
 
 #endif
 
@@ -590,7 +590,9 @@ _upi_u32_ CountTotalTime(_upi_u32_ savedTimeTag)
 	} 				
   else
   {
-    totalTime = 0;
+    totalTime = 0xffffffff;
+    totalTime = totalTime - savedTimeTag;
+    totalTime = totalTime + currentTime;
   }
 	UG31_LOGE("[%s]current time/save Time/totalTime = %d/%d/%d \n",
 							__func__,
@@ -642,6 +644,7 @@ void CheckInitCapacityFromCC(struct ug31xx_data *pUg31xx)
 #else   ///< else of WAKEUP_TIME_THRD_1_HOUR
 #define MAX_DELTA_TIME_THRESHOLD_FOR_WAKEUP     (MS_IN_A_DAY)
 #endif  ///< end of WAKEUP_TIME_THRD_1_HOUR
+#define MAX_DELTA_CC_CNT_THRESHOLD_FOR_WAKEUP   (MAX_DELTA_TIME_THRESHOLD_FOR_WAKEUP/125)
 #define MAX_DELTA_RSOC_THRESHOLD_FOR_TABLE      (10)
 #define MIN_DELTA_RSOC_THRESHOLD_FOR_TABLE      (-10)
 
@@ -659,7 +662,8 @@ void CmpCapData(struct ug31xx_data *pUg31xx, _upi_bool_ initial)
   _upi_s16_ deltaQC;
   _upi_s32_ tmp32;
 
-  if(CountTotalTime(pUg31xx->sysData.timeTagFromIC) > MAX_DELTA_TIME_THRESHOLD_FOR_WAKEUP)
+  if((CountTotalTime(pUg31xx->sysData.timeTagFromIC) > MAX_DELTA_TIME_THRESHOLD_FOR_WAKEUP) ||
+     (pUg31xx->measData.lastCounter > MAX_DELTA_CC_CNT_THRESHOLD_FOR_WAKEUP))
   {
     /// [AT-PM] : Check the data accuracy ; 01/27/2013
     deltaQC = (_upi_s16_)pUg31xx->sysData.rsocFromIC;

@@ -11,7 +11,7 @@
  *  guG31xx measurement API
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 590 $
+ * @revision  $Revision: 614 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,11 +19,11 @@
 
 #ifdef  uG31xx_OS_WINDOWS
 
-  #define MEASUREMENT_VERSION      (_T("Measurement $Rev: 590 $"))
+  #define MEASUREMENT_VERSION      (_T("Measurement $Rev: 614 $"))
 
 #else   ///< else of uG31xx_OS_WINDOWS
 
-  #define MEASUREMENT_VERSION      ("Measurement $Rev: 590 $")
+  #define MEASUREMENT_VERSION      ("Measurement $Rev: 614 $")
 
 #endif  ///< end of uG31xx_OS_WINDOWS
 
