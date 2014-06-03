@@ -59,7 +59,7 @@
 #define CAP_STS_NAC_UPDATE_DISQ     (1<<10)
 #define CAP_STS_CHARGER_FULL        (1<<11)
 #define CAP_STS_CHG_CV_MODE         (1<<12)
-#define CAP_STS_CHG_FCC_UPDATE      (1<<13)
+#define CAP_STS_RELEASE_100         (1<<13)
 #define CAP_STS_DSGCHARGE_INITED    (1<<16)
 #define CAP_STS_DSG_AFTER_FC        (1<<17)
 #define CAP_STS_DSG_REACH_EDVF      (1<<18)
@@ -815,99 +815,6 @@ void CapStatusFCStep100Set(CapacityDataType *data)
   data->fcStep100 = CAP_TRUE;
 }
 
-#ifndef UG31XX_SHELL_ALGORITHM
-
-/**
- * @brief CapStatusFCStep100Clear
- *
- * Clear fcStep100 status
- *
- * @para data address of data strcture CapacityDataType
- * @return NULL
- */
-void CapStatusFCStep100Clear(CapacityDataType *data)
-{
-  data->status = data->status & (~CAP_STS_FORCE_STEP_TO_100);
-  data->fcStep100 = CAP_FALSE;
-}
-
-/**
- * @brief FullChargeCheck
- *
- *  Check full charge state
- *
- * @para  obj address of CapacityInternalDataType
- * @return  _UPI_NULL_
- */
-void FullChargeCheck(CapacityInternalDataType *obj)
-{
-  _cap_u32_ tmp32;
-
-  /// [AT-PM] : Operation for CV mode ; 09/12/2013
-  if(obj->info->status & CAP_STS_CHG_CV_MODE)
-  {
-    obj->rm = obj->info->avgRM;
-    UG31_LOGD("[%s]: Adjust RM = %d\n", __func__, obj->rm);
-  }
-  else
-  {
-    /// [AT-PM] : Count new RM from coulomb counter ; 02/09/2014
-    obj->rm = obj->rm + obj->stepCap;
-    
-    /// [AT-PM] : Initialize average RM if not in CV mode ; 09/12/2013
-    obj->info->avgRM = obj->rm;
-  }
-
-  /// [AT-PM] : If full charge reached, do not check again ; 01/25/2013
-  if(CapStatusFCGet(obj->info) == CAP_TRUE)
-  {
-    ResetSelfLearning(obj);
-    return;
-  }
-
-  /// [AT-PM] : Check taper voltage ; 01/25/2013
-  if(obj->info->avgVoltage < obj->info->ggbParameter->TPVoltage)
-  {
-    /// [AT-PM] : Release full charge ; 01/25/2013
-    FullChargeRelease(obj);
-    /// [FC] : Limit RSOC incresing speed during charging mode ; 06/19/2013
-    ChargeSpeedDown(obj);
-    return;
-  }
-
-  /// [AT-PM] : Check taper current ; 01/25/2013
-  if(obj->info->measurement->currAvg > obj->info->ggbParameter->TPCurrent)
-  {
-    /// [AT-PM] : Predict charging capacity ; 01/26/2013
-    PredictChargeCapacity(obj);
-
-    /// [AT-PM] : Release full charge ; 01/25/2013
-    FullChargeRelease(obj);
-    return;
-  }
-
-  /// [AT-PM] : Set RSOC to 99% if taper current is reached ; 02/27/2014
-  tmp32 = FULL_CHARGE_RSOC - 1;
-  tmp32 = tmp32*(obj->fcc)/CONST_PERCENTAGE;
-  obj->rm = (_cap_u16_)tmp32;
-  
-  /// [AT-PM] : Check taper time ; 01/25/2013
-  if(!(obj->info->status & CAP_STS_INIT_TIMER_PASS))
-  {
-    UG31_LOGE("[%s]: Delta time is not stable -> No taper time calculation\n", __func__);
-    return;
-  }
-  obj->info->tpTime = obj->info->tpTime + (_cap_u32_)obj->info->measurement->deltaTime;
-  tmp32 = obj->info->tpTime/TIME_MSEC_TO_SEC;
-  UG31_LOGD("[%s]: TP delay time = %d/%d\n", __func__, (int)obj->info->tpTime, obj->info->ggbParameter->TPTime);
-  if(tmp32 >= obj->info->ggbParameter->TPTime)
-  {
-    FullChargeSet(obj);
-    CapStatusFCStep100Set(obj->info);
-  }
-}
-
-#endif  ///< end of UG31XX_SHELL_ALGORITHM
 
 /**
  * @brief FindIdxTemperatureVer0
@@ -1698,7 +1605,6 @@ void InitCharge(CapacityInternalDataType *obj)
   InitCapacityParser(obj);
   obj->info->rsoc = (_cap_u8_)CalculateRsoc(obj->info->rm, obj->info->fcc);
   obj->info->fccBackup = obj->info->fcc;
-  obj->info->fccBeforeChg = obj->info->fcc;
   obj->info->predictRsoc = obj->info->rsoc;
   UG31_LOGN("[%s]: Initial capacity %d / %d = %d\n", __func__,
             obj->info->rm, obj->info->fcc, obj->info->rsoc);
@@ -2556,7 +2462,7 @@ void UpiInitCapacity(CapacityDataType *data)
   UG31_LOGI("[%s]: %s\n", __func__, CAPACITY_VERSION);
   
   /// [AT-PM] : Initialize variables ; 01/25/2013
-  data->status = CAP_STS_LAST_STANDBY | CAP_STS_CURR_STANDBY | CAP_STS_INIT_PROCEDURE;
+  data->status = CAP_STS_LAST_STANDBY | CAP_STS_CURR_STANDBY | CAP_STS_INIT_PROCEDURE | CAP_STS_RELEASE_100;
   data->status = data->status & (~(CAP_STS_INIT_TIMER_PASS));
   data->tableUpdateIdx = SOV_NUMS;
   data->dsgChargeStart = (_cap_s32_)data->ggbParameter->ILMD*2;

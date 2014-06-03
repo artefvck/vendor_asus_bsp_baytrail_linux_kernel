@@ -4,7 +4,7 @@
  *  Header of uG31xx capacity algorithm
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 66 $
+ * @revision  $Revision: 95 $
  */
 
 typedef char            _cap_bool_;
@@ -46,7 +46,6 @@ typedef struct CapacityDataST {
   _cap_u16_ rm;
   _cap_u16_ fcc;
   _cap_u16_ fccBackup;
-  _cap_u16_ fccBeforeChg;
   _cap_u8_ rsoc;
   _cap_u8_ predictRsoc;
   _cap_bool_ fcSts;
@@ -104,12 +103,13 @@ typedef struct CapacityDataST {
   _cap_s32_ socCCStepBuf;
 
   _cap_u8_ rsocFilterActiveCnt;
+
   _cap_u32_ inSuspendMilliSec;
 
   _cap_s32_ qFromCurr;
   _cap_s32_ qFromCC;
   _cap_s32_ qFromCurrBuf;
-  
+
   _cap_s16_ tableNac[SOV_NUMS];
   _cap_s16_ tableNacUpdate[SOV_NUMS];
 } ALIGNED_ATTRIBUTE CapacityDataType;

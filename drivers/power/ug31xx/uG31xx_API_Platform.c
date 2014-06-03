@@ -19,6 +19,7 @@
 #define BATT_UG31_FG_TBL_BODY   0x820
 #define BATT_UG31_RESERVED      2   /* 1st byte: which battery cell.
                                     2nd byte: had backup before */
+#define I2C_RETRY_CNT           (20)
 
 /**
  * ug31xx_restore_config_data - restore config data
@@ -1323,7 +1324,7 @@ _upi_s32_ ug31xx_write_i2c(struct i2c_client *client, _upi_u8_ reg, _upi_s32_ rt
     err = ug31xx_read_i2c(client, reg, &tmp_buf, b_single);
     if((tmp_buf & 0x00FF) != (rt_value & 0x00FF))
     {
-      dev_err(&ug31xx_client->dev, "%s: %04x != %04x\n", __func__, tmp_buf, rt_value);
+      dev_info(&ug31xx_client->dev, "%s: %04x != %04x (%02x)\n", __func__, tmp_buf, rt_value, reg);
     }
   }
   return (err < 0 ? err : 0);
@@ -1333,6 +1334,7 @@ _upi_bool_ _API_I2C_Write(_upi_u16_ writeAddress, _upi_u8_ writeLength, _upi_u8_
 {
   _upi_s32_ i, ret, tmp_buf;
   _upi_s32_ byte_flag=0;
+  _upi_u8_ retry_cnt = I2C_RETRY_CNT;
 
   if (!PWriteData) 
   {
@@ -1346,11 +1348,21 @@ _upi_bool_ _API_I2C_Write(_upi_u16_ writeAddress, _upi_u8_ writeLength, _upi_u8_
   {
     tmp_buf = PWriteData[i];
 
-    ret = ug31xx_write_i2c(ug31xx_client, (_upi_u8_)(writeAddress + i), tmp_buf, byte_flag);
-    if(ret)
+    while(retry_cnt--)
     {
-      dev_err(&ug31xx_client->dev, "%s: Write data(0x%02X) fail. %d\n", __func__, i, ret);
-      return (_UPI_FALSE_);
+      ret = ug31xx_write_i2c(ug31xx_client, (_upi_u8_)(writeAddress + i), tmp_buf, byte_flag);
+      if(ret)
+      {
+        dev_err(&ug31xx_client->dev, "%s: Write data(0x%02X) fail retry_cnt(%d). %d\n", __func__, i, retry_cnt, ret);
+        if(retry_cnt == 1)
+        {
+          return (_UPI_FALSE_);
+        }
+      }
+      else
+      {
+        break;
+      }
     }
   }
 
@@ -1361,6 +1373,7 @@ _upi_bool_ _API_I2C_Read(_upi_u16_ readAddress, _upi_u8_ readLength, _upi_u8_ *p
 {
   _upi_s32_ i, ret, tmp_buf;
   _upi_s32_ byte_flag = 0;
+  _upi_u8_ retry_cnt = I2C_RETRY_CNT;
 
   if(!pReadDataBuffer)
   {
@@ -1375,11 +1388,23 @@ _upi_bool_ _API_I2C_Read(_upi_u16_ readAddress, _upi_u8_ readLength, _upi_u8_ *p
     tmp_buf = 0;
 
     ret = ug31xx_read_i2c(ug31xx_client, (_upi_u8_)(readAddress + i), &tmp_buf, byte_flag);
-    if (ret)
+    while(retry_cnt--)
     {
-      dev_err(&ug31xx_client->dev, "%s: read data(0x%02X) fail. %d\n", __func__, i, ret);
-      return false;
+      ret = ug31xx_read_i2c(ug31xx_client, (_upi_u8_)(readAddress + i), &tmp_buf, byte_flag);
+      if(ret)
+      {
+        dev_err(&ug31xx_client->dev, "%s: read data(0x%02X) fail retry_cnt(%d). %d\n", __func__, i, retry_cnt, ret);
+        if(retry_cnt == 1)
+        {
+          return (_UPI_FALSE_);
+        }
+      }
+      else
+      {
+        break;
+      }
     }
+
     pReadDataBuffer[i] = (_upi_u8_)tmp_buf;
   }
 
