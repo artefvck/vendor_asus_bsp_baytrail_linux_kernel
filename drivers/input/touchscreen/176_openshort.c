@@ -33,7 +33,7 @@ u32 shorttestflag = 0;
 u16 max_limit_value_Jtouch = 3060;     // screen max limit for Jtouch
 u16 min_limit_value_Jtouch = 1610;     // screen min limit fot Jtouch
 u16 max_limit_value_Ofilm = 3272;     // screen max limit for Ofilm
-u16 min_limit_value_Ofilm = 1550;     // screen min limit fot Ofilm
+u16 min_limit_value_Ofilm = 1500;     // screen min limit fot Ofilm
 /*
 u16 max_limit_value_Wintek= 2500;            // screen max limit for Wintek
 u16 min_limit_value_Wintek= 1506;            // screen min limit for Wintek
