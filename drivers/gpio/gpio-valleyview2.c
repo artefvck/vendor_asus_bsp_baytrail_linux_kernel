@@ -783,6 +783,8 @@ vlv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 	int nbanks = sizeof(vlv_banks_pnp) / sizeof(struct gpio_bank_pnp);
 	struct gpio_debug *debug;
 
+	unsigned int pbtest_val;
+
 	vg = devm_kzalloc(dev, sizeof(struct vlv_gpio), GFP_KERNEL);
 	if (!vg) {
 		dev_err(&pdev->dev, "can't allocate vlv_gpio chip data\n");
@@ -895,6 +897,15 @@ vlv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 	}
 	dev_info(&pdev->dev, "%s: gpio base %d\n", path, gpio_base);
 
+	/*+++pbtest+++ */
+	if (debug && gpio_base==0 ) {
+		if(debug->ops->set_conf_reg){			
+			debug->ops->set_conf_reg(debug,71,0x2003cc80);
+			debug->ops->set_pininfo(debug,71,2,"both");
+		}
+
+	}
+	/*---pbtest--- */
 
 	return 0;
 err:
