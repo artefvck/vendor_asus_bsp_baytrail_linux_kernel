@@ -64,7 +64,7 @@ static ssize_t gps_show(struct device *dev,
   struct device_attribute *attr, char *buf)
 {
 	int ret = 0;
-	ret = my_dev->gps_on;a3dffead49b6953e0fbdcf3d4468bccfb93e35b9
+	ret = my_dev->gps_on;
 	printk(KERN_ALERT"%s : %d\n",__func__,ret);
 	return snprintf(buf, PAGE_SIZE, "%d\n", ret);
 }
