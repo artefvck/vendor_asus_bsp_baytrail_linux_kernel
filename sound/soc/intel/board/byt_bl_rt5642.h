@@ -133,4 +133,10 @@ const struct snd_kcontrol_new byt_ssp_comms_controls[MAX_CONTROLS] = {
 		 byt_set_ssp_modem_master_mode),
 };
 
+enum {
+	HEADSET_PULL_OUT = 0,
+	HEADSET_WITH_MIC = 1,
+	HEADSET_NO_MIC = 2,
+};
+
 #endif /* _BYT_BL_RT5642_H_ */

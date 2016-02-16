@@ -186,10 +186,10 @@ EXPORT_SYMBOL(sync_pt_create);
 
 void sync_pt_free(struct sync_pt *pt)
 {
+	sync_timeline_remove_pt(pt);
+
 	if (pt->parent->ops->free_pt)
 		pt->parent->ops->free_pt(pt);
-
-	sync_timeline_remove_pt(pt);
 
 	kref_put(&pt->parent->kref, sync_timeline_free);
 
@@ -254,7 +254,6 @@ static const struct file_operations sync_fence_fops = {
 static struct sync_fence *sync_fence_alloc(const char *name)
 {
 	struct sync_fence *fence;
-	unsigned long flags;
 
 	fence = kzalloc(sizeof(struct sync_fence), GFP_KERNEL);
 	if (fence == NULL)
@@ -274,15 +273,20 @@ static struct sync_fence *sync_fence_alloc(const char *name)
 
 	init_waitqueue_head(&fence->wq);
 
-	spin_lock_irqsave(&sync_fence_list_lock, flags);
-	list_add_tail(&fence->sync_fence_list, &sync_fence_list_head);
-	spin_unlock_irqrestore(&sync_fence_list_lock, flags);
-
 	return fence;
 
 err:
 	kfree(fence);
 	return NULL;
+}
+
+static inline void sync_fence_add_to_list(struct sync_fence *fence)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&sync_fence_list_lock, flags);
+	list_add_tail(&fence->sync_fence_list, &sync_fence_list_head);
+	spin_unlock_irqrestore(&sync_fence_list_lock, flags);
 }
 
 /* TODO: implement a create which takes more that one sync_pt */
@@ -301,6 +305,7 @@ struct sync_fence *sync_fence_create(const char *name, struct sync_pt *pt)
 	list_add(&pt->pt_list, &fence->pt_list_head);
 	sync_pt_activate(pt);
 
+	sync_fence_add_to_list(fence);
 	/*
 	 * signal the fence in case pt was activated before
 	 * sync_pt_activate(pt) was called
@@ -473,6 +478,7 @@ struct sync_fence *sync_fence_merge(const char *name,
 		sync_pt_activate(pt);
 	}
 
+	sync_fence_add_to_list(fence);
 	/*
 	 * signal the fence in case one of it's pts were activated before
 	 * they were activated
@@ -613,7 +619,7 @@ int sync_fence_wait(struct sync_fence *fence, long timeout)
 
 	if (fence->status < 0) {
 		pr_info("fence error %d on [%p]\n", fence->status, fence);
-		//sync_dump();
+		sync_dump();
 		return fence->status;
 	}
 
@@ -621,7 +627,7 @@ int sync_fence_wait(struct sync_fence *fence, long timeout)
 		if (timeout > 0) {
 			pr_info("fence timeout on [%p] after %dms\n", fence,
 				jiffies_to_msecs(timeout));
-			//sync_dump();
+			sync_dump();
 		}
 		return -ETIME;
 	}

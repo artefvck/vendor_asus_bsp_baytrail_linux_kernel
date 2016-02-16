@@ -36,8 +36,8 @@
 #include <linux/freezer.h>
 #include <linux/kthread.h>
 #include <linux/jiffies.h>	/* time_after() */
-#include <linux/irqdesc.h>
 #include <linux/slab.h>
+#include <linux/irqdesc.h>
 #ifdef CONFIG_ACPI
 #include <acpi/acpi_bus.h>
 #endif
@@ -1244,7 +1244,7 @@ void __setup_vector_irq(int cpu)
 	/* Mark the inuse vectors */
 	for_each_active_irq(irq) {
 		if (!test_bit(irq, apic_irqs))
-		continue;
+			continue;
 
 		cfg = irq_get_chip_data(irq);
 		if (!cfg)
@@ -2302,7 +2302,6 @@ void irq_force_complete_move(int irq)
 		return;
 
 	cfg = irq_get_chip_data(irq);
-
 	if (!cfg)
 		return;
 

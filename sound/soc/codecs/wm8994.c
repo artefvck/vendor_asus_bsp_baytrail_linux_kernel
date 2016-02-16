@@ -872,7 +872,7 @@ static void vmid_reference(struct snd_soc_codec *codec)
 					    WM8994_BIAS_SRC |
 					    WM8994_STARTUP_BIAS_ENA |
 					    WM8994_VMID_BUF_ENA |
-					    (0x2 << WM8994_VMID_RAMP_SHIFT));
+					    (0x3 << WM8994_VMID_RAMP_SHIFT));
 
 			/* Main bias enable, VMID=2x40k */
 			snd_soc_update_bits(codec, WM8994_POWER_MANAGEMENT_1,
@@ -880,7 +880,14 @@ static void vmid_reference(struct snd_soc_codec *codec)
 					    WM8994_VMID_SEL_MASK,
 					    WM8994_BIAS_ENA | 0x2);
 
-			msleep(300);
+			/* The delay of 300ms was recommended to support pop
+			 * free startup of the line output driver, as we don't use
+			 * that feature reducing the delay to 50ms as recommended in
+			 * the spec, Also changing VMID_RAMP to soft fast start
+			 * accordingly Also applies for VMID_FORCE and
+			 * vmid_dereference.
+			 */
+			msleep(50);
 
 			snd_soc_update_bits(codec, WM8994_ANTIPOP_2,
 					    WM8994_VMID_RAMP_MASK |
@@ -899,15 +906,14 @@ static void vmid_reference(struct snd_soc_codec *codec)
 					    WM8994_BIAS_SRC |
 					    WM8994_STARTUP_BIAS_ENA |
 					    WM8994_VMID_BUF_ENA |
-					    (0x2 << WM8994_VMID_RAMP_SHIFT));
+					    (0x3 << WM8994_VMID_RAMP_SHIFT));
 
 			/* Main bias enable, VMID=2x40k */
 			snd_soc_update_bits(codec, WM8994_POWER_MANAGEMENT_1,
 					    WM8994_BIAS_ENA |
 					    WM8994_VMID_SEL_MASK,
 					    WM8994_BIAS_ENA | 0x2);
-
-			msleep(400);
+			msleep(50);
 
 			snd_soc_update_bits(codec, WM8994_ANTIPOP_2,
 					    WM8994_VMID_RAMP_MASK |
@@ -952,7 +958,7 @@ static void vmid_dereference(struct snd_soc_codec *codec)
 		snd_soc_update_bits(codec, WM8994_POWER_MANAGEMENT_1,
 				    WM8994_VMID_SEL_MASK, 0);
 
-		msleep(400);
+		msleep(50);
 
 		/* Active discharge */
 		snd_soc_update_bits(codec, WM8994_ANTIPOP_1,
@@ -2312,7 +2318,7 @@ static int _wm8994_set_fll(struct snd_soc_codec *codec, int id, int src,
 
 		if (wm8994->fll_locked_irq) {
 			timeout = wait_for_completion_timeout(&wm8994->fll_locked[id],
-							      msecs_to_jiffies(10));
+							      msecs_to_jiffies(12));
 			if (timeout == 0)
 				dev_warn(codec->dev,
 					 "Timed out waiting for FLL lock\n");
@@ -3173,7 +3179,7 @@ static struct snd_soc_dai_driver wm8994_dai[] = {
 		.capture = {
 			.stream_name = "AIF1 Capture",
 			.channels_min = 1,
-			.channels_max = 2,
+			.channels_max = 4,
 			.rates = WM8994_RATES,
 			.formats = WM8994_FORMATS,
 			.sig_bits = 24,
@@ -4515,6 +4521,18 @@ static int wm8994_codec_probe(struct snd_soc_codec *codec)
 			    WM8994_IM_FIFOS_ERR_EINT_MASK,
 			    1 << WM8994_IM_FIFOS_ERR_EINT_SHIFT);
 
+	/* Enable bandgap-VREFC */
+	/* Note: VREFC is required for jack detection in
+	 * low power jack detect mode */
+	/* TODO: get the hardcoded reg value macro name and the regmap sync
+	   issue resolved with the wolfson folks  */
+	snd_soc_write(codec, 0x102, 0x3);
+	regcache_sync_region(wm8994->wm8994->regmap, 0x102, 0x102);
+	snd_soc_write(codec, 0xCB, 0x3921);
+	regcache_sync_region(wm8994->wm8994->regmap, 0xCB, 0xCB);
+	snd_soc_write(codec, 0x102, 0x0);
+	regcache_sync_region(wm8994->wm8994->regmap, 0x102, 0x102);
+
 	return 0;
 
 err_irq:
@@ -4643,7 +4661,14 @@ static int wm8994_suspend(struct device *dev)
 
 		if (!(wm8994->jack_mic) && !(wm8994->headphone_detected)) {
 
-			dev_dbg(codec->dev, "Jack not connected..Mask interrupt\n");
+			dev_dbg(codec->dev, "Disable MIC Detection!!!\n");
+			snd_soc_update_bits(codec, WM8958_MIC_DETECT_1,
+						WM8958_MICD_ENA, 0);
+
+			snd_soc_dapm_disable_pin(&codec->dapm, "CLK_SYS");
+			snd_soc_dapm_sync(&codec->dapm);
+
+			dev_dbg(codec->dev, "Jack not connected..Mask interrupts\n");
 			snd_soc_write(codec, WM8994_INTERRUPT_CONTROL, 0x01);
 
 			ret = regcache_sync_region(wm8994->wm8994->regmap,
@@ -4652,13 +4677,6 @@ static int wm8994_suspend(struct device *dev)
 			if (ret != 0)
 				dev_err(dev, "Failed to sync register: %d\n", ret);
 			synchronize_irq(control->irq);
-
-			dev_dbg(codec->dev, "Disable MIC Detection!!!\n");
-			snd_soc_update_bits(codec, WM8958_MIC_DETECT_1,
-						WM8958_MICD_ENA, 0);
-
-			snd_soc_dapm_disable_pin(&codec->dapm, "CLK_SYS");
-			snd_soc_dapm_sync(&codec->dapm);
 		}
 	}
 
@@ -4678,13 +4696,16 @@ static int wm8994_resume(struct device *dev)
 
 	/* Enable the MIC Detection when resumed */
 	if ((control->type == WM8958) && wm8994->mic_id_cb) {
-		dev_dbg(codec->dev, "Enable MIC Detection!!!\n");
+
+		dev_dbg(codec->dev, "Unmask interrupts..\n");
+		snd_soc_write(codec, WM8994_INTERRUPT_CONTROL, 0x00);
+
 		snd_soc_dapm_force_enable_pin(&codec->dapm, "CLK_SYS");
 		snd_soc_dapm_sync(&codec->dapm);
 
+		dev_dbg(codec->dev, "Enable MIC Detection!!!\n");
 		snd_soc_update_bits(codec, WM8958_MIC_DETECT_1,
 					WM8958_MICD_ENA, WM8958_MICD_ENA);
-		snd_soc_write(codec, WM8994_INTERRUPT_CONTROL, 0x00);
 	}
 
 	return 0;

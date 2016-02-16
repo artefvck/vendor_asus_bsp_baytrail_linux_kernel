@@ -25,10 +25,12 @@
 #ifdef CONFIG_VLV2_PLAT_CLK
 #include <linux/vlv2_plat_clock.h>
 #endif
+
 #include "platform_camera.h"
 #include "platform_hm2056.h"
+#include "camera_info.h"
 
-extern int PCBVersion;
+static int IsInFront;
 
 static int camera_I2C_3_SCL;
 static int camera_I2C_3_SDA;
@@ -39,10 +41,19 @@ static int camera_I2C_3_SDA;
 #define CLK_19P2MHz  0x1
 #endif
 
-static int camera_reset;
-static int camera_power_down;
-static int camera_vprog1_on;
+static int *p_camera_reset;
+static int *p_camera_power_down;
+static int *p_camera_vprog1_on;
 
+static int camera_reset_b;
+static int camera_power_down_b;
+static int camera_vprog1_on_b;
+
+static int camera_reset_f;
+static int camera_power_down_f;
+static int camera_vprog1_on_f;
+
+#if defined(CONFIG_TF103C) || defined(CONFIG_TF103CE)
 static int hm2056_i2c_gpio_set_alt(int flag)
 {
 	int ret = 0;
@@ -102,183 +113,283 @@ static int hm2056_i2c_gpio_set_alt(int flag)
 	}
 	return ret;
 }
+#endif
 
+#if defined(CONFIG_ME176C)
 static int hm2056_gpio_init()
 {
-	int ret = 0;
-	if (camera_reset < 0) {
-		printk("<<< hm2056_gpio_init PCBVersion = %d\n",PCBVersion);
-		if(PCBVersion==1){
-			printk("<<< hm2056_gpio_init CAMERA_1_RESET\n");
-			ret = camera_sensor_gpio(CAMERA_1_RESET, NULL, GPIOF_DIR_OUT, 0);
-		}else if(PCBVersion==0){
-			printk("<<< hm2056_gpio_init CAMERA_0_RESET\n");
-        	ret = camera_sensor_gpio(CAMERA_0_RESET, NULL, GPIOF_DIR_OUT, 0);
-		}
+    int ret = 0;
+    if (*p_camera_reset < 0) {
+	if(IsInFront==1){
+	    printk("<<< hm2056_gpio_init CAMERA_2_RESET\n");
+            ret = camera_sensor_gpio(CAMERA_2_RESET, NULL, GPIOF_DIR_OUT, 0);
+	}else{
+	    printk("<<< hm2056_gpio_init CAMERA_0_RESET\n");
+            ret = camera_sensor_gpio(CAMERA_1_RESET, NULL, GPIOF_DIR_OUT, 0);
+	}
         if (ret < 0){
             printk("camera_reset not available.\n");
             return ret;
         }
-        camera_reset = ret;
+        *p_camera_reset = ret;
     }
-    printk("<< camera_reset:%d \n", camera_reset);
+    printk("%s camera_reset:%d IsInFront:%d\n", __func__, *p_camera_reset, IsInFront);
 
-    if (camera_power_down < 0) {
-		if(PCBVersion==1){
-			ret = camera_sensor_gpio(CAMERA_1_PWDN, NULL, GPIOF_DIR_OUT, 0);
-		}else if(PCBVersion==0){
-			ret = camera_sensor_gpio(CAMERA_0_PWDN, NULL, GPIOF_DIR_OUT, 0);
-		}
+    if (*p_camera_power_down < 0) {
+	if(IsInFront==1){
+	    ret = camera_sensor_gpio(CAMERA_2_PWDN, NULL, GPIOF_DIR_OUT, 0);
+	}else{
+	    ret = camera_sensor_gpio(CAMERA_1_PWDN, NULL, GPIOF_DIR_OUT, 0);
+	}
         if (ret < 0){
             printk("camera_power_down not available.\n");
             return ret;
         }
-        camera_power_down = ret;
+        *p_camera_power_down = ret;
     }
-    printk("<< camera_power_down:%d \n", camera_power_down);
+    printk("%s camera_power_down:%d IsInFront:%d\n", __func__, *p_camera_power_down, IsInFront);
 
-	return ret;
+    return ret;
 }
+#else
+static int hm2056_gpio_init()
+{
+    int ret = 0;
+    if (*p_camera_reset < 0) {
+	if(IsInFront==1){
+	    printk("<<< hm2056_gpio_init CAMERA_1_RESET\n");
+            ret = camera_sensor_gpio(CAMERA_1_RESET, NULL, GPIOF_DIR_OUT, 0);
+	}else{
+	    printk("<<< hm2056_gpio_init CAMERA_0_RESET\n");
+            ret = camera_sensor_gpio(CAMERA_0_RESET, NULL, GPIOF_DIR_OUT, 0);
+	}
+        if (ret < 0){
+            printk("camera_reset not available.\n");
+            return ret;
+        }
+        *p_camera_reset = ret;
+    }
+    printk("%s camera_reset:%d IsInFront:%d\n", __func__, *p_camera_reset, IsInFront);
 
+    if (*p_camera_power_down < 0) {
+	if(IsInFront==1){
+	    ret = camera_sensor_gpio(CAMERA_1_PWDN, NULL, GPIOF_DIR_OUT, 0);
+	}else{
+	    ret = camera_sensor_gpio(CAMERA_0_PWDN, NULL, GPIOF_DIR_OUT, 0);
+	}
+        if (ret < 0){
+            printk("camera_power_down not available.\n");
+            return ret;
+        }
+        *p_camera_power_down = ret;
+    }
+    printk("%s camera_power_down:%d IsInFront:%d\n", __func__, *p_camera_power_down, IsInFront);
+
+    return ret;
+}
+#endif
+
+#if defined(CONFIG_TF103C) || defined(CONFIG_TF103CE)
 int hm2056_set_gpio(int RearOrFront, int flag)
 {
 	int ret = 0;
 
-    if (camera_power_down < 0) {
-		if(RearOrFront==1){//Front
-			ret = camera_sensor_gpio(CAMERA_1_PWDN, NULL, GPIOF_DIR_OUT, 0);
-		}else if(RearOrFront==0){//Rear
-			ret = camera_sensor_gpio(CAMERA_0_PWDN, NULL, GPIOF_DIR_OUT, 0);
-		}
+    if (*p_camera_power_down < 0) {
+	if(RearOrFront==1){//Front
+	    ret = camera_sensor_gpio(CAMERA_1_PWDN, NULL, GPIOF_DIR_OUT, 0);
+	}else if(RearOrFront==0){//Rear
+            ret = camera_sensor_gpio(CAMERA_0_PWDN, NULL, GPIOF_DIR_OUT, 0);
+	}
         if (ret < 0){
             printk("camera_power_down not available.\n");
             return ret;
         }
-        camera_power_down = ret;
+        *p_camera_power_down = ret;
     }
 
-	gpio_set_value(camera_power_down, flag);
-    printk("<< camera_power_down:%d flag:%d\n", camera_power_down, flag);
+    gpio_set_value(*p_camera_power_down, flag);
+    printk("<< camera_power_down:%d flag:%d\n", *p_camera_power_down, flag);
 
-	return ret;
+    return ret;
 }
+#else
+int hm2056_set_gpio(int RearOrFront, int flag)
+{
+	int ret = 0;
+
+    if (*p_camera_power_down < 0) {
+	if(RearOrFront==1){//Front
+	    ret = camera_sensor_gpio(CAMERA_2_PWDN, NULL, GPIOF_DIR_OUT, 0);
+	}else if(RearOrFront==0){//Rear
+            ret = camera_sensor_gpio(CAMERA_1_PWDN, NULL, GPIOF_DIR_OUT, 0);
+	}
+        if (ret < 0){
+            printk("camera_power_down not available.\n");
+            return ret;
+        }
+        *p_camera_power_down = ret;
+    }
+
+    gpio_set_value(*p_camera_power_down, flag);
+    printk("<< camera_power_down:%d flag:%d\n", *p_camera_power_down, flag);
+
+    return ret;
+}
+#endif
 
 void hm2056_free_gpio()
 {
-	printk("%s: camera_power_down(%d)\n",__func__,camera_power_down);
+	printk("%s: camera_power_down(%d)\n",__func__,*p_camera_power_down);
 
-	if (camera_power_down >= 0){
-		gpio_free(camera_power_down);
-		camera_power_down = -1;
+	if (*p_camera_power_down >= 0){
+		gpio_free(*p_camera_power_down);
+		*p_camera_power_down = -1;
 		mdelay(1);
 	}
 }
+
 static int hm2056_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 {
-    printk("%s: ++\n",__func__);
+    hm2056_gpio_init();
 
-	hm2056_gpio_init();
-
-	if (flag){
-		
-        if (camera_power_down >= 0){
-            gpio_set_value(camera_power_down, 0);
-            printk("<<< camera_power_down = 0\n");
+    if (flag){
+	//gc0339_set_gpio(0);
+        if (*p_camera_power_down >= 0){
+            gpio_set_value(*p_camera_power_down, 0);
+            printk("%s camera_power_down = 0\n", __func__);
             msleep(1);
         }
-        if (camera_reset >= 0){
-            gpio_set_value(camera_reset, 0);
-			msleep(20);
-			gpio_set_value(camera_reset, 1);
-			printk("<<< camera_reset = 1\n");
-			msleep(10);
+        if (*p_camera_reset >= 0){	
+            gpio_set_value(*p_camera_reset, 0);
+            msleep(20);
+            gpio_set_value(*p_camera_reset, 1);
+            printk("%s camera_reset = 1\n", __func__);
+            msleep(10);
         }
+
     }
     else{
-		if (camera_power_down >= 0){
-			//<ASUS-Oscar140319+>  leakage protection for hw request
-	        //gpio_set_value(camera_power_down, 1);
+		if (*p_camera_power_down >= 0){
+//<ASUS-Oscar140319+>  leakage protection for hw request
+	        //gpio_set_value(*p_camera_power_down, 1);
 	        //printk("<<< camera_power_down = 1\n");
-	        gpio_set_value(camera_power_down, 0);
-	        printk("<<< camera_power_down = 0\n");
-			//<ASUS-Oscar140319->  leakage protection for hw request
+	                gpio_set_value(*p_camera_power_down, 0);
+	                printk("%s camera_power_down = 0\n", __func__);
+                        mdelay(10);
+//<ASUS-Oscar140319->  leakage protection for hw request
 		}
-		if (camera_reset >= 0){
-	        mdelay(10);
-			gpio_set_value(camera_reset, 0);
-	        printk("<<< camera_reset = 0\n");
+		if (*p_camera_reset >= 0){
+			gpio_set_value(*p_camera_reset, 0);
+	                printk("%s camera_reset = 0\n", __func__);
+                        mdelay(10);
 		}
-/*
-		if (camera_reset >= 0){
-			gpio_free(camera_reset);
-			camera_reset = -1;
-			mdelay(1);
-		}
-		
-		if (camera_power_down >= 0){
-			gpio_free(camera_power_down);
-			camera_power_down = -1;
-			mdelay(1);
-		}
-*/
-    }
-    mdelay(1);
-	hm2056_i2c_gpio_set_alt(flag);
 
-	return 0;
+		if (*p_camera_reset >= 0){
+			gpio_free(*p_camera_reset);
+			*p_camera_reset = -1;
+			mdelay(1);
+		}
+
+		if (*p_camera_power_down >= 0){
+			gpio_free(*p_camera_power_down);
+			*p_camera_power_down = -1;
+			mdelay(1);
+		}
+		//gc0339_set_gpio(0);
+    }
+    //gc0339_free_gpio();
+    mdelay(1);
+    //hm2056_i2c_gpio_set_alt(flag);
+
+    return 0;
 }
 
+#if defined(CONFIG_ME176C)
+static int hm2056f_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
+{
+#ifdef CONFIG_INTEL_SOC_PMC
+	if (flag) {
+		int ret;
+                printk("%s: flag: %d  CONFIG_INTEL_SOC_PMC: CLK_ON\n",__func__,flag);
+		ret = pmc_pc_set_freq(OSC_CAM1_CLK, CLK_19P2MHz);
+		if (ret)
+			return ret;
+		return pmc_pc_configure(OSC_CAM1_CLK, CLK_ON);
+	}
+        printk("%s: flag: %d  CONFIG_INTEL_SOC_PMC: CLK_OFF\n",__func__,flag);
+	return pmc_pc_configure(OSC_CAM1_CLK, CLK_OFF);
+#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
+        static const unsigned int clock_khz = 19200;
+        printk("%s: CONFIG_INTEL_SCU_IPC_UTIL\n",__func__);
+	return intel_scu_ipc_osc_clk(OSC_CLK_CAM1,
+			flag ? clock_khz : 0);
+#else
+	pr_err("hm2056f clock is not set.\n");
+	return 0;
+#endif
+}
+
+static int hm2056b_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
+{
+#ifdef CONFIG_INTEL_SOC_PMC
+	if (flag) {
+		int ret;
+                printk("%s: flag: %d  CONFIG_INTEL_SOC_PMC: CLK_ON\n",__func__,flag);
+		ret = pmc_pc_set_freq(OSC_CAM0_CLK, CLK_19P2MHz);
+		if (ret)
+			return ret;
+		return pmc_pc_configure(OSC_CAM0_CLK, CLK_ON);
+	}
+        printk("%s: flag: %d  CONFIG_INTEL_SOC_PMC: CLK_OFF\n",__func__,flag);
+	return pmc_pc_configure(OSC_CAM0_CLK, CLK_OFF);
+#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
+        static const unsigned int clock_khz = 19200;
+        printk("%s: CONFIG_INTEL_SCU_IPC_UTIL\n",__func__);
+	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0,
+			flag ? clock_khz : 0);
+#else
+	pr_err("hm2056b clock is not set.\n");
+	return 0;
+#endif
+}
+#else //ASUS_BSP++ for other project
 static int hm2056_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 {
-	static const unsigned int clock_khz = 19200;
-    v4l2_err(sd, "%s: ++\n",__func__);
-#ifdef CONFIG_VLV2_PLAT_CLK
-	if(flag)
-	{
+#ifdef CONFIG_INTEL_SOC_PMC
+	if (flag) {
 		int ret;
-		if(PCBVersion==1){
-			ret = vlv2_plat_set_clock_freq(OSC_CAM1_CLK,CLK_19P2MHz);
-		}else if(PCBVersion==0){
-			ret = vlv2_plat_set_clock_freq(OSC_CAM0_CLK,CLK_19P2MHz);
-		}
-		if(ret){
+                printk("%s: flag: %d  CONFIG_INTEL_SOC_PMC: CLK_ON\n",__func__,flag);
+		ret = pmc_pc_set_freq(OSC_CAM0_CLK, CLK_19P2MHz);
+		if (ret)
 			return ret;
-		}
+		return pmc_pc_configure(OSC_CAM0_CLK, CLK_ON);
 	}
-	if(PCBVersion==1){
-		return vlv2_plat_configure_clock(OSC_CAM1_CLK,flag?flag:2);
-	}else if(PCBVersion==0){
-		return vlv2_plat_configure_clock(OSC_CAM0_CLK,flag?flag:2);
-	}
+        printk("%s: flag: %d  CONFIG_INTEL_SOC_PMC: CLK_OFF\n",__func__,flag);
+	return pmc_pc_configure(OSC_CAM0_CLK, CLK_OFF);
 #elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
-	if(PCBVersion==1){
-		return intel_scu_ipc_osc_clk(OSC_CLK_CAM1, flag ? clock_khz : 0);
-	}else if(PCBVersion==0){
-		return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag ? clock_khz : 0);
-	}
+        static const unsigned int clock_khz = 19200;
+        printk("%s: CONFIG_INTEL_SCU_IPC_UTIL\n",__func__);
+	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0,
+			flag ? clock_khz : 0);
 #else
 	pr_err("hm2056 clock is not set.\n");
 	return 0;
 #endif
 }
-
+#endif
 static int hm2056_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
-	int ret = 0;
-
-    printk("%s: ++\n",__func__);
+    int ret = 0;
 
     if (flag){
         //turn on power 1.8V and 2.8V
-        if (!camera_vprog1_on) {
-			if(PCBVersion==-1){
-				printk("hm2056_power_ctrl Error!!! PCBVersion = %d\n",PCBVersion);
-				return -1;
-			}
+        if (!*p_camera_vprog1_on) {
 			#ifdef CONFIG_CRYSTAL_COVE
+                                printk("%s turn on 1.8V\n", __func__ );
 				ret = camera_set_pmic_power(CAMERA_1P8V, true);
 				if (ret)
 					return ret;
+                                printk("%s turn on 2.8V\n", __func__ );
 				ret = camera_set_pmic_power(CAMERA_2P8V, true);
 			#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 				ret = intel_scu_ipc_msic_vprog1(1);
@@ -286,20 +397,22 @@ static int hm2056_power_ctrl(struct v4l2_subdev *sd, int flag)
 				pr_err("hm2056 power is not set.\n");
 			#endif
 				if (!ret)
-					camera_vprog1_on = 1;			
+					*p_camera_vprog1_on = 1;			
 
-            printk("<<< 1.8V and 2.8V = 1\n");
+            printk("<<< %s 1.8V and 2.8V = 1\n",__FUNCTION__);
             msleep(1);
         }
 
-		return ret;
+        return ret;
     }else{
         //turn off power 1.8V and 2.8V
-        if (camera_vprog1_on) {
+        if (*p_camera_vprog1_on) {
 			#ifdef CONFIG_CRYSTAL_COVE
+                                printk("%s turn off 2.8V\n", __func__ );
 				ret = camera_set_pmic_power(CAMERA_2P8V, false);
 				if (ret)
 					return ret;
+                                printk("%s turn off 1.8V\n", __func__ );
 				ret = camera_set_pmic_power(CAMERA_1P8V, false);
 			#elif defined(CONFIG_INTEL_SCU_IPC_UTIL)
 				ret = intel_suc_ipc_msic_vprog1(0);
@@ -307,29 +420,115 @@ static int hm2056_power_ctrl(struct v4l2_subdev *sd, int flag)
 				pr_err("hm2056 power is not set.\n");
 			#endif
 				if (!ret)
-					camera_vprog1_on = 0;
+					*p_camera_vprog1_on = 0;
 
             printk("<<< %s 1.8V and 2.8V = 0\n",__FUNCTION__);
             msleep(1);
         }
         return ret;
     }
-    return 0;
+}
+
+static void TurnOffAnotherSensor(struct v4l2_subdev *sd, int Front, int *reset, int *power_down, int *vprog1_on)
+{
+	IsInFront = Front;
+	p_camera_reset = reset;
+	p_camera_power_down = power_down;
+	p_camera_vprog1_on = vprog1_on;
+
+        printk("%s \n", __func__);
+	//hm2056_flisclk_ctrl(sd,false);
+	hm2056_gpio_init();
+
+	if (*p_camera_power_down >= 0){
+        gpio_set_value(*p_camera_power_down, 1);
+        printk("%s camera_power_down = 1\n", __func__);
+	}
+	if (*p_camera_reset >= 0){
+        mdelay(10);
+		gpio_set_value(*p_camera_reset, 0);
+        printk("%s camera_reset = 0\n", __func__);
+	}
+
+	if (*p_camera_reset >= 0){
+		gpio_free(*p_camera_reset);
+		*p_camera_reset = -1;
+		mdelay(1);
+	}
+	
+	if (*p_camera_power_down >= 0){
+		gpio_free(*p_camera_power_down);
+		*p_camera_power_down = -1;
+		mdelay(1);
+	}
+
+}
+
+static int hm2056b_power_ctrl(struct v4l2_subdev *sd, int flag)
+{
+        printk("%s \n", __func__);
+	/*if(flag){
+		TurnOffAnotherSensor(sd, 1, &camera_reset_f, &camera_power_down_f, &camera_vprog1_on_f);
+	}*/
+
+	IsInFront = 0;
+	p_camera_reset = &camera_reset_b;
+	p_camera_power_down = &camera_power_down_b;
+	p_camera_vprog1_on = &camera_vprog1_on_b;
+
+	return hm2056_power_ctrl(sd, flag);
+}
+
+static int hm2056f_power_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	if(flag){
+		TurnOffAnotherSensor(sd, 0, &camera_reset_b, &camera_power_down_b, &camera_vprog1_on_b);
+	}
+
+	IsInFront = 1;
+	p_camera_reset = &camera_reset_f;
+	p_camera_power_down = &camera_power_down_f;
+	p_camera_vprog1_on = &camera_vprog1_on_f;
+
+	return hm2056_power_ctrl(sd, flag);
 }
 
 static int hm2056_csi_configure(struct v4l2_subdev *sd, int flag)
 {
     static const int LANES = 1;
-	if(PCBVersion==1){
+    enum atomisp_bayer_order bayer_order = atomisp_bayer_order_bggr;
+    if (!strncmp(sd->name, "hm2056b", strlen("hm2056b"))) {
+	bayer_order = atomisp_bayer_order_gbrg;
+    }
+#if defined(CONFIG_ME176C)
+	if(IsInFront==1){
+                printk("%s: Front camera\n",__func__);
 		return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_SECONDARY, LANES,
 				ATOMISP_INPUT_FORMAT_RAW_8, atomisp_bayer_order_grbg, flag);
-	}else if(PCBVersion==0){
-    	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_PRIMARY, LANES,
-    	        ATOMISP_INPUT_FORMAT_RAW_8, atomisp_bayer_order_grbg, flag);
+	}else{
+                printk("%s: Back camera\n",__func__);
+                return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_PRIMARY, LANES,
+                                ATOMISP_INPUT_FORMAT_RAW_8, atomisp_bayer_order_grbg, flag);
 	}
+#else
+        if(IsInFront==1){
+                printk("%s: Front camera\n",__func__);
+		return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_SECONDARY, LANES,
+				ATOMISP_INPUT_FORMAT_RAW_8, bayer_order, flag);
+	}else{
+                printk("%s: Back camera\n",__func__);
+                return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_PRIMARY, LANES,
+                                ATOMISP_INPUT_FORMAT_RAW_8, bayer_order, flag);
+	}
+#endif
 }
 
-static int hm2056_platform_init(struct i2c_client *client)
+static int hm2056b_platform_init(struct i2c_client *client)
+{
+    return 0;
+}
+
+static int hm2056f_platform_init(struct i2c_client *client)
 {
     return 0;
 }
@@ -339,22 +538,66 @@ static int hm2056_platform_deinit(void)
 	return 0;
 }
 
-static struct camera_sensor_platform_data hm2056_sensor_platform_data = {
+static struct camera_sensor_platform_data hm2056b_sensor_platform_data = {
     .gpio_ctrl	 = hm2056_gpio_ctrl,
+#if defined(CONFIG_ME176C)
+    .flisclk_ctrl	 = hm2056b_flisclk_ctrl,
+#else
     .flisclk_ctrl	 = hm2056_flisclk_ctrl,
-    .power_ctrl	 = hm2056_power_ctrl,
+#endif
+    .power_ctrl	 = hm2056b_power_ctrl,
     .csi_cfg	 = hm2056_csi_configure,
-    //.platform_init   = hm2056_platform_init,
+    //.platform_init   = hm2056b_platform_init,
     //.platform_deinit = hm2056_platform_deinit,
 };
 
-void *hm2056_platform_data(void *info)
+static struct camera_sensor_platform_data hm2056f_sensor_platform_data = {
+    .gpio_ctrl	 = hm2056_gpio_ctrl,
+#if defined(CONFIG_ME176C)
+    .flisclk_ctrl	 = hm2056f_flisclk_ctrl,
+#else
+    .flisclk_ctrl	 = hm2056_flisclk_ctrl,
+#endif
+    .power_ctrl	 = hm2056f_power_ctrl,
+    .csi_cfg	 = hm2056_csi_configure,
+    //.platform_init   = hm2056f_platform_init,
+    //.platform_deinit = hm2056_platform_deinit,
+};
+
+void *hm2056b_platform_data(void *info)
 {
     camera_I2C_3_SCL = -1;
     camera_I2C_3_SDA = -1;
-    camera_reset = -1;
-    camera_power_down = -1;
-	camera_vprog1_on = 0;
-    return &hm2056_sensor_platform_data;
+
+	camera_reset_b = -1;
+	camera_power_down_b = -1;
+	camera_vprog1_on_b = 0;
+	camera_reset_f = -1;
+	camera_power_down_f = -1;
+	camera_vprog1_on_f = 0;
+
+	p_camera_reset = &camera_reset_b;
+	p_camera_power_down = &camera_power_down_b;
+	p_camera_vprog1_on = &camera_vprog1_on_b;
+
+    return &hm2056b_sensor_platform_data;
+}
+void *hm2056f_platform_data(void *info)
+{
+    camera_I2C_3_SCL = -1;
+    camera_I2C_3_SDA = -1;
+
+	camera_reset_b = -1;
+	camera_power_down_b = -1;
+	camera_vprog1_on_b = 0;
+	camera_reset_f = -1;
+	camera_power_down_f = -1;
+	camera_vprog1_on_f = 0;
+
+	p_camera_reset = &camera_reset_f;
+	p_camera_power_down = &camera_power_down_f;
+	p_camera_vprog1_on = &camera_vprog1_on_f;
+
+    return &hm2056f_sensor_platform_data;
 }
 

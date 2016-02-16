@@ -2073,7 +2073,7 @@ enum {
 
 /* Volume Rescale */
 #define RT5640_VOL_RSCL_MAX 0x27
-#define RT5640_VOL_RSCL_RANGE 0x20
+#define RT5640_VOL_RSCL_RANGE 0x1F
 /* Debug String Length */
 #define RT5640_REG_DISP_LEN 23
 
@@ -2164,6 +2164,9 @@ struct rt5640_priv {
 	unsigned int ovcd_th_base; /* OVCD threshold base value*/
 	unsigned int ovcd_th_sf; /* OVCD threshold scale factor */
 
+	unsigned int adb_reg_addr[0x100];
+	unsigned int adb_reg_value[0x100];
+	unsigned char adb_reg_num;
 };
 
 int rt5640_detect_hs_type(struct snd_soc_codec *codec, int jack_insert);

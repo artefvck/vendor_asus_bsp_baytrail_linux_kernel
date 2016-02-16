@@ -1235,8 +1235,6 @@ struct drm_device {
 	atomic_t halt_count;
 	wait_queue_head_t ioctl_queue;
 	wait_queue_head_t halt_queue;
-	/* Flag to retain logo till boot animation */
-	bool is_booting;
 };
 
 #define DRM_SWITCH_POWER_ON 0
@@ -1459,6 +1457,7 @@ extern bool drm_handle_vblank(struct drm_device *dev, int crtc);
 extern int drm_vblank_get(struct drm_device *dev, int crtc);
 extern void drm_vblank_put(struct drm_device *dev, int crtc);
 extern void drm_vblank_off(struct drm_device *dev, int crtc);
+extern void drm_vblank_on(struct drm_device *dev, int crtc);
 extern void drm_vblank_cleanup(struct drm_device *dev);
 extern u32 drm_get_last_vbltimestamp(struct drm_device *dev, int crtc,
 				     struct timeval *tvblank, unsigned flags);

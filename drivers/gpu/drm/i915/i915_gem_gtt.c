@@ -346,7 +346,7 @@ static int gen6_ppgtt_init(struct i915_hw_ppgtt *ppgtt)
 	ppgtt->base.insert_entries = gen6_ppgtt_insert_entries;
 	ppgtt->base.cleanup = gen6_ppgtt_cleanup;
 	ppgtt->base.scratch = dev_priv->gtt.base.scratch;
-	ppgtt->pt_pages = kzalloc(sizeof(struct page *)*ppgtt->num_pd_entries,
+	ppgtt->pt_pages = kcalloc(ppgtt->num_pd_entries, sizeof(struct page *),
 				  GFP_KERNEL);
 	if (!ppgtt->pt_pages)
 		return -ENOMEM;
@@ -357,7 +357,7 @@ static int gen6_ppgtt_init(struct i915_hw_ppgtt *ppgtt)
 			goto err_pt_alloc;
 	}
 
-	ppgtt->pt_dma_addr = kzalloc(sizeof(dma_addr_t) *ppgtt->num_pd_entries,
+	ppgtt->pt_dma_addr = kcalloc(ppgtt->num_pd_entries, sizeof(dma_addr_t),
 				     GFP_KERNEL);
 	if (!ppgtt->pt_dma_addr)
 		goto err_pt_alloc;
@@ -628,6 +628,15 @@ void i915_gem_gtt_bind_object(struct drm_i915_gem_object *obj,
 	struct drm_device *dev = obj->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	const unsigned long entry = i915_gem_obj_ggtt_offset(obj) >> PAGE_SHIFT;
+
+	/* Map the scratch page into the GTT entries of the object */
+	if ((unsigned long)(obj->pages) == (unsigned long)obj) {
+		dev_priv->gtt.base.clear_range(&dev_priv->gtt.base,
+				       entry,
+				       obj->base.size >> PAGE_SHIFT);
+		obj->has_global_gtt_mapping = 1;
+		return;
+	}
 
 	dev_priv->gtt.base.insert_entries(&dev_priv->gtt.base, obj->pages,
 					  entry,
@@ -976,7 +985,7 @@ static int gen6_gmch_probe(struct drm_device *dev,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	phys_addr_t gtt_bus_addr;
 	unsigned int gtt_size;
-	u16 snb_gmch_ctl;
+	u16 snb_gmch_ctl = 0;
 	int ret;
 
 	*mappable_base = pci_resource_start(dev->pdev, 2);

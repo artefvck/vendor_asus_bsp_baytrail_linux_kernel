@@ -116,6 +116,7 @@ struct bq24192_platform_data {
 	bool slave_mode;
 	short int temp_low_lim;
 	bool sfi_tabl_present;
+	bool use_regulator;
 	short int safetemp;
 	struct platform_batt_profile batt_profile;
 	struct platform_batt_safety_param safety_param;

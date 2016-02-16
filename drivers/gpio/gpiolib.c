@@ -634,9 +634,65 @@ static ssize_t gpio_active_low_store(struct device *dev,
 static const DEVICE_ATTR(active_low, 0644,
 		gpio_active_low_show, gpio_active_low_store);
 
+#ifdef CONFIG_SLEEPING_BEAUTY
+extern struct gpio_suspend_status gpio_sb_suspend_value[ARCH_NR_GPIOS];
+
+static ssize_t gpio_suspend_value_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	const struct gpio_desc	*desc = dev_get_drvdata(dev);
+	ssize_t			status;
+
+	mutex_lock(&sysfs_lock);
+
+	int gpio = desc_to_gpio(desc);
+
+	gpio_sb_suspend_value[gpio].uNewSuspendValue =
+			gpio_sb_suspend_value[gpio].uNewSuspendValue == 0 ? 0 : 1;
+
+	status = sprintf(buf, "bChanged: %d, uNewSuspendValue: %d\n",
+			gpio_sb_suspend_value[gpio].bChanged, gpio_sb_suspend_value[gpio].uNewSuspendValue );
+
+	mutex_unlock(&sysfs_lock);
+
+	return status;
+}
+
+static ssize_t gpio_suspend_value_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct gpio_desc	*desc = dev_get_drvdata(dev);
+	ssize_t			status;
+
+	mutex_lock(&sysfs_lock);
+
+	int gpio = desc_to_gpio(desc);
+
+	long		value;
+
+	status = strict_strtol(buf, 0, &value);
+	if (status == 0)
+	{
+		gpio_sb_suspend_value[gpio].bChanged = true;
+		gpio_sb_suspend_value[gpio].uNewSuspendValue = value == 0 ? 0 : 1;
+		//gpio_sb_suspend_value[gpio].uNewSuspendValue = value;
+	}
+
+	mutex_unlock(&sysfs_lock);
+
+	return status ? : size;
+}
+
+static const DEVICE_ATTR(suspend_value, 0644,
+		gpio_suspend_value_show, gpio_suspend_value_store);
+#endif	// CONFIG_SLEEPING_BEAUTY
+
 static const struct attribute *gpio_attrs[] = {
 	&dev_attr_value.attr,
 	&dev_attr_active_low.attr,
+#ifdef CONFIG_SLEEPING_BEAUTY
+	&dev_attr_suspend_value.attr,
+#endif	// CONFIG_SLEEPING_BEAUTY
 	NULL,
 };
 
@@ -689,6 +745,10 @@ static const struct attribute_group gpiochip_attr_group = {
 	.attrs = (struct attribute **) gpiochip_attrs,
 };
 
+#ifdef CONFIG_SLEEPING_BEAUTY
+extern bool dump_gpio_enabled;
+#endif	// CONFIG_SLEEPING_BEAUTY
+
 /*
  * /sys/class/gpio/export ... write-only
  *	integer N ... number of GPIO to export (full access)
@@ -721,9 +781,26 @@ static ssize_t export_store(struct class *class,
 
 	status = gpiod_request(desc, "sysfs");
 	if (status < 0) {
+#ifdef CONFIG_SLEEPING_BEAUTY
+		if (dump_gpio_enabled) {
+			if (status == -EBUSY) {
+				printk("gpio rw debug: export gpio%d which is already requested.\n", gpio);
+			} else {
+				printk("gpio rw debug: gpio request fail\n");
+				if (status == -EPROBE_DEFER)
+						status = -ENODEV;
+				goto done;
+			}
+		} else {
+			if (status == -EPROBE_DEFER)
+				status = -ENODEV;
+			goto done;
+		}
+#else
 		if (status == -EPROBE_DEFER)
 			status = -ENODEV;
 		goto done;
+#endif	// CONFIG_SLEEPING_BEAUTY
 	}
 	status = gpiod_export(desc, true);
 	if (status < 0)
@@ -823,8 +900,22 @@ static int gpiod_export(struct gpio_desc *desc, bool direction_may_change)
 	mutex_lock(&sysfs_lock);
 
 	spin_lock_irqsave(&gpio_lock, flags);
+#ifdef CONFIG_SLEEPING_BEAUTY
+	if (!dump_gpio_enabled) {
+		if (!test_bit(FLAG_REQUESTED, &desc->flags) ||
+			 test_bit(FLAG_EXPORT, &desc->flags)) {
+			spin_unlock_irqrestore(&gpio_lock, flags);
+			pr_debug("%s: gpio %d unavailable (requested=%d, exported=%d)\n",
+					__func__, desc_to_gpio(desc),
+					test_bit(FLAG_REQUESTED, &desc->flags),
+					test_bit(FLAG_EXPORT, &desc->flags));
+			status = -EPERM;
+			goto fail_unlock;
+		}
+	}
+#else
 	if (!test_bit(FLAG_REQUESTED, &desc->flags) ||
-	     test_bit(FLAG_EXPORT, &desc->flags)) {
+		 test_bit(FLAG_EXPORT, &desc->flags)) {
 		spin_unlock_irqrestore(&gpio_lock, flags);
 		pr_debug("%s: gpio %d unavailable (requested=%d, exported=%d)\n",
 				__func__, desc_to_gpio(desc),
@@ -833,6 +924,7 @@ static int gpiod_export(struct gpio_desc *desc, bool direction_may_change)
 		status = -EPERM;
 		goto fail_unlock;
 	}
+#endif	// CONFIG_SLEEPING_BEAUTY
 
 	if (!desc->chip->direction_input || !desc->chip->direction_output)
 		direction_may_change = false;
@@ -2188,6 +2280,69 @@ static int gpiolib_seq_show(struct seq_file *s, void *v)
 
 	return 0;
 }
+
+void gpiolib_dbg_show_log(struct gpio_chip *chip)
+{
+	unsigned		i;
+	unsigned		gpio = chip->base;
+	struct gpio_desc	*gdesc = &chip->desc[0];
+	int			is_out;
+
+	for (i = 0; i < chip->ngpio; i++, gpio++, gdesc++) {
+		/*if (!test_bit(FLAG_REQUESTED, &gdesc->flags))
+			continue;*/
+
+		gpiod_get_direction(gdesc);
+		is_out = test_bit(FLAG_IS_OUT, &gdesc->flags);
+		printk(" gpio-%-3d (%-20.20s) %s %s",
+			gpio, gdesc->label,
+			is_out ? "out" : "in ",
+			chip->get
+				? (chip->get(chip, i) ? "hi" : "lo")
+				: "?  ");
+
+		printk("\n");
+	}
+
+}
+
+void dump_gpio(void)
+{
+	struct gpio_chip *chip = NULL;
+	unsigned gpio;
+	int started = 0;
+
+	for (gpio = 0; gpio_is_valid(gpio); gpio++) {
+		struct device *dev;
+		if (chip == gpio_desc[gpio].chip)
+			continue;
+		chip = gpio_desc[gpio].chip;
+		if (!chip)
+			continue;
+
+		printk("GPIOs %d-%d",
+				chip->base, chip->base + chip->ngpio - 1);
+		dev = chip->dev;
+		if (dev)
+			printk(", %s/%s", dev->bus ? dev->bus->name : "no-bus",
+				dev_name(dev));
+		if (chip->label)
+			printk(", %s", chip->label);
+		if (chip->can_sleep)
+			printk(", can sleep");
+		printk(":\n");
+
+		//if (!chip->dbg_show)
+			gpiolib_dbg_show_log(chip);
+		//if (gpio < 368)
+		//	vlv_dump_gpio_show(chip);
+		//else
+		//	crystalcove_dump_gpio_show(chip);
+	}
+
+	return;
+}
+EXPORT_SYMBOL_GPL(dump_gpio);
 
 static const struct seq_operations gpiolib_seq_ops = {
 	.start = gpiolib_seq_start,

@@ -461,6 +461,19 @@ static void thermal_zone_device_check(struct work_struct *work)
 #define to_thermal_zone(_dev) \
 	container_of(_dev, struct thermal_zone_device, device)
 
+//[Rock-20141014+ATD for ThermalCheck]>>
+static ssize_t check_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+        struct thermal_zone_device *tz = to_thermal_zone(dev);
+        int ret;
+        long temperature;
+        if (!tz->ops->check_thermal)
+                return -EPERM;
+        ret = tz->ops->check_thermal(tz,&temperature);
+               return sprintf(buf, "%d\n", ret);
+}
+//[Rock-20141014+ATD for ThermalCheck]<<
+
 static ssize_t
 type_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -837,6 +850,9 @@ emul_temp_store(struct device *dev, struct device_attribute *attr,
 static DEVICE_ATTR(emul_temp, S_IWUSR, NULL, emul_temp_store);
 #endif/*CONFIG_THERMAL_EMULATION*/
 
+//[Rock-20141014+ATD for ThermalCheck]>>
+static DEVICE_ATTR(check, 0444, check_show, NULL);
+//[Rock-20141014+ATD for ThermalCheck]<<
 static DEVICE_ATTR(type, 0444, type_show, NULL);
 static DEVICE_ATTR(temp, 0444, temp_show, NULL);
 static DEVICE_ATTR(mode, 0644, mode_show, mode_store);
@@ -1804,6 +1820,14 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 		return ERR_PTR(result);
 	}
 
+	//[Rock-20141014+ATD for ThermalCheck]<<
+	if (tz->ops->check_thermal){
+		result = device_create_file(&tz->device, &dev_attr_check);
+		if (result)
+			goto unregister;
+	}
+	//[Rock-20141014+ATD for ThermalCheck]<<
+
 	/* sys I/F */
 	result = device_create_file(&tz->device, &dev_attr_type);
 	if (result)
@@ -1849,9 +1873,11 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 	}
 
 #ifdef CONFIG_THERMAL_EMULATION
-	result = device_create_file(&tz->device, &dev_attr_emul_temp);
-	if (result)
-		goto unregister;
+	if (tz->ops->set_emul_temp) {
+		result = device_create_file(&tz->device, &dev_attr_emul_temp);
+		if (result)
+			goto unregister;
+	}
 #endif
 	/* Create policy attribute */
 	result = device_create_file(&tz->device, &dev_attr_policy);
@@ -1881,7 +1907,13 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 
 	INIT_DELAYED_WORK(&(tz->poll_queue), thermal_zone_device_check);
 
-	thermal_zone_device_update(tz);
+	/*
+	 * Emulation temperature may need user land to provide
+	 * temperature data. In that case, do not try to update
+	 * this 'tzd' during registration.
+	 */
+	if (!tz->ops->set_emul_temp)
+		thermal_zone_device_update(tz);
 
 	if (!result)
 		return tz;
@@ -1944,12 +1976,20 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 
 	device_remove_file(&tz->device, &dev_attr_type);
 	device_remove_file(&tz->device, &dev_attr_temp);
+	//[Rock-20141014+ATD for ThermalCheck]>>
+	if (tz->ops->check_thermal)
+		device_remove_file(&tz->device, &dev_attr_check);
+	//[Rock-20141014+ATD for ThermalCheck]<<
 	if (tz->ops->get_mode)
 		device_remove_file(&tz->device, &dev_attr_mode);
 	if (tz->ops->get_slope)
 		device_remove_file(&tz->device, &dev_attr_slope);
 	if (tz->ops->get_intercept)
 		device_remove_file(&tz->device, &dev_attr_intercept);
+#ifdef CONFIG_THERMAL_EMULATION
+	if (tz->ops->set_emul_temp)
+		device_remove_file(&tz->device, &dev_attr_emul_temp);
+#endif
 
 	device_remove_file(&tz->device, &dev_attr_policy);
 	remove_trip_attrs(tz);

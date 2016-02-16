@@ -11,7 +11,7 @@
  *  Convert OTP registers into readable value
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 503 $
+ * @revision  $Revision: 107 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,11 +19,11 @@
 
 #ifdef  uG31xx_OS_WINDOWS
 
-  #define OTP_VERSION      (_T("OTP $Rev: 503 $ "))
+  #define OTP_VERSION      (_T("OTP $Rev: 107 $ "))
 
 #else   ///< else of uG31xx_OS_WINDOWS
 
-  #define OTP_VERSION      ("OTP $Rev: 503 $ ")
+  #define OTP_VERSION      ("OTP $Rev: 107 $ ")
 
 #endif  ///< end of uG31xx_OS_WINDOWS
 
@@ -40,7 +40,7 @@
   #define DELTA_VREF_1                (1<<5)
   #define DELTA_VREF_2                (1<<6)
   #define DELTA_VREF_3                (1<<7)
-  
+
 #define OTP1_OFFSET_E1                (OTP1_OFFSET_E0 + 1)
   #define INDEX_ADC1_100_25_0         (1<<0)
   #define INDEX_ADC1_100_25_1         (1<<1)
@@ -120,7 +120,7 @@
   #define DEV_ADDR_7                  (1<<5)
   #define DEV_ADDR_8                  (1<<6)
   #define DEV_ADDR_9                  (1<<7)
-  
+
 #define OTP2_OFFSET_F5                (OTP2_OFFSET_F4 + 1)
   #define OTP2_OFFSET_F5_RSVD_0       (1<<0)
   #define OTP2_OFFSET_F5_RSVD_1       (1<<1)
@@ -272,6 +272,8 @@
   #define AVE_IT_80_14                (1<<6)
   #define AVE_IT_80_15                (1<<7)
 
+OtpDataType *ptrOtpData = _UPI_NULL_;
+
 /// =============================================
 /// [AT-PM] : OTP register conversion routine
 /// =============================================
@@ -292,9 +294,9 @@ void ConvOtp1E0(OtpDataType *obj)
 	#ifdef	UPI_UBOOT_DEBUG_MSG
 		printf("[ConvOtp1E0] Initial value of indexAdc1V200T25 = %d\n");
 	#endif	///< end of UPI_UBOOT_DEBUG_MSG
-  obj->indexAdc1V200T25 = obj->indexAdc1V200T25 + (value & (INDEX_ADC1_200_25_0 | 
-                                                            INDEX_ADC1_200_25_1 | 
-                                                            INDEX_ADC1_200_25_2 | 
+  obj->indexAdc1V200T25 = obj->indexAdc1V200T25 + (value & (INDEX_ADC1_200_25_0 |
+                                                            INDEX_ADC1_200_25_1 |
+                                                            INDEX_ADC1_200_25_2 |
                                                             INDEX_ADC1_200_25_3));
 
   obj->deltaVref = obj->deltaVref + ((value & (DELTA_VREF_0| DELTA_VREF_1 | DELTA_VREF_2 | DELTA_VREF_3)) >> 4);
@@ -317,9 +319,9 @@ void ConvOtp1E1(OtpDataType *obj)
 	#ifdef	UPI_UBOOT_DEBUG_MSG
 		printf("[ConvOtp1E1] Initial value of indexAdc1V100T25 = %d\n", obj->indexAdc1V100T25);
 	#endif	///< end of UPI_UBOOT_DEBUG_MSG
-  obj->indexAdc1V100T25 = obj->indexAdc1V100T25 + (value & (INDEX_ADC1_100_25_0 | 
-                                                            INDEX_ADC1_100_25_1 | 
-                                                            INDEX_ADC1_100_25_2 | 
+  obj->indexAdc1V100T25 = obj->indexAdc1V100T25 + (value & (INDEX_ADC1_100_25_0 |
+                                                            INDEX_ADC1_100_25_1 |
+                                                            INDEX_ADC1_100_25_2 |
                                                             INDEX_ADC1_100_25_3));
 
   obj->ftIT = obj->ftIT + ((value & (FT_IT_3 | FT_IT_4 | FT_IT_5 | FT_IT_6)) >> 1);
@@ -343,9 +345,9 @@ void ConvOtp1E2(OtpDataType *obj)
 	#ifdef	UiPI_UBOOT_DEBUG_MSG
 		printf("[ConvOtp1E2] Initial value of indexAdc2V200T25 = %d\n", obj->indexAdc2V200T25);
 	#endif	///< end of UiPI_UBOOT_DEBUG_MSG
-  obj->indexAdc2V200T25 = obj->indexAdc2V200T25 + (value & (INDEX_ADC2_200_25_0 | 
-                                                            INDEX_ADC2_200_25_1 | 
-                                                            INDEX_ADC2_200_25_2 | 
+  obj->indexAdc2V200T25 = obj->indexAdc2V200T25 + (value & (INDEX_ADC2_200_25_0 |
+                                                            INDEX_ADC2_200_25_1 |
+                                                            INDEX_ADC2_200_25_2 |
                                                             INDEX_ADC2_200_25_3));
 
   tmp = (value & (FT_IT_7 | FT_IT_8 | FT_IT_9 | FT_IT_10));
@@ -370,9 +372,9 @@ void ConvOtp1E3(OtpDataType *obj)
 	#ifdef	UPI_UBOOT_DEBUG_MSG
 		printf("[ConvOtp1E3] Initial value of indexAdc2V100T25 = %d\n", obj->indexAdc2V100T25);
 	#endif	///< end of UPI_UBOOT_DEBUG_MSG
-  obj->indexAdc2V100T25 = obj->indexAdc2V100T25 + (value & (INDEX_ADC2_100_25_0 | 
-                                                            INDEX_ADC2_100_25_1 | 
-                                                            INDEX_ADC2_100_25_2 | 
+  obj->indexAdc2V100T25 = obj->indexAdc2V100T25 + (value & (INDEX_ADC2_100_25_0 |
+                                                            INDEX_ADC2_100_25_1 |
+                                                            INDEX_ADC2_100_25_2 |
                                                             INDEX_ADC2_100_25_3));
 
   tmp = (value & (FT_IT_11 | FT_IT_12 | FT_IT_13 | FT_IT_14));
@@ -429,10 +431,10 @@ void ConvOtp2F2(OtpDataType *obj)
 
   value = obj->otp2[OTP2_OFFSET_F2];
 
-  obj->otpCellEN = obj->otpCellEN + ((value & (OTP_CELL_EN_0 | 
-                                               OTP_CELL_EN_1 | 
-                                               OTP_CELL_EN_2 | 
-                                               OTP_CELL_EN_3 | 
+  obj->otpCellEN = obj->otpCellEN + ((value & (OTP_CELL_EN_0 |
+                                               OTP_CELL_EN_1 |
+                                               OTP_CELL_EN_2 |
+                                               OTP_CELL_EN_3 |
                                                OTP_CELL_EN_4)) >> 3);
 }
 
@@ -487,11 +489,11 @@ void ConvOtp2F5(OtpDataType *obj)
 
   value = obj->otp2[OTP2_OFFSET_F5];
 
-  obj->bgrTune = obj->bgrTune + ((value & (BGR_TUNE_0 | 
-                                           BGR_TUNE_1 | 
-                                           BGR_TUNE_2 | 
-                                           BGR_TUNE_3 | 
-                                           BGR_TUNE_4 | 
+  obj->bgrTune = obj->bgrTune + ((value & (BGR_TUNE_0 |
+                                           BGR_TUNE_1 |
+                                           BGR_TUNE_2 |
+                                           BGR_TUNE_3 |
+                                           BGR_TUNE_4 |
                                            BGR_TUNE_5)) >> 2);
 }
 
@@ -633,7 +635,7 @@ void ConvOtp2FC(OtpDataType *obj)
 		printf("[ConvOtp2FC] Initial value of = %d\n", obj->adc1DeltaCodeT25V100);
 	#endif	///< end of UPI_UBOOT_DEBUG_MSG
   obj->adc1DeltaCodeT25V100 = obj->adc1DeltaCodeT25V100 + (tmp << 8);
-  
+
         #ifdef  UPI_UBOOT_DEBUG_MSG
                 printf("[ConvOtp2FC] Initial value of = %d\n", obj->adc2DeltaCodeT25V100);
         #endif  ///< end of UPI_UBOOT_DEBUG_MSG
@@ -733,13 +735,13 @@ void ConvOtp371(OtpDataType *obj)
 
   value = obj->otp3[OTP3_OFFSET_71];
 
-  tmp = value & (AVE_IT_25_8 | 
-                 AVE_IT_25_9 | 
-                 AVE_IT_25_10 | 
-                 AVE_IT_25_11 | 
-                 AVE_IT_25_12 | 
-                 AVE_IT_25_13 | 
-                 AVE_IT_25_14 | 
+  tmp = value & (AVE_IT_25_8 |
+                 AVE_IT_25_9 |
+                 AVE_IT_25_10 |
+                 AVE_IT_25_11 |
+                 AVE_IT_25_12 |
+                 AVE_IT_25_13 |
+                 AVE_IT_25_14 |
                  AVE_IT_25_15);
   obj->aveIT25 = obj->aveIT25 + (tmp << 8);
 }
@@ -791,13 +793,13 @@ void ConvOtp373(OtpDataType *obj)
 
   value = obj->otp3[OTP3_OFFSET_73];
 
-  tmp = value & (AVE_IT_80_8 | 
-                 AVE_IT_80_9 | 
-                 AVE_IT_80_10 | 
-                 AVE_IT_80_11 | 
-                 AVE_IT_80_12 | 
-                 AVE_IT_80_13 | 
-                 AVE_IT_80_14 | 
+  tmp = value & (AVE_IT_80_8 |
+                 AVE_IT_80_9 |
+                 AVE_IT_80_10 |
+                 AVE_IT_80_11 |
+                 AVE_IT_80_12 |
+                 AVE_IT_80_13 |
+                 AVE_IT_80_14 |
                  AVE_IT_80_15);
   obj->aveIT80 = obj->aveIT80 + (tmp << 8);
 }
@@ -833,7 +835,7 @@ static ConvFuncPtr ConvFuncTable[] = {
   ConvOtp371,
   ConvOtp372,
   ConvOtp373,
-  
+
   CONV_FUNC_PTR_NULL,
 };
 
@@ -910,13 +912,13 @@ void UpiConvertOtp(OtpDataType *data)
   /// [AT-PM] : Set version ; 01/25/2013
   data->versionMain = UG31XX_OTP_VERSION_MAIN;
   data->versionSub = UG31XX_OTP_VERSION_SUB;
-  
+
   /// [AT-PM] : Conversion ; 01/23/2013
   idx = 0;
   while(1)
   {
     (*ConvFuncTable[idx])(data);
-    
+
     idx = idx + 1;
     if(ConvFuncTable[idx] == CONV_FUNC_PTR_NULL)
     {

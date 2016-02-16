@@ -17,6 +17,8 @@ static inline void pm_set_vt_switch(int do_switch)
 }
 #endif
 
+extern bool debug_suspend_enabled;
+
 #ifdef CONFIG_VT_CONSOLE_SLEEP
 extern int pm_prepare_console(void);
 extern void pm_restore_console(void);

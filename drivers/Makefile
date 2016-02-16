@@ -15,6 +15,7 @@ obj-y				+= pwm/
 obj-$(CONFIG_PCI)		+= pci/
 obj-$(CONFIG_PARISC)		+= parisc/
 obj-$(CONFIG_RAPIDIO)		+= rapidio/
+obj-$(CONFIG_ME372CG_BATTERY_SMB345)   += power/battery/
 obj-y				+= video/
 obj-y				+= idle/
 
@@ -96,6 +97,15 @@ obj-$(CONFIG_PPS)		+= pps/
 obj-$(CONFIG_PTP_1588_CLOCK)	+= ptp/
 obj-$(CONFIG_W1)		+= w1/
 obj-$(CONFIG_POWER_SUPPLY)	+= power/
+# Tom ((( battery driver
+obj-$(CONFIG_ASUS_TF303CL_BATTERY)	+= power/ASUS_BATTERY/TF303CL/
+obj-$(CONFIG_ASUS_TF103C_BATTERY)	+= power/ASUS_BATTERY/TF103C/
+obj-$(CONFIG_ASUS_TF103CE_BATTERY)	+= power/ASUS_BATTERY/TF103CE/
+# )))
+# Carlisle ((( battery driver
+obj-$(CONFIG_ASUS_ME176C_BATTERY)	+= power/ASUS_BATTERY/ME176C/
+# )))
+obj-$(CONFIG_POWERCAP)		+= powercap/
 obj-$(CONFIG_HWMON)		+= hwmon/
 obj-$(CONFIG_THERMAL)		+= thermal/
 obj-$(CONFIG_WATCHDOG)		+= watchdog/
@@ -154,3 +164,8 @@ obj-$(CONFIG_VME_BUS)		+= vme/
 obj-$(CONFIG_IPACK_BUS)		+= ipack/
 obj-$(CONFIG_NTB)		+= ntb/
 obj-$(CONFIG_EXTERNAL_DRIVERS)	+= external_drivers/
+
+obj-$(CONFIG_ASUS_CPUD)        += cpud/
+
+#Add Dock EC
+obj-$(CONFIG_ASUS_DEC)          += input/asusdec/

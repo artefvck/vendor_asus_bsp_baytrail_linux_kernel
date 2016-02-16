@@ -254,7 +254,20 @@ static int acm_write_start(struct acm *acm, int wbn)
 	}
 	usb_mark_last_busy(acm->dev);
 
-	rc = acm_start_wb(acm, wb);
+	/* If meet disconnect flow during tty write, then there will be
+	 * one race condition. The urbs will be killed and free during
+	 * disconnect flow. If acm_start_wb be called after urbs be free.
+	 * Then it will be cause unexpected memory corruption in slab/slub/slob.
+	 */
+	if (!acm->disconnected) {
+		usb_get_urb(wb->urb);
+		rc = acm_start_wb(acm, wb);
+		usb_put_urb(wb->urb);
+	} else {
+		usb_autopm_put_interface_async(acm->control);
+		rc = -ENODEV;
+	}
+
 	spin_unlock_irqrestore(&acm->write_lock, flags);
 
 	return rc;
@@ -649,13 +662,16 @@ static int acm_port_activate(struct tty_port *port, struct tty_struct *tty)
 	if (usb_submit_urb(acm->ctrlurb, GFP_KERNEL)) {
 		dev_err(&acm->control->dev,
 			"%s - usb_submit_urb(ctrl irq) failed\n", __func__);
+		usb_autopm_put_interface(acm->control);
 		goto error_submit_urb;
 	}
 
 	acm->ctrlout = ACM_CTRL_DTR | ACM_CTRL_RTS;
 	if (acm_set_control(acm, acm->ctrlout) < 0 &&
-	    (acm->ctrl_caps & USB_CDC_CAP_LINE))
+	    (acm->ctrl_caps & USB_CDC_CAP_LINE)) {
+		usb_autopm_put_interface(acm->control);
 		goto error_set_control;
+	}
 
 	usb_autopm_put_interface(acm->control);
 
@@ -680,7 +696,6 @@ error_submit_read_urbs:
 error_set_control:
 	usb_kill_urb(acm->ctrlurb);
 error_submit_urb:
-	usb_autopm_put_interface(acm->control);
 error_get_interface:
 disconnected:
 	mutex_unlock(&acm->mutex);
@@ -711,8 +726,11 @@ static void acm_port_shutdown(struct tty_port *port)
 		usb_autopm_get_interface(acm->control);
 		acm_set_control(acm, acm->ctrlout = 0);
 		usb_kill_urb(acm->ctrlurb);
-		for (i = 0; i < ACM_NW; i++)
+		acm->transmitting = 0;
+		for (i = 0; i < ACM_NW; i++) {
 			usb_kill_urb(acm->wb[i].urb);
+			acm->wb[i].use = 0;
+		}
 		for (i = 0; i < acm->rx_buflimit; i++)
 			usb_kill_urb(acm->read_urbs[i]);
 		acm->control->needs_remote_wakeup = 0;
@@ -739,6 +757,8 @@ static void acm_tty_close(struct tty_struct *tty, struct file *filp)
 {
 	struct acm *acm = tty->driver_data;
 	dev_dbg(&acm->control->dev, "%s\n", __func__);
+	/* Set flow_stopped to enable flush buffer*/
+	tty->flow_stopped = 1;
 	tty_port_close(&acm->port, tty, filp);
 }
 
@@ -799,6 +819,30 @@ static int acm_tty_chars_in_buffer(struct tty_struct *tty)
 	 * This is inaccurate (overcounts), but it works.
 	 */
 	return (ACM_NW - acm_wb_is_avail(acm)) * acm->writesize;
+}
+
+static void acm_tty_flush_buffer(struct tty_struct *tty)
+{
+	struct acm *acm = tty->driver_data;
+	struct acm_wb *wb;
+	struct delayed_wb *d_wb, *nd_wb;
+
+	/* flush delayed write buffer */
+	if (!acm->disconnected) {
+		usb_autopm_get_interface(acm->control);
+		spin_lock_irq(&acm->write_lock);
+		list_for_each_entry_safe(d_wb, nd_wb,
+				&acm->delayed_wb_list, list) {
+			wb = d_wb->wb;
+			list_del(&d_wb->list);
+			kfree(d_wb);
+			spin_unlock_irq(&acm->write_lock);
+			acm_start_wb(acm, wb);
+			spin_lock_irq(&acm->write_lock);
+		}
+		spin_unlock_irq(&acm->write_lock);
+		usb_autopm_put_interface(acm->control);
+	}
 }
 
 static void acm_tty_throttle(struct tty_struct *tty)
@@ -1537,6 +1581,8 @@ static void stop_data_traffic(struct acm *acm)
 
 static void acm_disconnect(struct usb_interface *intf)
 {
+	struct acm_wb *wb;
+	struct delayed_wb *d_wb, *nd_wb;
 	struct acm *acm = usb_get_intfdata(intf);
 	struct usb_device *usb_dev = interface_to_usbdev(intf);
 	struct tty_struct *tty;
@@ -1571,6 +1617,15 @@ static void acm_disconnect(struct usb_interface *intf)
 	stop_data_traffic(acm);
 
 	tty_unregister_device(acm_tty_driver, acm->minor);
+
+	spin_lock_irq(&acm->write_lock);
+	list_for_each_entry_safe(d_wb, nd_wb,
+			&acm->delayed_wb_list, list) {
+		wb = d_wb->wb;
+		list_del(&d_wb->list);
+		kfree(d_wb);
+	}
+	spin_unlock_irq(&acm->write_lock);
 
 	usb_free_urb(acm->ctrlurb);
 	for (i = 0; i < ACM_NW; i++)
@@ -1911,6 +1966,7 @@ static const struct tty_operations acm_ops = {
 	.throttle =		acm_tty_throttle,
 	.unthrottle =		acm_tty_unthrottle,
 	.chars_in_buffer =	acm_tty_chars_in_buffer,
+	.flush_buffer =		acm_tty_flush_buffer,
 	.break_ctl =		acm_tty_break_ctl,
 	.set_termios =		acm_tty_set_termios,
 	.tiocmget =		acm_tty_tiocmget,

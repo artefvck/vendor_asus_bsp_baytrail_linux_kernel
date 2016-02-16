@@ -14,6 +14,14 @@ config MMC_BLOCK
 	  mount the filesystem. Almost everyone wishing MMC support
 	  should say Y or M here.
 
+config MMC_SECDISCARD
+	boolean "MMC SECDISCARD Support"
+	depends on MMC_BLOCK
+	default n
+	help
+	  This provides support for Secure Erase & Secure Trim
+	  operations.
+
 config MMC_BLOCK_MINORS
 	int "Number of minors per block device"
 	depends on MMC_BLOCK

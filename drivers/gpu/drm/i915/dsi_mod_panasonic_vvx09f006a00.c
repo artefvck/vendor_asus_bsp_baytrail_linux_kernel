@@ -152,7 +152,9 @@ static enum drm_connector_status vvx09f006a00_detect(
 
 static bool vvx09f006a00_mode_fixup(struct intel_dsi_device *dsi,
 		    const struct drm_display_mode *mode,
-		    struct drm_display_mode *adjusted_mode) {
+		    struct drm_display_mode *adjusted_mode)
+{
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
 	if (BYT_CR_CONFIG) {
 		adjusted_mode->hdisplay = BYT_MODESET_HDISPLAY;
@@ -165,7 +167,8 @@ static bool vvx09f006a00_mode_fixup(struct intel_dsi_device *dsi,
 		DRM_DEBUG_KMS("Panasonic panel fixup: %dx%d (adjusted mode)",
 			adjusted_mode->hdisplay, adjusted_mode->vdisplay);
 	}
-
+	intel_dsi->pclk = adjusted_mode->clock;
+	DRM_DEBUG_KMS("pclk : %d\n", intel_dsi->pclk);
 	return true;
 }
 
@@ -192,7 +195,7 @@ void vvx09f006a00_panel_reset(struct intel_dsi_device *dsi)
 		vlv_gpio_nc_write(dev_priv, 0x40F8, 0x00000005);
 	} else
 		intel_mid_pmic_writeb(0x52, 0x01);
-	usleep_range(85000, 90000);
+	usleep_range(120000, 130000);
 }
 
 void  vvx09f006a00_disable_panel_power(struct intel_dsi_device *dsi)
@@ -234,6 +237,10 @@ static void vvx09f006a00_dpms(struct intel_dsi_device *dsi, bool enable)
 bool vvx09f006a00_init(struct intel_dsi_device *dsi)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+#ifndef ASUS_PROJECT_TF303CL
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+#endif
 	DRM_DEBUG_KMS("Init: Panasonic panel\n");
 
 	if (!dsi) {
@@ -241,27 +248,35 @@ bool vvx09f006a00_init(struct intel_dsi_device *dsi)
 		return false;
 	}
 
-	intel_dsi->hs = true;
+	intel_dsi->hs = false;
 	intel_dsi->channel = 0;
 	intel_dsi->lane_count = 4;
-//	intel_dsi->eot_disable = 1;
 	intel_dsi->eotp_pkt = 0;
 	intel_dsi->port_bits = 0;
-	intel_dsi->video_mode_type = DSI_VIDEO_NBURST_SPULSE;
+	intel_dsi->video_mode_type = DSI_VIDEO_NBURST_SEVENT;
 	intel_dsi->pixel_format = VID_MODE_FORMAT_RGB888;
 	intel_dsi->turn_arnd_val = 0x14;
-	intel_dsi->rst_timer_val = 0xffff;
-	intel_dsi->hs_to_lp_count = 0x46;
-	intel_dsi->lp_byte_clk = 1;
-	intel_dsi->bw_timer = 0x820;
-	intel_dsi->clk_lp_to_hs_count = 0xa;
-	intel_dsi->clk_hs_to_lp_count = 0x14;
+	intel_dsi->rst_timer_val = 0xff;
+	intel_dsi->hs_to_lp_count = 0x31;
+	intel_dsi->lp_byte_clk = 6;
+	intel_dsi->bw_timer = 0x0;
+	intel_dsi->clk_lp_to_hs_count = 0x3c;
+	intel_dsi->clk_hs_to_lp_count = 0x17;
 	intel_dsi->video_frmt_cfg_bits = 0;
-	intel_dsi->dphy_reg = 0x3c1fc51f;
-
+	intel_dsi->dphy_reg = 0x3f1f7317;
+	intel_dsi->port = 0; /* PORT_A by default */
+	intel_dsi->burst_mode_ratio = 100;
 	intel_dsi->backlight_off_delay = 20;
 	intel_dsi->send_shutdown = true;
 	intel_dsi->shutdown_pkt_delay = 20;
+
+#ifndef ASUS_PROJECT_TF303CL
+	/* In the default VBT of UEFI GOP,rotation bit is not set.
+	 * In order to make FFRD8 work on UEFI GOP with default VBT,
+	 * hardcoding rotation bit to 1 only for Panasonic MIPI Panel */
+	if (!(dev_priv->vbt.is_180_rotation_enabled) && !(BYT_CR_CONFIG))
+		dev_priv->vbt.is_180_rotation_enabled = 1;
+#endif
 
 	return true;
 }

@@ -39,9 +39,9 @@
 #include "dsi_mod_innolux_m181.h"
 
 #include <linux/lnw_gpio.h>
-#include <linux/acpi_gpio.h>	
-#include <linux/acpi.h>			
-#include <linux/gpio.h>			
+#include <linux/acpi_gpio.h>
+#include <linux/acpi.h>
+#include <linux/gpio.h>
 #include <linux/mfd/intel_mid_pmic.h>
 
 #define DEBUG 1
@@ -92,12 +92,15 @@ bool m181_init(struct intel_dsi_device *dsi)
 	intel_dsi->clk_hs_to_lp_count = 0x0E; //sean test
 	intel_dsi->video_frmt_cfg_bits = DISABLE_VIDEO_BTA;
 	intel_dsi->dphy_reg = 0x3710390B; //sean test
+	intel_dsi->pclk = 72680;
+	intel_dsi->burst_mode_ratio = 100; //liwei add
+
 
 	intel_dsi->backlight_off_delay = 20;	//keep data more than 8 frames in 60HZ
 	intel_dsi->send_shutdown = true;
 	intel_dsi->backlight_on_delay = 134;	//sean test
 	intel_dsi->shutdown_pkt_delay = 134;	//sean test
-	
+
 	intel_dsi->clock_stop = true;	//seantest no continue more
 
 	return true;
@@ -146,7 +149,7 @@ void m181_panel_reset(struct intel_dsi_device *dsi)
 	if (err){
 		printk("%s----sean test----gpio_requset_fail----\n",__func__);
 	}
-	
+
 	gpio_direction_output(69, 1);
 	usleep_range(10000,15000);
 	gpio_set_value(69, 0);
@@ -154,15 +157,15 @@ void m181_panel_reset(struct intel_dsi_device *dsi)
 	gpio_set_value(69, 1);
 
 	gpio_free(69);
-    msleep(300);
-    * */
+	msleep(300);
+	*/
 
 }
 
 void m181_disable_panel_power(struct intel_dsi_device *dsi)
 {
-    int err;
-    err = gpio_request(69, "sd_pwr_en1");
+	int err;
+	err = gpio_request(69, "sd_pwr_en1");
 	if (err){
 		printk("%s:----sean test----m181_panel_request fail----\n",__func__);
 	}
@@ -176,17 +179,17 @@ void m181_disable_panel_power(struct intel_dsi_device *dsi)
 
 	//msleep(5);	//sean test t13 =< 50
 
-    //sean_debug("%s:----sean test----ivo_m181_disable_panel_power----%d\n", __func__,__LINE__);
-    intel_mid_pmic_writeb(0x52,0x00);//PANEL_EN 3.3v
-    usleep_range(16000,17000); //sean test t15 <= 10
-    intel_mid_pmic_writeb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 1.8v
-    sean_debug("%s:----sean test----panel 1.8V set low----%d\n", __func__,__LINE__);
+	//sean_debug("%s:----sean test----ivo_m181_disable_panel_power----%d\n", __func__,__LINE__);
+	intel_mid_pmic_writeb(0x52,0x00);//PANEL_EN 3.3v
+	usleep_range(16000,17000); //sean test t15 <= 10
+	intel_mid_pmic_writeb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 1.8v
+	sean_debug("%s:----sean test----panel 1.8V set low----%d\n", __func__,__LINE__);
 
-    err =  intel_mid_pmic_readb(0x52);
-    sean_debug("%s:----sean test----ivo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,err);
+	err =  intel_mid_pmic_readb(0x52);
+	sean_debug("%s:----sean test----ivo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,err);
 
-    gpio_free(69);
-    msleep(160);	//sean test t9 >= 150
+	gpio_free(69);
+	msleep(160);	//sean test t9 >= 150
 }
 
 void m181_send_otp_cmds(struct intel_dsi_device *dsi)
@@ -200,7 +203,7 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	err = gpio_request(69, "sd_pwr_en1");
 	if (err){
 		printk("%s----sean test----gpio_requset_fail----\n",__func__);
-	}	
+	}
 
 	gpio_direction_output(69, 0);	// sean 2 low pulse
 	gpio_set_value(69, 1);
@@ -220,12 +223,12 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		unsigned char data[] = {0xFF, 0xAA, 0x55, 0xA5, 0x80};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
 	}
-	
+
 	{
 		unsigned char data[] = {0x6F, 0x11, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
-	
+
 	{
 		unsigned char data[] = {0xF7, 0x20, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
@@ -235,7 +238,9 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xF7, 0xA0);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x19);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xF7, 0x12);
-	
+
+	dsi_vc_dcs_write_1(intel_dsi, 0, 0xF4, 0x03);//modified by Novatek
+
 	//=============Internal setting END ================
 	//========== page0 relative ==========
 	sean_debug("%s:----sean test----m181_innolux_send_otp_cmds----%d\n", __func__,__LINE__);
@@ -243,28 +248,28 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		unsigned char data[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC8, 0x00);
-	
+
 	{
 		unsigned char data[] = {0xB1, 0x6C, 0x01};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
-	
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xB6, 0x08);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0x6F, 0x02);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xB8, 0x08);
-	
+
 	{
 		unsigned char data[] = {0xBB, 0x74, 0x44};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
-	
+
 	{
 		unsigned char data[] = {0xBC, 0x00, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
-	
+
 	{
 		unsigned char data[] = {0xBD, 0x02, 0xB0, 0x0C, 0x0A, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
@@ -291,7 +296,7 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		unsigned char data[] = {0xBD, 0x90, 0x01};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
-	
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xCA, 0x00);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC0, 0x04);
 
@@ -317,14 +322,14 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		unsigned char data[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x02};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xEE, 0x01);
-	
+
 	{
 		unsigned char data[] = {0xEF, 0x09, 0x06, 0x15, 0x18};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
 	}
-	//
+
 	{
 		unsigned char data[] = {0xB0, 0x00, 0x00, 0x00, 0x25, 0x00 ,0x43};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 7);
@@ -386,7 +391,7 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		unsigned char data[] = {0xB3, 0x03, 0xFC, 0x03, 0xFF};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
 	}
-	
+
 	//=================page2 relative END ================
 	//========== GOA relative ==========
 	//========== page6 relative:GOUT Mapping,VGLO select ==========
@@ -577,52 +582,52 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		unsigned char data[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x03};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	
+
 	{
 		unsigned char data[] = {0xB0, 0x20, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
-	
+
 	{
 		unsigned char data[] = {0xB1, 0x20, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
-	
+
 	{
 		unsigned char data[] = {0xB2, 0x05, 0x00, 0x00, 0x00, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	
+
 	{
 		unsigned char data[] = {0xB6, 0x05, 0x00, 0x00, 0x00, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	
+
 	{
 		unsigned char data[] = {0xB7, 0x05, 0x00, 0x00, 0x00, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	
+
 	{
 		unsigned char data[] = {0xBA, 0x57, 0x00, 0x00, 0x00, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	
+
 	{
 		unsigned char data[] = {0xBB, 0x57, 0x00, 0x00, 0x00, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	
+
 	{
 		unsigned char data[] = {0xC0, 0x00, 0x00, 0x00, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
 	}
-	
+
 	{
 		unsigned char data[] = {0xC1, 0x00, 0x00, 0x00, 0x00};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 5);
 	}
-	
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC4, 0x60);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC5, 0x40);
 	//========== PAGE3 relative END ==========
@@ -631,12 +636,12 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		unsigned char data[] = {0xF0, 0x55, 0xAA, 0x52, 0x08, 0x05};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	
+
 	{
 		unsigned char data[] = {0xBD, 0x03, 0x01, 0x03, 0x03, 0x03};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	
+
 	{
 		unsigned char data[] = {0xB0, 0x17, 0x06};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
@@ -661,17 +666,17 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		unsigned char data[] = {0xB5, 0x17, 0x06};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
 	}
-	
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xB8, 0x00);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xB9, 0x00);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xBA, 0x00);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xBB, 0x02);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xBC, 0x00);
-	
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC0, 0x07);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC4, 0x80);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC5, 0xA4);
-	
+
 	{
 		unsigned char data[] = {0xC8, 0x05, 0x30};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);
@@ -688,7 +693,7 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		unsigned char data[] = {0xCD, 0x00, 0x00, 0x3C};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 4);
 	}
-	
+
 	{
 		unsigned char data[] = {0xD1, 0x00, 0x04, 0xFD, 0x07, 0x10};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
@@ -697,14 +702,14 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		unsigned char data[] = {0xD2, 0x00, 0x05, 0x02, 0x07, 0x10};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 6);
 	}
-	
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE5, 0x06);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE6, 0x06);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE7, 0x06);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE8, 0x06);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xE9, 0x06);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xEA, 0x06);
-	
+
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xED, 0x30);
 	//========== PAGE5 relative END==========
 	//=============reload setting:reload related setting to internal circuit
@@ -715,7 +720,7 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 	//====================Normal Display================
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x35);			//sean test 
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);			//sean test /sleep out
-	msleep(10);
+	msleep(120);
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);			//sean test /display on
 	//=======================END========================
 	sean_debug("%s:----sean test----m181_innolux_send_otp_cmds----%d\n", __func__,__LINE__);
@@ -725,7 +730,7 @@ void m181_send_otp_cmds(struct intel_dsi_device *dsi)
 void m181_enable(struct intel_dsi_device *dsi)
 {
 	//struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
-	
+
 	sean_debug("%s:----sean test----m181_enable----\n", __func__);
 
 	//DRM_DEBUG_KMS("\n");
@@ -744,14 +749,14 @@ void m181_disable(struct intel_dsi_device *dsi)
 	//========== power off setting ==========
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);			//sean test /display off
 	msleep(10);
-	
+
 	{
 		unsigned char data[] = {0xC3, 0x40, 0x00,0x20};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 4);	//sean test /disable power IC
 	}
 	msleep(10);
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x10);			//sean test /sleep in
-	msleep(10);
+	msleep(120);
 	//================= END ==================
 }
 

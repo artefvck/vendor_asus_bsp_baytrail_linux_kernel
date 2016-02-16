@@ -48,10 +48,12 @@
 #define MIPI_MAN_DCS_LONG_WRITE			0x39
 
 #define NS_MHZ_RATIO 1000000
+
 #define PREPARE_CNT_MAX		0x3F
 #define EXIT_ZERO_CNT_MAX	0x3F
 #define CLK_ZERO_CNT_MAX	0xFF
 #define TRAIL_CNT_MAX		0x1F
+
 static inline u32 ceil_div(u32 numerator, u32 denominator)
 {
 	u32 result = numerator / denominator;

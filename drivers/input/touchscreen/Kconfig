@@ -23,22 +23,6 @@ config TOUCHSCREEN_88PM860X
 	  To compile this driver as a module, choose M here: the
 	  module will be called 88pm860x-ts.
 
-config TOUCHSCREEN_GT9271
-        tristate "Goodix touch screen gt901X2 support for rockchip based platform"
-        help
-          Say Y here if you have a touchscreen interface using the
-          two goodix gt901  , and your board-specific initialization
-          code includes that in its table of IIC devices.
-          If unsure, say N.
-
-config TOUCHSCREEN_ME181_GT928
-        tristate "Goodix touch screen gt901X2 support for rockchip based platform"
-        help
-          Say Y here if you have a touchscreen interface using the
-          two goodix gt901  , and your board-specific initialization
-          code includes that in its table of IIC devices.
-          If unsure, say N.
-
 config TOUCHSCREEN_ADS7846
 	tristate "ADS7846/TSC2046/AD7873 and AD(S)7843 based touchscreens"
 	depends on SPI_MASTER
@@ -105,6 +89,7 @@ config TOUCHSCREEN_AD7879_SPI
 config TOUCHSCREEN_ATMEL_MXT
 	tristate "Atmel mXT I2C Touchscreen"
 	depends on I2C
+	default n
 	help
 	  Say Y here if you have Atmel mXT series I2C touchscreen,
 	  such as AT42QT602240/ATMXT224, connected to your system.
@@ -713,6 +698,38 @@ config TOUCHSCREEN_MC13783
 	  To compile this driver as a module, choose M here: the
 	  module will be called mc13783_ts.
 
+config TOUCHSCREEN_GOODIX_GT9271
+	tristate "GOODIX 9271 touchscreen"
+	depends on I2C
+	default n
+	help
+	  Say Y here if you have a GOODIX 9271 touchscreen,
+	  If unsuer, say N.
+
+config TOUCHSCREEN_GOODIX_GT9271_ME176C
+	tristate "GOODIX 9271 touchscreen"
+	depends on I2C
+	default n
+	help
+	  Say Y here if you have a GOODIX 9271 touchscreen,
+	  If unsuer, say N.
+
+config TOUCHSCREEN_GOODIX_GT928_ME181C
+	tristate "GOODIX 928 touchscreen"
+	depends on I2C
+	default n
+	help
+	  Say Y here if you have a GOODIX 928 touchscreen,
+	  If unsuer, say N.
+
+config TOUCHSCREEN_NOVATEK_NT11205
+	bool "NOVATEK NT11205 touchscreen"
+	depends on I2C
+	default n
+	help
+	  Say Y here if you have a Novatek NT11205 touchscreen
+	  If unsure, say N.
+
 config TOUCHSCREEN_USB_EGALAX
 	default y
 	bool "eGalax, eTurboTouch CT-410/510/700 device support" if EXPERT
@@ -903,5 +920,17 @@ config TOUCHSCREEN_TPS6507X
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called tps6507x_ts.
+
+config TOUCHSCREEN_HIMAX_HX8528_ME372CL
+	bool "Himax HX8528 touchscreen"
+	depends on I2C && PF450CL
+
+config TOUCHSCREEN_HIMAX_8529
+	tristate "HIMAX 8529 touchscreen"
+	depends on I2C
+	default n
+	help
+	  Say Y here if you have a HIMAX 8529 touchscreen,
+	  If unsure, say N.
 
 endif

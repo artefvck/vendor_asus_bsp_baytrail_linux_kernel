@@ -236,4 +236,11 @@ int devm_gpio_request_one(struct device *dev, unsigned gpio,
 			  unsigned long flags, const char *label);
 void devm_gpio_free(struct device *dev, unsigned int gpio);
 
+#ifdef CONFIG_SLEEPING_BEAUTY
+struct gpio_suspend_status {
+       bool bChanged;
+       unsigned uNewSuspendValue;
+};
+#endif	// CONFIG_SLEEPING_BEAUTY
+
 #endif /* __LINUX_GPIO_H */

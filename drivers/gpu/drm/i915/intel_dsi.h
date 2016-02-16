@@ -85,6 +85,11 @@
 #define GPIO_NC_11_PCONF0               0x40F0
 #define GPIO_NC_11_PAD                  0x40F8
 
+/* Dual Link support */
+#define MIPI_DUAL_LINK_NONE		0
+#define MIPI_DUAL_LINK_FRONT_BACK	1
+#define MIPI_DUAL_LINK_PIXEL_ALT	2
+
 struct intel_dsi_device {
 	unsigned int panel_id;
 	const char *name;
@@ -168,6 +173,8 @@ struct intel_dsi {
 
 	u16 dsi_clock_freq;
 	u8 operation_mode;
+	u8 dual_link;
+	u8 pixel_overlap;
 	u8 video_mode_type;
 	u32 data_width;
 	u8 dither;
@@ -175,6 +182,7 @@ struct intel_dsi {
 	u8 escape_clk_div;
 	u32 lp_rx_timeout;
 	u8 turn_arnd_val;
+	u16 burst_mode_ratio;
 	u16 init_count;
 	u16 rst_timer_val;
 	u32 hs_to_lp_count;
@@ -184,6 +192,8 @@ struct intel_dsi {
 	u32 clk_hs_to_lp_count;
 	u32 video_frmt_cfg_bits;
 	u32 dphy_reg;
+	u32 pclk;
+	u16 port;
 
 	/* all delays in ms */
 	u8 backlight_off_delay;
@@ -209,10 +219,11 @@ extern struct intel_dsi_dev_ops auo_b101uan01_dsi_display_ops;
 extern struct intel_dsi_dev_ops panasonic_vvx09f006a00_dsi_display_ops;
 extern struct intel_dsi_dev_ops auo_b080xat_dsi_display_ops;
 extern struct intel_dsi_dev_ops jdi_lpm070w425b_dsi_display_ops;
-extern struct intel_dsi_dev_ops nov_m176_dsi_display_ops;
 extern struct intel_dsi_dev_ops vbt_generic_dsi_display_ops;
-extern struct intel_dsi_dev_ops	auo_m181_dsi_display_ops;
+extern struct intel_dsi_dev_ops b101ean01_dsi_display_ops;
+extern struct intel_dsi_dev_ops nov_m176_dsi_display_ops;
 extern struct intel_dsi_dev_ops innolux_m181_dsi_display_ops;
+extern struct intel_dsi_dev_ops auo_m181_dsi_display_ops;
 extern struct intel_dsi_dev_ops ivo_m181_dsi_display_ops;
 void intel_dsi_clear_device_ready(struct intel_encoder *encoder);
 
@@ -223,7 +234,9 @@ void intel_dsi_clear_device_ready(struct intel_encoder *encoder);
 #define	MIPI_DSI_AUO_B080XAT_PANEL_ID			0x04
 #define	MIPI_DSI_JDI_LPM070W425B_PANEL_ID		0x05
 #define	MIPI_DSI_NOV_M176_PANEL_ID		0x06
-#define MIPI_DSI_AUO_M181_PANEL_ID		0x07
+#define	MIPI_DSI_AUO_B101EAN01_PANEL_ID         0x07
 #define MIPI_DSI_INNOLUX_M181_PANEL_ID		0x08
-#define MIPI_DSI_IVO_M181_PANEL_ID		0x09
+#define MIPI_DSI_AUO_M181_PANEL_ID		0x09
+#define MIPI_DSI_IVO_M181_PANEL_ID		0x0A
+
 #endif /* _INTEL_DSI_H */

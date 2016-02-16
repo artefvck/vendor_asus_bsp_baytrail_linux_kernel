@@ -125,6 +125,9 @@ struct thermal_zone_device_ops {
 	int (*set_slope) (struct thermal_zone_device *, long);
 	int (*get_intercept) (struct thermal_zone_device *, long *);
 	int (*set_intercept) (struct thermal_zone_device *, long);
+	//[Rock-20141014+ATD for ThermalCheck]>>
+	int (*check_thermal) (struct thermal_zone_device *, unsigned long *);
+	//[Rock-20141014+ATD for ThermalCheck]<<
 	int (*get_crit_temp) (struct thermal_zone_device *, long *);
 	int (*set_emul_temp) (struct thermal_zone_device *, unsigned long);
 	int (*get_trend) (struct thermal_zone_device *, int,

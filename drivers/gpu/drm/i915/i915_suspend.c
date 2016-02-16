@@ -27,6 +27,7 @@
 #include <linux/console.h>
 #include <drm/drmP.h>
 #include <drm/i915_drm.h>
+#include <linux/mfd/intel_mid_pmic.h>
 #include "intel_drv.h"
 #include "i915_reg.h"
 #include "intel_clrmgr.h"
@@ -795,25 +796,22 @@ static int valleyview_freeze(struct drm_device *dev)
 	u32 reg;
 	u32 i;
 
-	/* Disable crct if audio driver prevented that earlier */
-	if (!dev_priv->audio_suspended) {
-		drm_modeset_lock_all(dev);
-
-		/* audio was not suspended earlier; now we should
-		 * disable the crtc */
-		list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-			struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-			if (intel_crtc->pipe == PIPE_B) {
-				dev_priv->display.crtc_disable(crtc);
-				dev_priv->audio_suspended = true;
-				break;
-			}
-		}
-		drm_modeset_unlock_all(dev);
+	drm_modeset_lock_all(dev);
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+		if ((intel_crtc->pipe == PIPE_B)
+			&& (!dev_priv->audio_suspended)) {
+			/* audio was not suspended earlier
+			 * now we should disable the crtc
+			 * and turn-off HDMI
+			 */
+			dev_priv->audio_suspended = true;
+			dev_priv->display.crtc_disable(crtc);
+			intel_mid_pmic_writeb(VHDMICNT, VHDMI_OFF);
+		} else
+			dev_priv->display.crtc_disable(crtc);
 	}
-
-	/* Save Hue/Saturation/Brightness/Contrast status */
-	intel_save_clr_mgr_status(dev);
+	drm_modeset_unlock_all(dev);
 
 	pci_save_state(dev->pdev);
 
@@ -1024,14 +1022,15 @@ static int valleyview_thaw(struct drm_device *dev)
 	I915_WRITE(VLV_GTLC_SURVIVABILITY_REG, reg);
 
 	program_pfi_credits(dev_priv, true);
+
 	/* Disable both bend spread initially */
 	dev_priv->clockspread = false;
 	dev_priv->clockbend = false;
 	dev_priv->unplug = false;
 	valleyview_program_clock_bending(
-		dev_priv, &clockbend);
+			dev_priv, &clockbend);
 	valleyview_program_clock_spread(
-		dev_priv, &clockspread);
+			dev_priv, &clockspread);
 
 	return error;
 }

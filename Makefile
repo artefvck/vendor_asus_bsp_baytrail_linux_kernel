@@ -375,6 +375,12 @@ KBUILD_CFLAGS   := $(ANDROID_TOOLCHAIN_FLAGS) \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
 		   -fno-delete-null-pointer-checks
+
+# add include path for platform and modules to use the ASUSTEK BOARD INFO
+ifeq ($(SRCARCH), x86)
+	KBUILD_CFLAGS += -I$(srctree)/arch/x86/platform/asustek/include
+endif
+
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
 KBUILD_AFLAGS   := -D__ASSEMBLY__

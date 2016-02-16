@@ -72,6 +72,11 @@ obj-$(CONFIG_TOUCHSCREEN_WM97XX_MAINSTONE)	+= mainstone-wm97xx.o
 obj-$(CONFIG_TOUCHSCREEN_WM97XX_ZYLONITE)	+= zylonite-wm97xx.o
 obj-$(CONFIG_TOUCHSCREEN_W90X900)	+= w90p910_ts.o
 obj-$(CONFIG_TOUCHSCREEN_TPS6507X)	+= tps6507x-ts.o
-obj-$(CONFIG_TOUCHSCREEN_GT9271)		+= gt9271.o goodix_tool.o gt9xx_update.o 176_openshort.o AllAccordCheck.o AreaAccordCheck.o
-obj-$(CONFIG_TOUCHSCREEN_ME181_GT928)		+= me181_gt928.o me181_goodix_tool.o me181_gt9xx_update.o me181_AllAccordCheck.o \
-																							me181_AreaAccordCheck.o me181_openshort.o
+obj-$(CONFIG_TOUCHSCREEN_HIMAX_HX8528_ME372CL) += hx8528_me372cl.o
+obj-$(CONFIG_TOUCHSCREEN_HIMAX_8529)	+= hx8529.o
+obj-$(CONFIG_TOUCHSCREEN_GOODIX_GT9271) += gt9271.o gt9xx_update.o goodix_tool.o 176_openshort.o AllAccordCheck.o AreaAccordCheck.o
+obj-$(CONFIG_TOUCHSCREEN_NOVATEK_NT11205) += nt11205_me176c.o
+obj-$(CONFIG_TOUCHSCREEN_GOODIX_GT928_ME181C) += me181_gt928.o me181_goodix_tool.o me181_gt9xx_update.o me181_AllAccordCheck.o \
+													me181_AreaAccordCheck.o me181_openshort.o
+obj-$(CONFIG_TOUCHSCREEN_GOODIX_GT9271_ME176C) += me176c_gt9271.o me176c_goodix_tool.o me176c_gt9xx_update.o me176c_AllAccordCheck.o \
+													me176c_AreaAccordCheck.o me176c_openshort.o

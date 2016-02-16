@@ -643,6 +643,7 @@ extern int dpm_suspend_end(pm_message_t state);
 extern int dpm_suspend_start(pm_message_t state);
 extern int dpm_suspend(pm_message_t state);
 extern int dpm_prepare(pm_message_t state);
+extern void dump_pmic_register(const char* message);
 
 extern void __suspend_report_result(const char *function, void *fn, int ret);
 

@@ -402,8 +402,11 @@ static ssize_t mei_write(struct file *file, const char __user *ubuf,
 		goto out;
 	}
 	rets = mei_io_cb_alloc_req_buf(write_cb, length);
-	if (rets)
+	if (rets) {
+		dev_warn(&dev->pdev->dev,
+			"failed to allocate req buffer, err = %d\n", rets);
 		goto out;
+	}
 
 	rets = copy_from_user(write_cb->request_buffer.data, ubuf, length);
 	if (rets) {
@@ -474,12 +477,11 @@ static int mei_ioctl_connect_client(struct file *file,
 	if (i < 0 || dev->me_clients[i].props.fixed_address) {
 		dev_dbg(&dev->pdev->dev, "Cannot connect to FW Client UUID = %pUl\n",
 				&data->in_client_uuid);
-		rets = -ENODEV;
+		rets = -ENOTTY;
 		goto end;
 	}
 
 	cl->me_client_id = dev->me_clients[i].client_id;
-	cl->state = MEI_FILE_CONNECTING;
 
 	dev_dbg(&dev->pdev->dev, "Connect to FW Client ID = %d\n",
 			cl->me_client_id);
@@ -677,8 +679,7 @@ static unsigned int mei_poll(struct file *file, poll_table *wait)
 		goto out;
 	}
 
-	if (MEI_WRITE_COMPLETE == cl->writing_state)
-		mask |= (POLLIN | POLLRDNORM);
+	mask |= (POLLIN | POLLRDNORM);
 
 out:
 	mutex_unlock(&dev->device_lock);

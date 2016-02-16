@@ -1462,7 +1462,7 @@ void get_monotonic_boottime(struct timespec *ts)
 	s64 nsec;
 	unsigned int seq;
 
-	WARN_ON(timekeeping_suspended);
+	//WARN_ON(timekeeping_suspended);
 
 	do {
 		seq = read_seqcount_begin(&timekeeper_seq);

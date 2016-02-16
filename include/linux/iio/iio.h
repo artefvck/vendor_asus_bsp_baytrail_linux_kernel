@@ -14,6 +14,7 @@
 #include <linux/cdev.h>
 #include <linux/iio/types.h>
 #include <linux/iio/consumer.h>
+#include <linux/iio/events.h>
 
 /* IIO TODO LIST */
 /*
@@ -39,6 +40,76 @@ enum iio_chan_info_enum {
 	IIO_CHAN_INFO_HARDWAREGAIN,
 	IIO_CHAN_INFO_HYSTERESIS,
 };
+
+#define IIO_CHAN_INFO_SHARED_BIT(type) BIT(type*2)
+#define IIO_CHAN_INFO_SEPARATE_BIT(type) BIT(type*2 + 1)
+#define IIO_CHAN_INFO_BITS(type) (IIO_CHAN_INFO_SHARED_BIT(type) | \
+					IIO_CHAN_INFO_SEPARATE_BIT(type))
+
+#define IIO_CHAN_INFO_RAW_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_RAW)
+#define IIO_CHAN_INFO_PROCESSED_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_PROCESSED)
+#define IIO_CHAN_INFO_SCALE_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_SCALE)
+#define IIO_CHAN_INFO_SCALE_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_SCALE)
+#define IIO_CHAN_INFO_OFFSET_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_OFFSET)
+#define IIO_CHAN_INFO_OFFSET_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_OFFSET)
+#define IIO_CHAN_INFO_CALIBSCALE_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_CALIBSCALE)
+#define IIO_CHAN_INFO_CALIBSCALE_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_CALIBSCALE)
+#define IIO_CHAN_INFO_CALIBBIAS_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_CALIBBIAS)
+#define IIO_CHAN_INFO_CALIBBIAS_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_CALIBBIAS)
+#define IIO_CHAN_INFO_PEAK_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_PEAK)
+#define IIO_CHAN_INFO_PEAK_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_PEAK)
+#define IIO_CHAN_INFO_PEAKSCALE_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_PEAKSCALE)
+#define IIO_CHAN_INFO_PEAKSCALE_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_PEAKSCALE)
+#define IIO_CHAN_INFO_QUADRATURE_CORRECTION_RAW_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT( \
+			IIO_CHAN_INFO_QUADRATURE_CORRECTION_RAW)
+#define IIO_CHAN_INFO_QUADRATURE_CORRECTION_RAW_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT( \
+			IIO_CHAN_INFO_QUADRATURE_CORRECTION_RAW)
+#define IIO_CHAN_INFO_AVERAGE_RAW_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_AVERAGE_RAW)
+#define IIO_CHAN_INFO_AVERAGE_RAW_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_AVERAGE_RAW)
+#define IIO_CHAN_INFO_LOW_PASS_FILTER_3DB_FREQUENCY_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT( \
+			IIO_CHAN_INFO_LOW_PASS_FILTER_3DB_FREQUENCY)
+#define IIO_CHAN_INFO_LOW_PASS_FILTER_3DB_FREQUENCY_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT( \
+			IIO_CHAN_INFO_LOW_PASS_FILTER_3DB_FREQUENCY)
+#define IIO_CHAN_INFO_SAMP_FREQ_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_SAMP_FREQ)
+#define IIO_CHAN_INFO_SAMP_FREQ_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_SAMP_FREQ)
+#define IIO_CHAN_INFO_FREQUENCY_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_FREQUENCY)
+#define IIO_CHAN_INFO_FREQUENCY_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_FREQUENCY)
+#define IIO_CHAN_INFO_PHASE_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_PHASE)
+#define IIO_CHAN_INFO_PHASE_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_PHASE)
+#define IIO_CHAN_INFO_HARDWAREGAIN_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_HARDWAREGAIN)
+#define IIO_CHAN_INFO_HARDWAREGAIN_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_HARDWAREGAIN)
+#define IIO_CHAN_INFO_HYSTERESIS_SEPARATE_BIT \
+	IIO_CHAN_INFO_SEPARATE_BIT(IIO_CHAN_INFO_HYSTERESIS)
+#define IIO_CHAN_INFO_HYSTERESIS_SHARED_BIT \
+	IIO_CHAN_INFO_SHARED_BIT(IIO_CHAN_INFO_HYSTERESIS)
 
 enum iio_endian {
 	IIO_CPU,
@@ -133,6 +204,29 @@ ssize_t iio_enum_write(struct iio_dev *indio_dev,
 }
 
 /**
+ * struct iio_event_spec - specification for a channel event
+ * @type:		    Type of the event
+ * @dir:		    Direction of the event
+ * @mask_separate:	    Bit mask of enum iio_event_info values. Attributes
+ *			    set in this mask will be registered per channel.
+ * @mask_shared_by_type:    Bit mask of enum iio_event_info values. Attributes
+ *			    set in this mask will be shared by channel type.
+ * @mask_shared_by_dir:	    Bit mask of enum iio_event_info values. Attributes
+ *			    set in this mask will be shared by channel type and
+ *			    direction.
+ * @mask_shared_by_all:	    Bit mask of enum iio_event_info values. Attributes
+ *			    set in this mask will be shared by all channels.
+ */
+struct iio_event_spec {
+	enum iio_event_type type;
+	enum iio_event_direction dir;
+	unsigned long mask_separate;
+	unsigned long mask_shared_by_type;
+	unsigned long mask_shared_by_dir;
+	unsigned long mask_shared_by_all;
+};
+
+/**
  * struct iio_chan_spec - specification of a single channel
  * @type:		What type of measurement is the channel making.
  * @channel:		What number do we wish to assign the channel.
@@ -192,6 +286,8 @@ struct iio_chan_spec {
 	long			info_mask_separate;
 	long			info_mask_shared_by_type;
 	long			event_mask;
+	const struct iio_event_spec *event_spec;
+	unsigned int            num_event_specs;
 	const struct iio_chan_spec_ext_info *ext_info;
 	const char		*extend_name;
 	const char		*datasheet_name;
@@ -269,7 +365,7 @@ struct iio_dev;
  * @read_event_config:	find out if the event is enabled.
  * @write_event_config:	set if the event is enabled.
  * @read_event_value:	read a value associated with the event. Meaning
- *			is event dependant. event_code specifies which event.
+ *			is event dependant.
  * @write_event_value:	write the value associated with the event.
  *			Meaning is event dependent.
  * @validate_trigger:	function to validate the trigger when the
@@ -310,11 +406,17 @@ struct iio_info {
 				  int state);
 
 	int (*read_event_value)(struct iio_dev *indio_dev,
-				u64 event_code,
-				int *val);
+				const struct iio_chan_spec *chan,
+				enum iio_event_type type,
+				enum iio_event_direction dir,
+				enum iio_event_info info, int *val, int *val2);
+
 	int (*write_event_value)(struct iio_dev *indio_dev,
-				 u64 event_code,
-				 int val);
+				 const struct iio_chan_spec *chan,
+				 enum iio_event_type type,
+				 enum iio_event_direction dir,
+				 enum iio_event_info info, int val, int val2);
+
 	int (*validate_trigger)(struct iio_dev *indio_dev,
 				struct iio_trigger *trig);
 	int (*update_scan_mode)(struct iio_dev *indio_dev,

@@ -357,6 +357,10 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 	}
 
 	state = decode_state(buf, n);
+
+	if (debug_suspend_enabled)
+		printk("%s: state is : %s \n", __func__, buf);
+
 	if (state < PM_SUSPEND_MAX) {
 #ifdef CONFIG_EARLYSUSPEND
 		if (state == PM_SUSPEND_ON || valid_state(state)) {

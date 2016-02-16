@@ -22,17 +22,17 @@
   #ifdef  uG31xx_BOOT_LOADER
 
     #include "ug31xx_boot.h"
-    
+
   #else   ///< else of uG31xx_BOOT_LOADER
 
     #ifdef  ANDROID_SHELL_ALGORITHM
 
       #include "upi_algorithm.h"
-      
+
     #else   ///< else of ANDROID_SHELL_ALGORITHM
-    
+
       #include "ug31xx_gauge.h"
-    
+
     #endif  ///< end of ANDROID_SHELL_ALGORITHM
 
   #endif	///< end of uG31xx_BOOT_LOADER
@@ -45,11 +45,15 @@
   #define UG31XX_DRIVER_VERSION_STR   (_T("Windows"))
   #define UG31XX_DRIVER_RELEASE_NOTE  (_T("API"))
   #define UG31XX_DRIVER_RELEASE_DATE  (_T("No Release Date"))
-  
+
 #endif  ///< end of uG31xx_OS_WINDOWS
 
 #define UG31XX_I2C_HIGH_SPEED_MODE    (_UPI_FALSE_)
 #define UG31XX_I2C_TEM_BITS_MODE      (_UPI_FALSE_)
+
+extern CELL_TABLE *ptrCellTable;
+extern CELL_PARAMETER *ptrCellParameter;
+extern GGBX_FILE_HEADER *ptrGgbBuf;
 
 /* data struct */
 typedef enum _GGSTATUS{
@@ -123,7 +127,7 @@ typedef enum _GGSTATUS{
 /*
     GGSTATUS upiGG_ReadDevieRegister
     Description: Read GG_USER_REG from device to global variable and output
-    Input: Pointer of sturct GG_USER_REG 
+    Input: Pointer of sturct GG_USER_REG
 	Output: UG_READ_REG_SUCCESS -> read success
 	        UG_READ_REG_FAIL -> read fail
 */
@@ -147,10 +151,10 @@ EXPORTS void upiGG_ReadCapacity(char *pObj,GG_CAPACITY *pExtCapacity);
 
 #if defined (uG31xx_OS_WINDOWS)
 
-EXPORTS void upiGG_AlgorithmSimulatorInit(char **pObj, const wchar_t* GGBFilename, 
+EXPORTS void upiGG_AlgorithmSimulatorInit(char **pObj, const wchar_t* GGBFilename,
                                                    MeasDataType *pMeasure, GG_CAP_LOG_TYPE *pCap,
                                                    _upi_u8_ *NacTable);
-EXPORTS void upiGG_AlgorithmSimulatorRead(char *pObj, MeasDataType *pMeasure, 
+EXPORTS void upiGG_AlgorithmSimulatorRead(char *pObj, MeasDataType *pMeasure,
                                                       GG_CAP_LOG_TYPE *pCap, _upi_u8_ *NacTable);
 EXPORTS void upiGG_AlgorithmSimulatorClose(char **pObj);
 
@@ -402,9 +406,9 @@ typedef struct GG_FETCH_DEBUG_DATA_ST {
   int measCodeCurrentBeforeCal;
   int measCodeITBeforeCal;
   int measCodeETBeforeCal;
-  
+
   int sysOscFrequency;
-  
+
 } ALIGNED_ATTRIBUTE GG_FETCH_DEBUG_DATA_TYPE;
 
 /**
@@ -449,13 +453,13 @@ EXPORTS void upiGG_BackupFileSwitch(_upi_bool_ enable);
  * @return  UG_CAP_DATA_STATUS
  */
 #if defined (uG31xx_OS_WINDOWS)
-  
+
     EXPORTS _upi_u8_ upiGG_BackupFileCheck(char *pObj, const wchar_t* BackupFileName, const wchar_t *SuspendFileName);
-  
+
 #else
-  
+
     _upi_u8_ upiGG_BackupFileCheck(char *pObj, char *BackupFileName, char *SuspendFileName);
-  
+
 #endif
 
 /**
@@ -495,7 +499,7 @@ EXPORTS void upiGG_InternalSuspendMode(char *pObj, _upi_bool_ inSuspend);
 
   EXPORTS void upiGG_BackupMemory(char *pObj, const wchar_t* BackupFileName);
   EXPORTS void upiGG_RecoveryMemory(char *pObj, const wchar_t* BackupFileName);
-  
+
 #endif  ///< end of defined (uG31xx_OS_WINDOWS)
 
 #ifndef uG31xx_BOOT_LOADER
@@ -510,7 +514,7 @@ EXPORTS int upiGG_SetCycleCount(char *pObj, _upi_u16_ value);
 
 EXPORTS void upiGG_ReverseCurrent(char *pObj, _upi_bool_ reverse);
 
-EXPORTS void upiGG_AdjustCellTable(char *pObj, _upi_u16_ designCap);
+EXPORTS void upiGG_AdjustCellTable(CapacityDataType *data);
 
 EXPORTS GGSTATUS upiGG_GetNtcStatus(char *pObj);
 
@@ -542,4 +546,3 @@ EXPORTS void upiGG_ShellUpdateCC(char *pObj);
 /// ===========================================
 /// End of uG31xx_API.h
 /// ===========================================
-

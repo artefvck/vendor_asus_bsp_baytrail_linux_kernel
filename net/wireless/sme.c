@@ -330,8 +330,6 @@ void cfg80211_sme_scan_done(struct net_device *dev)
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 
-	if (!wdev) return;
-
 	wdev_lock(wdev);
 	__cfg80211_sme_scan_done(dev);
 	wdev_unlock(wdev);
@@ -746,8 +744,6 @@ void __cfg80211_disconnected(struct net_device *dev, const u8 *ie,
 	wireless_send_event(dev, SIOCGIWAP, &wrqu, NULL);
 	wdev->wext.connect.ssid_len = 0;
 #endif
-
-	schedule_work(&cfg80211_disconnect_work);
 }
 
 void cfg80211_disconnected(struct net_device *dev, u16 reason,
@@ -958,6 +954,8 @@ int __cfg80211_disconnect(struct cfg80211_registered_device *rdev,
 	int err;
 
 	ASSERT_WDEV_LOCK(wdev);
+
+	schedule_work(&cfg80211_disconnect_work);
 
 	if (wdev->sme_state == CFG80211_SME_IDLE)
 		return -EINVAL;

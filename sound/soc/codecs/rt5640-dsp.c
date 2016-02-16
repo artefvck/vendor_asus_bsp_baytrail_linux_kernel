@@ -240,7 +240,7 @@ static int rt5640_dsp_done(struct snd_soc_codec *codec)
  *
  * Returns 0 for success or negative error code.
  */
-static int rt5640_dsp_write(struct snd_soc_codec *codec,
+int rt5640_dsp_write(struct snd_soc_codec *codec,
 			    struct rt5640_dsp_param *param)
 {
 	unsigned int dsp_val;
@@ -292,7 +292,7 @@ err:
  *
  * Returns DSP register value or negative error code.
  */
-static unsigned int rt5640_dsp_read(struct snd_soc_codec *codec,
+unsigned int rt5640_dsp_read(struct snd_soc_codec *codec,
 				    unsigned int reg)
 {
 	unsigned int val_h, val_l, value;

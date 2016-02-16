@@ -185,7 +185,11 @@ static int clv_sdio_setup(struct sdhci_pci_data *data)
 	struct pci_dev *pdev = data->pdev;
 	/* Control card power through a regulator */
 	wlan_vmmc_supply.dev_name = dev_name(&pdev->dev);
+#ifdef CONFIG_PF450CL
+	vwlan.gpio = get_gpio_by_name("WL_BT_EN");
+#else
 	vwlan.gpio = get_gpio_by_name("WLAN-enable");
+#endif
 	if (vwlan.gpio < 0)
 		pr_err("%s: No WLAN-enable GPIO in SFI table\n",
 	       __func__);
@@ -369,6 +373,21 @@ static int mrfl_sd_setup(struct sdhci_pci_data *data)
 /* Board specific cleanup related to SD goes here */
 static void mrfl_sd_cleanup(struct sdhci_pci_data *data)
 {
+	u8 vldocnt = 0;
+	int err;
+
+	err = intel_scu_ipc_ioread8(MRFLD_PMIC_VLDOCNT, &vldocnt);
+	if (err) {
+		pr_err("PMIC vldocnt IPC read error: %d\n", err);
+		return;
+	}
+
+	vldocnt &= MRFLD_PMIC_VLDOCNT_PW_OFF;
+	err = intel_scu_ipc_iowrite8(MRFLD_PMIC_VLDOCNT, vldocnt);
+	if (err)
+		pr_err("PMIC vldocnt IPC write error: %d\n", err);
+
+	return;
 }
 
 /* Board specific setup related to SDIO goes here */
@@ -437,7 +456,7 @@ static int byt_sdio_setup(struct sdhci_pci_data *data)
 {
 	struct pci_dev *pdev = data->pdev;
 #ifdef CONFIG_ACPI
-	acpi_handle handle = NULL;
+	acpi_handle handle;
 	acpi_status status;
 #endif
 
@@ -446,12 +465,10 @@ static int byt_sdio_setup(struct sdhci_pci_data *data)
 
 #ifdef CONFIG_ACPI
 	status = acpi_get_handle(NULL, "\\_SB.SDHB", &handle);
-	if (ACPI_FAILURE(status)){
+	if (ACPI_FAILURE(status))
 		pr_err("wlan: cannot get SDHB acpi handle");
-	}else {
-		ACPI_HANDLE_SET(&pdev->dev, handle);
-		vwlan.gpio = acpi_get_gpio_by_index(&pdev->dev, 0, NULL);
-	}
+	ACPI_HANDLE_SET(&pdev->dev, handle);
+	vwlan.gpio = acpi_get_gpio_by_index(&pdev->dev, 0, NULL);
 #endif
 
 	if (vwlan.gpio < 0) {
@@ -507,6 +524,8 @@ static struct sdhci_pci_data moor_sdhci_pci_data[] = {
 			.cd_gpio = -EINVAL,
 			.quirks = 0,
 			.platform_quirks = 0,
+			.tpru = 1,
+			.tramp = 1,
 			.setup = 0,
 			.cleanup = 0,
 			.power_up = panic_mode_emmc0_power_up,
@@ -519,7 +538,7 @@ static struct sdhci_pci_data moor_sdhci_pci_data[] = {
 			.quirks = 0,
 			.platform_quirks = 0,
 			.setup = mrfl_sd_setup,
-			.cleanup = 0,
+			.cleanup = mrfl_sd_cleanup,
 			.power_up = 0,
 	},
 	[SDIO_INDEX] = {

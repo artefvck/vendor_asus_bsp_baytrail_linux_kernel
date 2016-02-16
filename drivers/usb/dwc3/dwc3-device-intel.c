@@ -121,9 +121,13 @@ static void dwc3_enable_host_auto_retry(struct dwc3 *dwc, bool enable)
 
 static void dwc3_do_extra_change(struct dwc3 *dwc)
 {
-	u32		reg;
+	struct intel_dwc_otg_pdata	*pdata;
+	struct dwc_otg2			*otg;
+	struct usb_phy			*usb_phy;
+	u32				reg;
 
-	dwc3_set_flis_reg();
+	if (!dwc3_is_cht())
+		dwc3_set_flis_reg();
 
 	if (dwc->revision == DWC3_REVISION_250A)
 		dwc3_disable_multi_packet(dwc);
@@ -145,6 +149,23 @@ static void dwc3_do_extra_change(struct dwc3 *dwc)
 	reg &= ~DWC3_GCTL_PWRDNSCALE_MASK;
 	reg |= DWC3_GCTL_PWRDNSCALE(0x4E2);
 	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+
+	/* Program ULPI PHY VS1(0x80) register to improve eye diagram quality.*/
+	if (!dwc->utmi_phy) {
+		/* Get the optimized value for VS1 from pdata */
+		otg = dwc3_get_otg();
+		if (otg && otg->otg_data) {
+			pdata = otg->otg_data;
+			if (pdata->ulpi_eye_calibration) {
+				usb_phy = usb_get_phy(USB_PHY_TYPE_USB2);
+				if (usb_phy)
+					usb_phy_io_write(usb_phy,
+						pdata->ulpi_eye_calibration,
+						TUSB1211_VENDOR_SPECIFIC1_SET);
+				usb_put_phy(usb_phy);
+			}
+		}
+	}
 }
 
 static void dwc3_enable_hibernation(struct dwc3 *dwc, bool on)
@@ -184,7 +205,6 @@ static irqreturn_t dwc3_quirks_process_event_buf(struct dwc3 *dwc, u32 buf)
 {
 	struct dwc3_event_buffer *evt;
 	u32 count;
-	u32 reg;
 	int left;
 
 	evt = dwc->ev_buffs[buf];
@@ -205,7 +225,8 @@ static irqreturn_t dwc3_quirks_process_event_buf(struct dwc3 *dwc, u32 buf)
 	/* WORKAROUND: Add 4 us delay as moorfield seems to have memory
 	 * inconsistent issue
 	 */
-	if (INTEL_MID_BOARD(1, PHONE, MOFD))
+	if (INTEL_MID_BOARD(1, PHONE, MOFD) ||
+		INTEL_MID_BOARD(1, TABLET, MOFD))
 		udelay(4);
 
 	left = evt->count;
@@ -388,7 +409,6 @@ int dwc3_stop_peripheral(struct usb_gadget *g)
 	mutex_unlock(&_dev_data->mutex);
 
 	cancel_delayed_work_sync(&dwc->link_work);
-	cancel_work_sync(&dwc->reconnect_work);
 
 	wake_unlock(&_dev_data->wake_lock);
 
@@ -414,8 +434,16 @@ static int dwc3_device_gadget_pullup(struct usb_gadget *g, int is_on)
 		return -EIO;
 	}
 
-	if (dwc->pm_state == PM_SUSPENDED)
-		pm_runtime_get_sync(dwc->dev);
+	if (dwc->pm_state == PM_SUSPENDED) {
+
+		/* WORKAROUND Wait 300 ms and check if the state is still PM_SUSPENDED
+		 * before resuming the controller. This avoids resuming the controller
+		 * during enumeration and causing PHY hangs.
+		 */
+		msleep(300);
+		if (dwc->pm_state == PM_SUSPENDED)
+			pm_runtime_get_sync(dwc->dev);
+	}
 
 	is_on = !!is_on;
 
@@ -580,8 +608,10 @@ static int dwc3_device_intel_probe(struct platform_device *pdev)
 	dwc->regs   = pdata->io_addr + DWC3_GLOBALS_REGS_START;
 	dwc->regs_size  = pdata->len - DWC3_GLOBALS_REGS_START;
 	dwc->dev	= dev;
-	if (otg_data->usb2_phy_type == USB2_PHY_UTMI)
+	if (otg_data && otg_data->usb2_phy_type == USB2_PHY_UTMI)
 		dwc->utmi_phy = 1;
+	if (otg_data)
+		dwc->hiber_enabled = !!otg_data->device_hibernation;
 
 	dev->dma_mask	= dev->parent->dma_mask;
 	dev->dma_parms	= dev->parent->dma_parms;
@@ -598,7 +628,8 @@ static int dwc3_device_intel_probe(struct platform_device *pdev)
 	else
 		dwc->maximum_speed = DWC3_DCFG_SUPERSPEED;
 
-	dwc->needs_fifo_resize = of_property_read_bool(node, "tx-fifo-resize");
+	if (otg_data)
+		dwc->needs_fifo_resize = !!otg_data->tx_fifo_resize;
 
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(dev);
@@ -609,8 +640,9 @@ static int dwc3_device_intel_probe(struct platform_device *pdev)
 	dwc3_cache_hwparams(dwc);
 	dwc3_core_num_eps(dwc);
 
-	_dev_data->flis_reg =
-		ioremap_nocache(APBFC_EXIOTG3_MISC0_REG, 4);
+	if (!dwc3_is_cht())
+		_dev_data->flis_reg =
+			ioremap_nocache(APBFC_EXIOTG3_MISC0_REG, 4);
 
 	ret = dwc3_alloc_event_buffers(dwc, DWC3_EVENT_BUFFERS_SIZE);
 	if (ret) {
@@ -626,6 +658,10 @@ static int dwc3_device_intel_probe(struct platform_device *pdev)
 	dwc->quirks_disable_irqthread = 1;
 
 	usb_phy = usb_get_phy(USB_PHY_TYPE_USB2);
+	if (!usb_phy) {
+		dev_err(dev, "failed to get usb2 phy\n");
+		return -ENODEV;
+	}
 	otg = container_of(usb_phy, struct dwc_otg2, usb2_phy);
 	otg->start_device = dwc3_start_peripheral;
 	otg->stop_device = dwc3_stop_peripheral;

@@ -38,9 +38,10 @@
 #include "intel_dsi.h"
 #include "intel_dsi_cmd.h"
 #include "dsi_mod_vbt_generic.h"
-#include <linux/acpi_gpio.h>	//pbtest
-#include <linux/acpi.h>			//pbtest
-#include <linux/gpio.h>			//pbtest
+#if defined (CONFIG_ME176CE)
+#include <linux/gpio.h>
+#endif
+
 struct gpio_table gtable[] = {
 	{ GPI0_NC_0_HV_DDI0_HPD, GPIO_NC_0_HV_DDI0_PAD, 0 },
 	{ GPIO_NC_1_HV_DDI0_DDC_SDA, GPIO_NC_1_HV_DDI0_DDC_SDA_PAD, 0 },
@@ -68,6 +69,8 @@ static u8 *mipi_exec_send_packet(struct intel_dsi *intel_dsi, u8 *data)
 
 	/* LP or HS mode */
 	intel_dsi->hs = mode;
+
+	intel_dsi->port = port;
 
 	/* get packet type and increment the pointer */
 	type = *data++;
@@ -115,6 +118,7 @@ static u8 *mipi_exec_send_packet(struct intel_dsi *intel_dsi, u8 *data)
 static u8 *mipi_exec_delay(struct intel_dsi *intel_dsi, u8 *data)
 {
 	u32 delay = *((u32 *) data);
+
 	DRM_DEBUG_DRIVER("MIPI: executing delay element\n");
 	usleep_range(delay, delay + 10);
 	data += 4;
@@ -182,11 +186,11 @@ static void generic_exec_sequence(struct intel_dsi *intel_dsi, char *sequence)
 	FN_MIPI_ELEM_EXEC mipi_elem_exec;
 	int index;
 
-
 	if (!sequence)
 		return;
 
-    DRM_DEBUG_DRIVER("Starting MIPI sequence - %s\n", seq_name[*data]);
+	DRM_DEBUG_DRIVER("Starting MIPI sequence - %s\n", seq_name[*data]);
+
 	/* go to the first element of the sequence */
 	data++;
 
@@ -213,16 +217,17 @@ static void generic_exec_sequence(struct intel_dsi *intel_dsi, char *sequence)
 
 static void generic_get_panel_info(int pipe, struct drm_connector *connector)
 {
+	struct intel_connector *intel_connector = to_intel_connector(connector);
+
 	DRM_DEBUG_KMS("\n");
+
 	if (!connector)
 		return;
 
 	if (pipe == 0) {
-		/* FIXME: Fill from VBT */
-		connector->display_info.width_mm = 0;
-		connector->display_info.height_mm = 0;
+		connector->display_info.width_mm = intel_connector->panel.fixed_mode->width_mm;
+		connector->display_info.height_mm =  intel_connector->panel.fixed_mode->height_mm;
 	}
-
 	return;
 }
 
@@ -232,41 +237,49 @@ bool generic_init(struct intel_dsi_device *dsi)
 	struct drm_device *dev = intel_dsi->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct mipi_config *mipi_config = dev_priv->vbt.dsi.config;
-//	unsigned long pixel_clock;
 	struct mipi_pps_data *pps = dev_priv->vbt.dsi.pps;
 	struct drm_display_mode *mode = dev_priv->vbt.lfp_lvds_vbt_mode;
 	u32 bits_per_pixel = 24;
 	u32 tlpx_ns, extra_byte_count, bitrate, tlpx_ui;
-//	struct drm_display_mode *mode = dev_priv->vbt.lfp_lvds_vbt_mode;
 	u32 ui_num, ui_den;
 	u32 prepare_cnt, exit_zero_cnt, clk_zero_cnt, trail_cnt;
 	u32 ths_prepare_ns, tclk_trail_ns;
 	u32 tclk_prepare_clkzero, ths_prepare_hszero;
-	int reset_inno = -1;	//pbtest
+	u32 pclk, computed_ddr;
+	u16 burst_mode_ratio;
+
 	DRM_DEBUG_KMS("\n");
 
-//	intel_dsi->channel = 0;
-//	intel_dsi->eot_disable = mipi_config->eot_disabled ? 0 : 1;
 	intel_dsi->eotp_pkt = mipi_config->eot_disabled ? 0 : 1;
 	intel_dsi->clock_stop = mipi_config->clk_stop ? 1 : 0;
 	intel_dsi->lane_count = mipi_config->lane_cnt + 1;
 	intel_dsi->pixel_format = mipi_config->videomode_color_format << 7;
+	intel_dsi->dual_link = mipi_config->dual_link;
+	intel_dsi->pixel_overlap = mipi_config->pixel_overlap;
 
-	/*
-	 * If DSI DDR clock frequency is not present in VBT,
-	 * calculate and initialize dsi_clock_freq
-	 */
+	intel_dsi->port = 0;
 
-		if (intel_dsi->pixel_format == VID_MODE_FORMAT_RGB666)
-			bits_per_pixel = 18;
-		else if (intel_dsi->pixel_format == VID_MODE_FORMAT_RGB565)
-			bits_per_pixel = 16;
+	if (intel_dsi->pixel_format == VID_MODE_FORMAT_RGB666)
+		bits_per_pixel = 18;
+	else if (intel_dsi->pixel_format == VID_MODE_FORMAT_RGB565)
+		bits_per_pixel = 16;
 
-//	/* in Kbps */
-//	bitrate = intel_dsi->dsi_clock_freq * 1024;
-//	ui_num = bitrate;
-//	ui_den = NS_MHZ_RATIO;
-	bitrate = (mode->clock * bits_per_pixel) / intel_dsi->lane_count;
+	pclk = mode->clock;
+
+	/* In dual link mode each port needs half of pixel clock */
+	if (intel_dsi->dual_link) {
+		pclk = pclk / 2;
+
+		/* in case of C0 and above setting we can enable pixel_overlap
+		 * if needed by panel. In this case we need to increase the pixel
+		 * clock for extra pixels
+		 */
+		if (IS_VALLEYVIEW_C0(dev) &&
+				(intel_dsi->dual_link & MIPI_DUAL_LINK_FRONT_BACK)) {
+			pclk += ceil_div(mode->vtotal * intel_dsi->pixel_overlap * 60,
+				1000);
+		}
+	}
 	intel_dsi->operation_mode = mipi_config->cmd_mode;
 	intel_dsi->video_mode_type = mipi_config->vtm;
 	intel_dsi->escape_clk_div = mipi_config->byte_clk_sel;
@@ -274,11 +287,43 @@ bool generic_init(struct intel_dsi_device *dsi)
 	intel_dsi->turn_arnd_val = mipi_config->turn_around_timeout;
 	intel_dsi->rst_timer_val = mipi_config->device_reset_timer;
 	intel_dsi->init_count = mipi_config->master_init_timer;
-//	intel_dsi->hs_to_lp_count = mipi_config->hl_switch_cnt;
 	intel_dsi->bw_timer = mipi_config->dbi_bw_timer;
-//	intel_dsi->video_frmt_cfg_bits =
-//			mipi_config->bta ? DISABLE_VIDEO_BTA : 0;
 	intel_dsi->video_frmt_cfg_bits = mipi_config->bta ? DISABLE_VIDEO_BTA : 0;
+
+	/* Burst Mode Ratio
+	 * Target ddr frequency from VBT / non burst ddr freq
+	 * multiply by 100 to preserver remainder
+	 */
+	if (intel_dsi->video_mode_type == DSI_VIDEO_BURST) {
+		if (mipi_config->target_burst_mode_freq) {
+			computed_ddr = (pclk * bits_per_pixel) /
+								intel_dsi->lane_count;
+			if (mipi_config->target_burst_mode_freq <
+							computed_ddr) {
+				DRM_ERROR("DDR clock is less than computed\n");
+				return false;
+			}
+
+			burst_mode_ratio = ceil_div(
+				mipi_config->target_burst_mode_freq * 100,
+				computed_ddr);
+			pclk = ceil_div(pclk * burst_mode_ratio, 100);
+		} else {
+			DRM_ERROR("Burst mode target is not set\n");
+			return false;
+		}
+	} else
+		burst_mode_ratio = 100;
+
+	intel_dsi->burst_mode_ratio = burst_mode_ratio;
+	intel_dsi->pclk = pclk;
+	DRM_DEBUG_DRIVER("dsi->pclk = %d\n", intel_dsi->pclk);
+
+	/* FIX ME:
+	 * Check if pixel clock required is within the limits
+	 */
+
+	bitrate	= (pclk * bits_per_pixel) / intel_dsi->lane_count;
 
 	switch (intel_dsi->escape_clk_div) {
 	case 0:
@@ -295,23 +340,6 @@ bool generic_init(struct intel_dsi_device *dsi)
 		tlpx_ns = 50;
 		break;
 	}
-		/*
-		 * ui(s) = 1/f [f in hz]
-		 * ui(ns) = 10^9/f*10^6 [f in Mhz] -> 10^3/f(Mhz)
-		 *
-		 * LP byte clock = TLPX/8ui
-		 *
-		 * Since txddrclkhs_i is 2xUI, the count values programmed in
-		 * DPHY param register are divided by 2
-		 *
-		 */
-
-		/* in Kbps */
-		ui_num = bitrate;
-		ui_den = NS_MHZ_RATIO;
-
-		tclk_prepare_clkzero = mipi_config->tclk_prepare_clkzero;
-		ths_prepare_hszero = mipi_config->ths_prepare_hszero;
 
 	switch (intel_dsi->lane_count) {
 	case 1:
@@ -459,6 +487,14 @@ bool generic_init(struct intel_dsi_device *dsi)
 	DRM_DEBUG_KMS("CLOCKSTOP %s\n", intel_dsi->clock_stop ?
 						"ENABLED" : "DISABLED");
 	DRM_DEBUG_KMS("Mode %s\n", intel_dsi->operation_mode ? "COMMAND" : "VIDEO");
+
+	if (intel_dsi->dual_link == MIPI_DUAL_LINK_FRONT_BACK)
+		DRM_DEBUG_KMS("Dual link: MIPI_DUAL_LINK_FRONT_BACK\n");
+	else if (intel_dsi->dual_link == MIPI_DUAL_LINK_PIXEL_ALT)
+		DRM_DEBUG_KMS("Dual link: MIPI_DUAL_LINK_PIXEL_ALT\n");
+	else
+		DRM_DEBUG_KMS("Dual link: NONE\n");
+
 	DRM_DEBUG_KMS("Pixel Format %d\n", intel_dsi->pixel_format);
 	DRM_DEBUG_KMS("TLPX %d\n", intel_dsi->escape_clk_div);
 	DRM_DEBUG_KMS("LP RX Timeout 0x%x\n", intel_dsi->lp_rx_timeout);
@@ -489,11 +525,6 @@ bool generic_init(struct intel_dsi_device *dsi)
 	intel_dsi->send_shutdown = true;
 	intel_dsi->shutdown_pkt_delay = 20;
 
-	reset_inno = gpio_request(69,"reset_panel");
-	   	if(reset_inno < 0)
-	   	{
-	   		printk("----pbtest----m176_panel_reset----reset_inno----\n");
-		}
 	return true;
 }
 
@@ -524,6 +555,26 @@ int generic_mode_valid(struct intel_dsi_device *dsi,
 bool generic_mode_fixup(struct intel_dsi_device *dsi,
 		    const struct drm_display_mode *mode,
 		    struct drm_display_mode *adjusted_mode) {
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+	struct drm_device *dev = intel_dsi->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	/* If desired mode is different from panel's supported mode, we will try to
+	use scaling to achieve. But the modeset should be of proper mode timings
+	So make the adjusted mode same as panel supported mode */
+	if (dev_priv->scaling_reqd) {
+		adjusted_mode->hdisplay =
+			dev_priv->vbt.lfp_lvds_vbt_mode->hdisplay;
+		adjusted_mode->vdisplay =
+			dev_priv->vbt.lfp_lvds_vbt_mode->vdisplay;
+
+		/* Configure hw mode */
+		drm_mode_set_name(adjusted_mode);
+		drm_mode_set_crtcinfo(adjusted_mode, 0);
+		adjusted_mode->type |= DRM_MODE_TYPE_PREFERRED;
+		DRM_DEBUG_DRIVER("Sending %dx%d as adjusted mode",
+			adjusted_mode->hdisplay, adjusted_mode->vdisplay);
+	}
 	return true;
 }
 
@@ -534,17 +585,6 @@ void generic_panel_reset(struct intel_dsi_device *dsi)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_ASSERT_RESET];
-
-		printk("Chris: panel reset Start\n");
-		gpio_direction_output(69, 0);
-		msleep(40);
-		gpio_direction_output(69, 1);
-		usleep_range(3500, 4500);
-		gpio_direction_output(69, 0);
-		usleep_range(3500, 4500);
-		gpio_direction_output(69, 1);
-		msleep(120);
-		printk("Chris: panel reset Stop\n");
 
 	generic_exec_sequence(intel_dsi, sequence);
 }
@@ -557,10 +597,23 @@ void generic_disable_panel_power(struct intel_dsi_device *dsi)
 
 	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_DEASSERT_RESET];
 
-		printk("Chris: generic_disable_panel_power Start\n");
-			msleep(40);
-			gpio_direction_output(69, 0);
-		printk("Chris: generic_disable_panel_power Stop\n");
+#if defined (CONFIG_ME176CE)
+	int err;
+	DRM_ERROR("generic_disable_panel_power\n");
+	err = gpio_request(69, "sd_pwr_en1");
+	if (err){
+		DRM_ERROR("Request gpio 69 fail\n");
+	}
+
+	msleep(134); //t8 > 8 frames 8 * 16.67
+	gpio_direction_output(69, 0);
+	gpio_set_value(69, 0); //RESX low
+	gpio_free(69);
+	msleep(20);	//t12 >= 0
+
+	DRM_ERROR("pull low reset pin success\n");
+#endif
+
 	generic_exec_sequence(intel_dsi, sequence);
 }
 
@@ -571,6 +624,29 @@ void generic_send_otp_cmds(struct intel_dsi_device *dsi)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	char *sequence = dev_priv->vbt.dsi.sequence[MIPI_SEQ_INIT_OTP];
+
+#if defined (CONFIG_ME176CE)
+	int err;
+	DRM_ERROR("generic_send_otp_cmds\n");
+
+	err = gpio_request(69, "sd_pwr_en1");
+	if (err){
+		DRM_ERROR("Request gpio 69 fail\n");
+
+	}
+
+	gpio_direction_output(69, 0); //2 low pulse
+	gpio_set_value(69, 1);
+	usleep_range(1000,5000);
+	gpio_set_value(69, 0);
+	usleep_range(1000,5000); //t7
+	gpio_set_value(69, 1);
+	gpio_free(69);
+	msleep(20);
+
+	DRM_ERROR("pull high reset pin success\n");
+#endif
+
 	generic_exec_sequence(intel_dsi, sequence);
 }
 
@@ -611,9 +687,30 @@ struct drm_display_mode *generic_get_modes(struct intel_dsi_device *dsi)
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 	struct drm_device *dev = intel_dsi->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_display_mode *target = dev_priv->vbt.lfp_lvds_vbt_mode;
 
-	dev_priv->vbt.lfp_lvds_vbt_mode->type |= DRM_MODE_TYPE_PREFERRED;
-	return dev_priv->vbt.lfp_lvds_vbt_mode;
+	/* If desired mode is different from panel's supported mode, we will try to
+	use scaling to achieve */
+	if (dev_priv->scaling_reqd) {
+		target = drm_mode_duplicate(dev, (const struct drm_display_mode *)
+			dev_priv->vbt.lfp_lvds_vbt_mode);
+		if (!target) {
+			DRM_ERROR("Out of memory, scaling will fail\n");
+			return dev_priv->vbt.lfp_lvds_vbt_mode;
+		}
+
+		/* Fixme: Updating only the X and Y resolution of the desired
+		mode, not full timings */
+		target->hdisplay =
+			dev_priv->vbt.target_res.xres;
+		target->vdisplay =
+			dev_priv->vbt.target_res.yres;
+		DRM_DEBUG_DRIVER("Sending target timings");
+	}
+
+	target->vrefresh = drm_mode_vrefresh(target);
+	target->type |= DRM_MODE_TYPE_PREFERRED;
+	return target;
 }
 
 void generic_dump_regs(struct intel_dsi_device *dsi) { }

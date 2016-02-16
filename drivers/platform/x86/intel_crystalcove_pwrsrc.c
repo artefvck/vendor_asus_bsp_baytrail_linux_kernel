@@ -35,8 +35,6 @@
 #include <linux/extcon.h>
 #include <linux/mfd/intel_mid_pmic.h>
 #include <asm/intel_crystalcove_pwrsrc.h>
-#include <linux/acpi_gpio.h>
-#include <linux/gpio.h>
 
 #define CRYSTALCOVE_PWRSRCIRQ_REG	0x03
 #define CRYSTALCOVE_MPWRSRCIRQS0_REG	0x0F
@@ -170,9 +168,7 @@ int crystal_cove_vbus_on_status(void)
 	return 0;
 }
 EXPORT_SYMBOL(crystal_cove_vbus_on_status);
-extern unsigned char volatile VbusDetach ; 
-extern unsigned char vbus_Event ; 
-extern void asus_send_wakeup_key(void);
+
 static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 {
 	int spwrsrc, mask;
@@ -182,20 +178,15 @@ static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 		goto pmic_read_fail;
 
 	if (pwrsrcirq & PWRSRC_VBUS_DET) {
-		vbus_Event = 1;
-		printk("wigman....%s...vbus_Event=%d\n",__func__,vbus_Event);
 		if (spwrsrc & PWRSRC_VBUS_DET) {
 			dev_dbg(&info->pdev->dev, "VBUS attach event\n");
 			mask = 1;
-			VbusDetach =0;
 			if (info->edev)
 				extcon_set_cable_state(info->edev,
 						PWRSRC_EXTCON_CABLE_USB, true);
 		} else {
 			dev_dbg(&info->pdev->dev, "VBUS detach event\n");
 			mask = 0;
-			VbusDetach =1;
-			asus_send_wakeup_key();
 			if (info->edev)
 				extcon_set_cable_state(info->edev,
 						PWRSRC_EXTCON_CABLE_USB, false);
@@ -235,18 +226,13 @@ pmic_read_fail:
 static irqreturn_t crystalcove_pwrsrc_isr(int irq, void *data)
 {
 	struct pwrsrc_info *info = data;
-	int pwrsrcirq,id_value,gpio_handle;
+	int pwrsrcirq;
 
 	pwrsrcirq = intel_mid_pmic_readb(CRYSTALCOVE_PWRSRCIRQ_REG);
 	if (pwrsrcirq < 0) {
 		dev_err(&info->pdev->dev, "PWRSRCIRQ read failed\n");
 		goto pmic_irq_fail;
 	}
-
-	gpio_handle = acpi_get_gpio("\\_SB.GPO2", 22);//ID pin
-	id_value = __gpio_get_value(gpio_handle);
-	if(!id_value)
-		goto pmic_irq_fail;
 
 	dev_dbg(&info->pdev->dev, "pwrsrcirq=%x\n", pwrsrcirq);
 	handle_pwrsrc_event(info, pwrsrcirq);
@@ -260,10 +246,17 @@ static int pwrsrc_extcon_dev_reg_callback(struct notifier_block *nb,
 					unsigned long event, void *data)
 {
 	struct pwrsrc_info *info = container_of(nb, struct pwrsrc_info, nb);
+	int mask = 0;
 
 	/* check if there is other extcon cables */
 	if (extcon_num_of_cable_devs(EXTCON_CABLE_SDP)) {
 		dev_info(&info->pdev->dev, "unregistering otg device\n");
+		/* Send VBUS disconnect as another cable detection
+		 * driver registered to extcon framework and notifies
+		 * OTG on cable connect */
+		if (info->otg)
+			atomic_notifier_call_chain(&info->otg->notifier,
+				USB_EVENT_VBUS, &mask);
 		/* Set VBUS supply mode to SW control mode */
 		intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x02);
 		if (info->nb.notifier_call) {
@@ -362,7 +355,8 @@ static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 		handle_pwrsrc_event(info, pwrsrcirq);
 
 	ret = request_threaded_irq(info->irq, NULL, crystalcove_pwrsrc_isr,
-				IRQF_ONESHOT, PWRSRC_DRV_NAME, info);
+				IRQF_ONESHOT | IRQF_NO_SUSPEND,
+				PWRSRC_DRV_NAME, info);
 	if (ret) {
 		dev_err(&pdev->dev, "unable to register irq %d\n", info->irq);
 		goto intr_teg_failed;
@@ -434,7 +428,7 @@ static int __init crystalcove_pwrsrc_init(void)
 {
 	return platform_driver_register(&crystalcove_pwrsrc_driver);
 }
-fs_initcall(crystalcove_pwrsrc_init);
+device_initcall(crystalcove_pwrsrc_init);
 
 static void __exit crystalcove_pwrsrc_exit(void)
 {

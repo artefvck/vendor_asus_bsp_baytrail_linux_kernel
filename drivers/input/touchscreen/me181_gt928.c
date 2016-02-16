@@ -50,12 +50,16 @@
 #include <linux/irq.h>
 #include "me181_gt928.h"
 #include <linux/acpi_gpio.h>
+#include <linux/acpi.h> //Shouchung add, for L porting
 
 #if GTP_ICS_SLOT_REPORT
     #include <linux/input/mt.h>
 #endif
 
-static const char *goodix_ts_name = "touchscreen";
+//Shouchung modify, for L porting
+//static const char *goodix_ts_name = "touchscreen";
+static const char *goodix_ts_name = "goodix-touchscreen";
+//Shouchung end
 static struct workqueue_struct *goodix_wq;
 struct i2c_client * i2c_connect_client = NULL; 
 u8 config[GTP_CONFIG_MAX_LENGTH + GTP_ADDR_LENGTH]
@@ -1808,9 +1812,18 @@ static s8 gtp_request_irq(struct goodix_ts_data *ts)
 {
     s32 ret = -1;
     const u8 irq_table[] = GTP_IRQ_TAB;
+    int gpio = 0; //Shouchung add, for L porting
 
     GTP_DEBUG_FUNC();
     GTP_DEBUG("INT trigger type:%x", ts->int_trigger_type);
+
+    //Shouchung add, for L porting
+    gpio=acpi_get_gpio("\\_SB.GPO2",28);
+    GTP_DEBUG("gpio:%d", gpio);
+    ts->client->irq = gpio_to_irq(GTP_INT_PORT);
+    GTP_DEBUG("Call gpio_to_irq ");
+    GTP_DEBUG("ts->client->irq:%d", ts->client->irq);
+    //Shouchung end
 
     ret  = request_irq(ts->client->irq, 
                        goodix_ts_irq_handler,
@@ -3029,6 +3042,12 @@ static const struct i2c_device_id goodix_ts_id[] = {
     { }
 };
 
+//Shouchung add, for L porting
+static const struct acpi_device_id goodix_acpi_match[] = {
+    { MPU_I2C_NAME, 0 },
+};
+//Shouchung end
+
 static struct i2c_driver goodix_ts_driver = {
     .probe      = goodix_ts_probe,
     .remove     = goodix_ts_remove,
@@ -3040,6 +3059,9 @@ static struct i2c_driver goodix_ts_driver = {
     .driver = {
         .name     = GTP_I2C_NAME,
         .owner    = THIS_MODULE,
+        //Shouchung add, for L porting
+        .acpi_match_table = ACPI_PTR(goodix_acpi_match),
+        //Shouchung end
     },
 };
 

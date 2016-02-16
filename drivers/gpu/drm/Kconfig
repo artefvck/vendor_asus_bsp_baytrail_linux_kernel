@@ -195,18 +195,6 @@ config DRM_I915_SYNC
 	  driver. This requires userspace support to actually make use of this
 	  functionality.
 
-config PRO_ME181_PANEL
-	bool "me181 product panel"
-	default n
-	help
-	  me181 product panel
-
-config PRO_ME176_PANEL
-	bool "me176 product panel"
-	default n
-	help
-	  me176 product panel
-
 config DRM_MGA
 	tristate "Matrox g200/g400"
 	depends on DRM && PCI
@@ -238,6 +226,14 @@ config DRM_SAVAGE
 	help
 	  Choose this option if you have a Savage3D/4/SuperSavage/Pro/Twister
 	  chipset. If M is selected the module will be called savage.
+
+
+config DRM_I915_HDMI_OUTPUT
+	bool "Enable HDMI support"
+	depends on DRM_I915
+	default n
+	help
+	  Choose this option if you want HDMI support within the i915 driver.
 
 source "drivers/gpu/drm/exynos/Kconfig"
 

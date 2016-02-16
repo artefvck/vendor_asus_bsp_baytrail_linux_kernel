@@ -154,7 +154,7 @@ int ug31xx_write_backup_tag(const char *name, u8 *data)
       fclose(BackupFile.fp);
     }
     BackupFile.fp = _UPI_NULL_;
-  
+
     switch(cntl)
     {
       case  (O_RDONLY):
@@ -175,7 +175,7 @@ int ug31xx_write_backup_tag(const char *name, u8 *data)
     }
     return (&BackupFile);
   }
-  
+
   /**
      * @brief filp_close
      *
@@ -192,7 +192,7 @@ int ug31xx_write_backup_tag(const char *name, u8 *data)
       fclose(fp->fp);
     }
   }
-  
+
   /**
      * @brief vfs_write
      *
@@ -208,7 +208,7 @@ int ug31xx_write_backup_tag(const char *name, u8 *data)
   {
     return (fwrite(data, sizeof(char), size, fp->fp));
   }
-  
+
   /**
      * @brief vfs_read
      *
@@ -224,7 +224,7 @@ int ug31xx_write_backup_tag(const char *name, u8 *data)
   {
     return (fread(data, sizeof(char), size, fp->fp));
   }
-  
+
   /**
      * @brief get_fs
      *
@@ -236,7 +236,7 @@ int ug31xx_write_backup_tag(const char *name, u8 *data)
   {
     return (0);
   }
-  
+
   /**
      * @brief set_fs
      *
@@ -248,7 +248,7 @@ int ug31xx_write_backup_tag(const char *name, u8 *data)
   void set_fs(mm_segment_t value)
   {
   }
-  
+
   /**
      * @brief get_ds
      *
@@ -280,13 +280,13 @@ int ug31xx_write_backup_tag(const char *name, u8 *data)
 _upi_bool_ is_err(struct file *fp)
 {
   #ifdef  uG31xx_OS_WINDOWS
-  
+
     return ((fp->fp == _UPI_NULL_) ? _UPI_TRUE_ : _UPI_FALSE_);
-  
+
   #else   ///< else of uG31xx_OS_WINDOWS
 
     return (IS_ERR(fp) ? _UPI_TRUE_ : _UPI_FALSE_);
-  
+
   #endif  ///< end of uG31xx_OS_WINDOWS
 }
 
@@ -362,7 +362,7 @@ _upi_u8_ clear_file_op_status_bit(_upi_u8_ bit_sts)
  * @return  _UPI_TRUE_ if file is existed
  */
 #ifdef  uG31xx_OS_WINDOWS
-  _upi_bool_ is_file_exist(const wchar_t *filename) 
+  _upi_bool_ is_file_exist(const wchar_t *filename)
 #else   ///< else of uG31xx_OS_WINDOWS
   _upi_bool_ is_file_exist(char *filename)
 #endif  ///< end of uG31xx_OS_WINDOWS
@@ -373,72 +373,72 @@ _upi_u8_ clear_file_op_status_bit(_upi_u8_ bit_sts)
 
     #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
 
-    struct subprocess_info *sub_info;
-    char *argv[] = {shell_ap_name, "BACKUP_FILE", "EXIST", filename, NULL};
-    char *env[] = {NULL};
-    int rtn;
+      struct subprocess_info *sub_info;
+      char *argv[] = {shell_ap_name, "BACKUP_FILE", "EXIST", filename, NULL};
+      char *env[] = {NULL};
+      int rtn;
 
-    sub_info = NULL;
-    sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
-    if(sub_info == NULL)
-    {
-      return (_UPI_FALSE_);
-    }
-    UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d)\n", __func__, (int)sub_info);
-
-    rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
-    UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
-    return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
-      
-  #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
-
-  #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
-
-    if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
-    {
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-      return (_UPI_FALSE_);
-    }
-
-    if(get_file_op_status() & UG31XX_USER_FILE_EXIST)
-    {
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-      return (_UPI_TRUE_);        
-    }
-
-    set_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-    set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-    return (_UPI_FALSE_);
-        
-  #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
-
-    struct file *fp;
-    _upi_u8_ retry;
-    
-    retry = 3;
-    while(retry)
-    {
-      fp = filp_open(filename, O_RDONLY, 0644);
-      if(!is_err(fp))
+      sub_info = NULL;
+      sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
+      if(sub_info == NULL)
       {
-        break;
+        return (_UPI_FALSE_);
       }
-    
-      retry = retry - 1;
-    }
-    if(retry == 0)
-    {
-      return (_UPI_FALSE_);
-    }
+      UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d)\n", __func__, (int)sub_info);
 
-    filp_close(fp, _UPI_NULL_);
+      rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
+      UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
+      return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
 
-  #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
-      
+    #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+
+      #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
+        if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
+        {
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+          return (_UPI_FALSE_);
+        }
+
+        if(get_file_op_status() & UG31XX_USER_FILE_EXIST)
+        {
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+          return (_UPI_TRUE_);
+        }
+
+        set_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+        set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+        return (_UPI_FALSE_);
+
+      #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
+        struct file *fp;
+        _upi_u8_ retry;
+
+        retry = 3;
+        while(retry)
+        {
+          fp = filp_open(filename, O_RDONLY, 0644);
+          if(!is_err(fp))
+          {
+            break;
+          }
+
+          retry = retry - 1;
+        }
+        if(retry == 0)
+        {
+          return (_UPI_FALSE_);
+        }
+
+        filp_close(fp, _UPI_NULL_);
+
+      #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
     #endif  ///< end of UG31XX_USE_SHELL_AP_FOR_FILE_OP
-    
+
     #else
     _upi_u8_ backup_tag = 0;
     if (ug31xx_read_backup_tag("ug31xx", &backup_tag))
@@ -449,7 +449,7 @@ _upi_u8_ clear_file_op_status_bit(_upi_u8_ bit_sts)
     #endif
 
   #endif  ///< end of uG31xx_BOOT_LOADER
-  
+
   return (_UPI_TRUE_);
 }
 
@@ -492,7 +492,7 @@ void write_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
     {
       break;
     }
-  }  
+  }
   ug31_printk(LOG_LEVEL_NOTICE, "\n");
 
   if(rtn != 1)
@@ -524,84 +524,84 @@ void write_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
 #endif  ///< end of uG31xx_OS_WINDOWS
 {
   #ifndef uG31xx_BOOT_LOADER
-  
+
     #ifndef CONFIG_ASUS_ENGINEER_MODE
 
     #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
-  
-    struct subprocess_info *sub_info;
-    char *argv[] = {shell_ap_name, "BACKUP_FILE", "CREATE", filename, NULL};
-    char *env[] = {NULL};
-    int rtn;
-  
-    sub_info = NULL;
-    sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
-    if(sub_info == NULL)
-    {
-      return (_UPI_FALSE_);
-    }
-    UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
-  
-    rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
-    UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
-    return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
-    
-  #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
 
-  #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+      struct subprocess_info *sub_info;
+      char *argv[] = {shell_ap_name, "BACKUP_FILE", "CREATE", filename, NULL};
+      char *env[] = {NULL};
+      int rtn;
 
-    if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
-    {
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-      return (_UPI_FALSE_);          
-    }
-
-    if(get_file_op_status() & UG31XX_USER_FILE_WRITE)
-    {
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-      return (_UPI_TRUE_);
-    }
-
-    clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-    clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-    set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-    set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-    return (_UPI_FALSE_);
-        
-  #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
-      
-    struct file *fp;
-    _upi_u8_ retry;
-    
-    retry = 3;
-    while(retry)
-    {
-      fp = filp_open(filename, O_CREAT | O_RDWR, 0644);
-      if(!is_err(fp))
+      sub_info = NULL;
+      sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
+      if(sub_info == NULL)
       {
-        break;
+        return (_UPI_FALSE_);
       }
-    
-      retry = retry - 1;
-    }
-    if(retry == 0)
-    {
-      return (_UPI_FALSE_);
-    }
+      UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
 
-    /// [AT-PM] : Write data to file ; 02/21/2013
-    write_file(fp, data, size);
+      rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
+      UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
+      return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
 
-    filp_close(fp, _UPI_NULL_);
+    #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+
+      #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
+        if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
+        {
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+          return (_UPI_FALSE_);
+        }
+
+        if(get_file_op_status() & UG31XX_USER_FILE_WRITE)
+        {
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+          return (_UPI_TRUE_);
+        }
+
+        clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+        clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+        set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+        set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+        return (_UPI_FALSE_);
+
+      #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
+        struct file *fp;
+        _upi_u8_ retry;
+
+        retry = 3;
+        while(retry)
+        {
+          fp = filp_open(filename, O_CREAT | O_RDWR, 0644);
+          if(!is_err(fp))
+          {
+            break;
+          }
+
+          retry = retry - 1;
+        }
+        if(retry == 0)
+        {
+          return (_UPI_FALSE_);
+        }
+
+        /// [AT-PM] : Write data to file ; 02/21/2013
+        write_file(fp, data, size);
+
+        filp_close(fp, _UPI_NULL_);
 
       #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
-      
+
     #endif  ///< end of UG31XX_USE_SHELL_AP_FOR_FILE_OP
-    
+
     #else
     int backup_tag = BACKUP_BATTERY_KEY;
     if (ug31xx_save_config_data("ug31xx", data, size)) {
@@ -618,7 +618,7 @@ void write_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
     #endif
 
   #endif  ///< end of uG31xx_BOOT_LOADER
-  
+
   return (_UPI_TRUE_);
 }
 
@@ -755,7 +755,7 @@ void upi_memcpy(void *dest, void *src, _upi_u32_ size)
 #else   ///< else of uG31xx_BOOT_LOADER
 
 void read_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
-{  
+{
   mm_segment_t oldFS;
   loff_t pos;
   _upi_s32_ rtn;
@@ -772,7 +772,7 @@ void read_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
   {
     rtn = (_upi_s32_)vfs_read(fp, (char *)(&data[idx]), 1, &pos);
     ug31_printk(LOG_LEVEL_NOTICE, " %02x", data[idx]);
-    
+
     idx = idx + 1;
     if(rtn != 1)
     {
@@ -812,84 +812,84 @@ void read_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
 #endif  ///< end of uG31xx_OS_WINDOWS
 {
   #ifndef uG31xx_BOOT_LOADER
-  
+
     #ifndef CONFIG_ASUS_ENGINEER_MODE
 
-  #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
-  
-    struct subprocess_info *sub_info;
-    char *argv[] = {shell_ap_name, "BACKUP_FILE", "READ", filename, NULL};
-    char *env[] = {NULL};
-    int rtn;
-  
-    sub_info = NULL;
-    sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
-    if(sub_info == NULL)
-    {
-      return (_UPI_FALSE_);
-    }
-    UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
-  
-    rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
-    UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
-    return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
-  
-  #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+    #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
 
-  #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+      struct subprocess_info *sub_info;
+      char *argv[] = {shell_ap_name, "BACKUP_FILE", "READ", filename, NULL};
+      char *env[] = {NULL};
+      int rtn;
 
-    if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
-    {
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-      return (_UPI_FALSE_);
-    }
-
-    if(get_file_op_status() & UG31XX_USER_FILE_READ)
-    {
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-      return (_UPI_TRUE_);
-    }
-      
-    clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-    clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-    set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-    set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-    return (_UPI_FALSE_);
-
-  #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
-      
-    struct file *fp;
-    _upi_u8_ retry;
-
-    retry = 3;
-    while(retry)
-    {
-      fp = filp_open(filename, O_RDWR, 0644);
-      if(!is_err(fp))
+      sub_info = NULL;
+      sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
+      if(sub_info == NULL)
       {
-        break;
+        return (_UPI_FALSE_);
       }
+      UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
 
-      retry = retry - 1;
-    }
-    if(retry == 0)
-    {
-      return (_UPI_FALSE_);
-    }
+      rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
+      UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
+      return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
 
-    /// [AT-PM] : Write data to file ; 02/21/2013
-    read_file(fp, data, size);
+    #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
 
-    filp_close(fp, _UPI_NULL_);
+      #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
 
-  #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
-      
-  #endif  ///< end of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+        if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
+        {
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+          return (_UPI_FALSE_);
+        }
+
+        if(get_file_op_status() & UG31XX_USER_FILE_READ)
+        {
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+          return (_UPI_TRUE_);
+        }
+
+        clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+        clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+        set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+        set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+        return (_UPI_FALSE_);
+
+      #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
+        struct file *fp;
+        _upi_u8_ retry;
+
+        retry = 3;
+        while(retry)
+        {
+          fp = filp_open(filename, O_RDWR, 0644);
+          if(!is_err(fp))
+          {
+            break;
+          }
+
+          retry = retry - 1;
+        }
+        if(retry == 0)
+        {
+          return (_UPI_FALSE_);
+        }
+
+        /// [AT-PM] : Write data to file ; 02/21/2013
+        read_file(fp, data, size);
+
+        filp_close(fp, _UPI_NULL_);
+
+      #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
+    #endif  ///< end of UG31XX_USE_SHELL_AP_FOR_FILE_OP
 
     #else
     if (ug31xx_restore_config_data("ug31xx", data, size)) {
@@ -900,7 +900,7 @@ void read_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
     #endif
 
   #endif  ///< end of uG31xx_BOOT_LOADER
-  
+
   return (_UPI_TRUE_);
 }
 
@@ -921,85 +921,85 @@ void read_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
 #endif  ///< end of uG31xx_OS_WINDOWS
 {
   #ifndef uG31xx_BOOT_LOADER
-  
+
     #ifndef CONFIG_ASUS_ENGINEER_MODE
 
-  #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
-  
-    struct subprocess_info *sub_info;
-    char *argv[] = {shell_ap_name, "BACKUP_FILE", "WRITE", filename, NULL};
-    char *env[] = {NULL};
-    int rtn;
-  
-    sub_info = NULL;
-    sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
-    if(sub_info == NULL)
-    {
-      return (_UPI_FALSE_);
-    }
-    UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
-  
-    rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
-    UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
-    return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
-  
-  #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+    #ifdef  UG31XX_USE_SHELL_AP_FOR_FILE_OP
 
-  #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+      struct subprocess_info *sub_info;
+      char *argv[] = {shell_ap_name, "BACKUP_FILE", "WRITE", filename, NULL};
+      char *env[] = {NULL};
+      int rtn;
 
-    if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
-    {
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-      return (_UPI_FALSE_);
-    }
-
-    if(get_file_op_status() & UG31XX_USER_FILE_WRITE)
-    {
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-      clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-      set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-      return (_UPI_TRUE_);
-    }
-    
-    clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
-    clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
-    set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
-    set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
-    return (_UPI_FALSE_);
-
-  #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
-      
-    struct file *fp;
-    _upi_u8_ retry;
-    
-    retry = 3;
-    while(retry)
-    {
-      fp = filp_open(filename, O_CREAT | O_RDWR, 0644);
-      if(!is_err(fp))
+      sub_info = NULL;
+      sub_info = call_usermodehelper_setup(argv[0], argv, env, GFP_ATOMIC);
+      if(sub_info == NULL)
       {
-        break;
+        return (_UPI_FALSE_);
       }
-    
-      retry = retry - 1;
-    }
-    if(retry == 0)
-    {
-      return (_UPI_FALSE_);
-    }
-    
-    /// [AT-PM] : Write data to file ; 02/21/2013
-    write_file(fp, data, size);
+      UG31_LOGN("[%s]: call_usermodehelper_setup() done (%d - %d - %d)\n", __func__, (int)sub_info, (int)data, (int)size);
 
-    filp_close(fp, _UPI_NULL_);
+      rtn = call_usermodehelper_exec(sub_info, UMH_WAIT_PROC);
+      UG31_LOGN("[%s]: call_usermodehelper_exec() = %d\n", __func__, rtn);
+      return ((rtn == 0) ? _UPI_TRUE_ : _UPI_FALSE_);
 
-  #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+    #else   ///< else of UG31XX_USE_SHELL_AP_FOR_FILE_OP
+
+      #ifdef  UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
+        if(get_file_op_status() & UG31XX_KERNEL_FILE_FINISH)
+        {
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+          return (_UPI_FALSE_);
+        }
+
+        if(get_file_op_status() & UG31XX_USER_FILE_WRITE)
+        {
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+          clear_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+          set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+          return (_UPI_TRUE_);
+        }
+
+        clear_file_op_status_bit(UG31XX_KERNEL_FILE_EXIST);
+        clear_file_op_status_bit(UG31XX_KERNEL_FILE_READ);
+        set_file_op_status_bit(UG31XX_KERNEL_FILE_WRITE);
+        set_file_op_status_bit(UG31XX_KERNEL_FILE_FINISH);
+        return (_UPI_FALSE_);
+
+      #else   ///< else of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
+
+        struct file *fp;
+        _upi_u8_ retry;
+
+        retry = 3;
+        while(retry)
+        {
+          fp = filp_open(filename, O_CREAT | O_RDWR, 0644);
+          if(!is_err(fp))
+          {
+            break;
+          }
+
+          retry = retry - 1;
+        }
+        if(retry == 0)
+        {
+          return (_UPI_FALSE_);
+        }
+
+        /// [AT-PM] : Write data to file ; 02/21/2013
+        write_file(fp, data, size);
+
+        filp_close(fp, _UPI_NULL_);
+
+      #endif  ///< end of UG31XX_USE_DAEMON_AP_FOR_FILE_OP
 
     #endif  ///< end of UG31XX_USE_SHELL_AP_FOR_FILE_OP
-    
+
     #else
     int backup_tag = BACKUP_BATTERY_KEY;
     if (ug31xx_save_config_data("ug31xx", data, size)) {
@@ -1010,7 +1010,7 @@ void read_file(struct file *fp, _upi_u8_ *data, _upi_u8_ size)
     #endif
 
   #endif  ///< end of uG31xx_BOOT_LOADER
-  
+
   return (_UPI_TRUE_);
 }
 
@@ -1057,15 +1057,15 @@ _upi_u32_ upi_memcmp(void *s1, void *s2, _upi_u32_ size)
  *
  * @return  time tick
  */
-_upi_u32_ GetTickCount(void) 
+_upi_u32_ GetTickCount(void)
 {
   #ifdef  uG31xx_BOOT_LOADER
 
     return (0);
 
   #else   ///< else of uG31xx_BOOT_LOADER
-  
-    return jiffies_to_msecs(jiffies);      //20121121/jacky 
+
+    return jiffies_to_msecs(jiffies);      //20121121/jacky
 
   #endif  ///< end of uG31xx_BOOT_LOADER
 }
@@ -1077,14 +1077,14 @@ _upi_u32_ GetTickCount(void)
  *
  * @return  system time in millisecond
  */
-_upi_u32_ GetSysTickCount(void) 
+_upi_u32_ GetSysTickCount(void)
 {
   #ifdef  uG31xx_BOOT_LOADER
 
     return (0);
 
   #else   ///< else of uG31xx_BOOT_LOADER
-  
+
     struct timeval current_tick;
 
     do_gettimeofday(&current_tick);
@@ -1144,7 +1144,7 @@ _upi_u8_ Ug31DebugEnable = LOG_LEVEL_ERROR;
  * @para  fmt message
  * @return  integer
  */
-int ug31_printk(int level, const char *fmt, ...) 
+int ug31_printk(int level, const char *fmt, ...)
 {
   #ifdef  UG31XX_LIB_DEBUG_MSG
 
@@ -1164,7 +1164,7 @@ int ug31_printk(int level, const char *fmt, ...)
   #else   ///< else of UG31XX_LIB_DEBUG_MSG
 
     return (0);
-  
+
   #endif  ///< end of UG31XX_LIB_DEBUG_MSG
 }
 
@@ -1177,7 +1177,7 @@ int ug31_printk(int level, const char *fmt, ...)
  * @para  fmt message
  * @return  integer
  */
-int ug31_printk_special(int level, const char *fmt, ...) 
+int ug31_printk_special(int level, const char *fmt, ...)
 {
   va_list args;
   int r;
@@ -1226,7 +1226,7 @@ _upi_u32_ upi_strlen(char *stream)
 
 #ifndef uG31xx_BOOT_LOADER
 
-#define SECURITY_KEY    (0x5A)    //i2c read/write 
+#define SECURITY_KEY    (0x5A)    //i2c read/write
 #define ONE_BYTE        (0x1)
 #define TWO_BYTE        (0x0)
 
@@ -1336,7 +1336,7 @@ _upi_bool_ _API_I2C_Write(_upi_u16_ writeAddress, _upi_u8_ writeLength, _upi_u8_
   _upi_s32_ byte_flag=0;
   _upi_u8_ retry_cnt = I2C_RETRY_CNT;
 
-  if (!PWriteData) 
+  if (!PWriteData)
   {
     dev_err(&ug31xx_client->dev, "%s: Write buffer pointer error.\n", __func__);
     return false;
@@ -1477,7 +1477,7 @@ void SleepMiniSecond(_upi_u32_ msec)
   #ifdef  uG31xx_OS_WINDOWS
 
     Sleep(msec);
-  
+
   #else   ///< else of uG31xx_OS_WINDOWS
 
     #ifdef  uG31xx_BOOT_LOADER
@@ -1485,7 +1485,7 @@ void SleepMiniSecond(_upi_u32_ msec)
       volatile int counter = 0;
       volatile int end_counter = 0;
       volatile int ms_counter = 0;
-      
+
       ms_counter = 1000;
       end_counter = 650 * msec;
       while(ms_counter)
@@ -1499,11 +1499,10 @@ void SleepMiniSecond(_upi_u32_ msec)
       }
 
     #else   ///< else of uG31xx_BOOT_LOADER
-    
+
       mdelay(msec);
 
     #endif  ///< end of uG31xx_BOOT_LOADER
-  
+
   #endif  ///< end of uG31xx_OS_WINDOWS
 }
-

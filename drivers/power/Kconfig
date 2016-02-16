@@ -37,6 +37,11 @@ config POWER_SUPPLY_BATTID
          framework. The framework would allow different battery identification
          drivers to interface with power supply subsystem. Also it allows consumer
          drivers to register for notification from the power_supply subsystem.
+config RAW_CC_THROTTLE
+	bool "Raw Charge Current Throttle"
+	help
+	  Say Y here to enable raw charge current throttling. This feature will
+	  expose n states where n is defined as (max_current_mA/100_mA)
 
 config POWER_SUPPLY_DEBUG
 	bool "Power supply debug"
@@ -397,17 +402,71 @@ config BYT_EC_BATTERY
 	help
 	  Say Y here to enable support for Baytrail EC battery driver.
 
+config DC_XPWR_BATTERY
+	bool "Dollar Cove(Xpower) PMIC Fuel Gauge driver"
+	help
+	  Say Y here to enable support for Dollar Cove(Xpower) PMIC Fuel Gauge.
 
+config DC_XPWR_CHARGER
+	bool "Dollar Cove(Xpower) PMIC Charger driver"
+	help
+	  Say Y here to enable support for Dollar Cove(Xpower) PMIC Charger.
+
+config INTEL_FUEL_GAUGE
+	bool "Intel Fuel Gauge driver"
+	help
+	  Say Y here to enable support for Intel SW Fuel Gauge driver.
+
+config INTEL_FG_UIFACE
+	bool "Intel Fuel Gauge User Interface"
+	help
+	  Say Y here to enable support for Intel SW Fuel gauge Algo User Interface.
+if PF450CL
+source "drivers/power/battery/Kconfig"
+endif
 source "drivers/power/reset/Kconfig"
+
+# Tom ((( battery driver
+source "drivers/power/ASUS_BATTERY/TF303CL/Kconfig"
+source "drivers/power/ASUS_BATTERY/TF103C/Kconfig"
+source "drivers/power/ASUS_BATTERY/TF103CE/Kconfig"
+# )))
+
+# Carlisle ((( battery driver
+source "drivers/power/ASUS_BATTERY/ME176C/Kconfig"
+# )))
+
+config UPI_BATTERY
+	tristate "UPI ug31xx"
+	default n
+	depends on I2C
+	help
+	  say Y to enable suspport for the ug31
+
+config CHARGER_SNB2808
+	tristate "TI CHARGER_SN2808 Charger"
+	default n
+	select POWER_SUPPLY_CHARGER
+	depends on I2C
+	help
+	  CHARGER_SN2808 is the charger chip for lithium-ion (Li+) batteries
+	  in handheld and portable equipment.
+
+	  Say Y here if you know your platform has this chip for charging
+	  support.
+
+config ASUS_CHARGER_SMB347
+	tristate "SMB347 battery charger driver"
+	default n
+        depends on I2C
+	help
+	  Say Y to enable support for the SMB347 switching mode based charger
+	  and sysfs. The driver supports controlling charger-enable and
+	  current limiting capabilities. The driver also lets the
+	  SMB347 be operated as a slave device via the power supply
+	  framework.
+
 
 endif # POWER_SUPPLY
 
 source "drivers/power/avs/Kconfig"
-
-config UPI_BATTERY
-	tristate "UPI ug31xx"
-        depends on I2C
-        help
-          say Y to enable suspport for the ug31	
-
-source "drivers/power/ug31xx/Kconfig"

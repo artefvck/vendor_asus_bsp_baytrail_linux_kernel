@@ -21,6 +21,7 @@
 #include "power_supply.h"
 #include "power_supply_charger.h"
 
+#define INTEL_POWER_SUPPLY_CHARGER       0
 /* exported for the APM Power driver, APM emulation */
 struct class *power_supply_class;
 EXPORT_SYMBOL_GPL(power_supply_class);
@@ -91,8 +92,9 @@ static void power_supply_changed_work(struct work_struct *work)
 
 		class_for_each_device(power_supply_class, NULL, psy,
 				      __power_supply_changed_work);
-		//power_supply_trigger_charging_handler(psy);
-
+#if INTEL_POWER_SUPPLY_CHARGER
+		power_supply_trigger_charging_handler(psy);
+#endif
 		power_supply_update_leds(psy);
 
 		atomic_notifier_call_chain(&power_supply_notifier,
@@ -534,7 +536,7 @@ static int ps_set_cur_charge_cntl_limit(struct thermal_cooling_device *tcd,
 	ret = psy->set_property(psy,
 		POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT, &val);
 
-	psy_charger_throttle_charger(psy, state);
+	ret = psy_charger_throttle_charger(psy, state);
 
 	return ret;
 }
@@ -641,16 +643,19 @@ int power_supply_register(struct device *parent, struct power_supply *psy)
 	if (rc)
 		goto create_triggers_failed;
 
+#if INTEL_POWER_SUPPLY_CHARGER
 	if (IS_CHARGER(psy))
 		rc = power_supply_register_charger(psy);
 	if (rc)
 		goto charger_register_failed;
-
+#endif
 	power_supply_changed(psy);
 
 	goto success;
 
+#if INTEL_POWER_SUPPLY_CHARGER
 charger_register_failed:
+#endif
 create_triggers_failed:
 	psy_unregister_cooler(psy);
 register_cooler_failed:
@@ -671,8 +676,10 @@ void power_supply_unregister(struct power_supply *psy)
 {
 	cancel_work_sync(&psy->changed_work);
 	sysfs_remove_link(&psy->dev->kobj, "powers");
+#if INTEL_POWER_SUPPLY_CHARGER
 	if (IS_CHARGER(psy))
 		power_supply_unregister_charger(psy);
+#endif
 	power_supply_remove_triggers(psy);
 	psy_unregister_cooler(psy);
 	psy_unregister_thermal(psy);

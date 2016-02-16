@@ -76,16 +76,18 @@ static void flush_to_bottom_log(struct logger_log *log,
 {
 	struct logger_entry header;
 	char extendedtag[8] = "\4KERNEL\0";
-	struct timespec now;
 	unsigned long flags;
 	struct logger_plugin *plugin;
+	struct timespec boottime, monotime, logtime;
 
-	now = current_kernel_time();
+	get_monotonic_boottime(&monotime);
+	getboottime(&boottime);
+	logtime = timespec_add(boottime, monotime);
 
 	header.pid = current->tgid;
 	header.tid = task_pid_nr(current);
-	header.sec = now.tv_sec;
-	header.nsec = now.tv_nsec;
+	header.sec = logtime.tv_sec;
+	header.nsec = logtime.tv_nsec;
 	header.euid = current_euid();
 
 	/* length is computed like this:
@@ -116,13 +118,20 @@ static void flush_to_bottom_log(struct logger_log *log,
 	do_write_log(log, buf, header.len - sizeof(extendedtag) - 1);
 
 	/* send this segment's payload to the plugins */
-	list_for_each_entry(plugin, &log->plugins, list)
+	list_for_each_entry(plugin, &log->plugins, list) {
+		plugin->write_seg((void *)&extendedtag,
+				  sizeof(extendedtag),
+				  false, /* not from user */
+				  true,  /* start of msg */
+				  false,  /* end of msg */
+				  plugin->data);
 		plugin->write_seg((void *)buf,
 				  header.len - sizeof(extendedtag) - 1,
 				  false, /* not from user */
-				  true,  /* start of msg */
+				  false,  /* start of msg */
 				  true,  /* end of msg */
 				  plugin->data);
+	}
 
 	/* the write offset is updated to add the final extra byte */
 	log->w_off = logger_offset(log, log->w_off + 1);
@@ -297,7 +306,7 @@ static int __init logger_kernel_init(void)
 	if (!(logger_console.flags & CON_ENABLED))
 		return 0;
 
-	ret = create_log(LOGGER_LOG_KERNEL, 256*1024);
+	ret = create_log(LOGGER_LOG_KERNEL, 512*1024);
 	return ret;
 }
 device_initcall(logger_kernel_init);

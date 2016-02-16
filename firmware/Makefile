@@ -136,6 +136,11 @@ fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 fw-shipped-$(CONFIG_INTEL_MID_REMOTEPROC) += intel_mid/intel_mid_remoteproc.fw
+#add by Joan_Kao@asus.com
+fw-shipped-$(CONFIG_TOUCHSCREEN_ATMEL_MXT) +=atmel/mXT1664T2C2U__APP_v1_1_AA_Production.fw \
+                                         atmel/TF103_11AA_V27_JTouch_052014.raw atmel/TF103_11AA_V27_JTouch_Final_052014.raw \
+                                         atmel/TF103_11AA_V27_OFilm_052014.raw atmel/TF103_revD_11AA_V31_JTouch_20141126.raw \
+                                         atmel/TF103_revD_11AA_V31_OFilm_20141126.raw atmel/TF103_revD_11AA_V31_GIS_20141216.raw
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 

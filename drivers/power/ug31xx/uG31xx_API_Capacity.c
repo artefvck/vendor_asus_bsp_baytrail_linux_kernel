@@ -11,7 +11,7 @@
  *  Capacity algorithm
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 84 $
+ * @revision  $Revision: 112 $
  */
 
 #include "stdafx.h"     //windows need this??
@@ -19,7 +19,7 @@
 
 #ifdef  uG31xx_OS_ANDROID
 
-  #define CAPACITY_VERSION      ("Capacity $Rev: 84 $")
+  #define CAPACITY_VERSION      ("Capacity $Rev: 112 $")
   //#define CAP_LOG_UPDATE_TABLE                              ///< [AT-PM] : Log updated table to a file ; 03/25/2013
 
   #ifdef  CAP_LOG_UPDATE_TABLE
@@ -32,14 +32,14 @@
 
   #if defined(BUILD_UG31XX_LIB)
 
-    #define CAPACITY_VERSION      ("Capacity $Rev: 84 $")
-    
+    #define CAPACITY_VERSION      ("Capacity $Rev: 112 $")
+
   #else   ///< else of defined(BUILD_UG31XX_LIB)
-  
-    #define CAPACITY_VERSION      (_T("Capacity $Rev: 84 $"))
-    
+
+    #define CAPACITY_VERSION      (_T("Capacity $Rev: 112 $"))
+
   #endif  ///< end of defined(BUILD_UG31XX_LIB)
-  
+
 #endif  ///< end of uG31xx_OS_ANDROID
 
 #define CAP_STS_LAST_STATE          (3<<0)
@@ -74,6 +74,7 @@
 #define CAP_STS_LAST_CABLE_OUT      (1<<27)
 #define CAP_STS_REMAPPING_RSOC_DIS  (1<<28)
 #define CAP_STS_VOLT_CHECK_POINT    (1<<29)
+#define CAP_STS_ADJUST_CELL_TABLE   (1<<30)
 
 enum INDEX_BOUNDARY {
   INDEX_BOUNDARY_LOW = 0,
@@ -100,15 +101,17 @@ typedef struct CapacityInternalDataST {
   _cap_u16_ fcc;
   _cap_u16_ fccRM;
 
-  _cap_u8_ filterNewRsoc;  
+  _cap_u8_ filterNewRsoc;
   _cap_u8_ filterLastRsoc;
 
 #if defined(uG31xx_OS_ANDROID)
   } __attribute__ ((packed)) CapacityInternalDataType;
-#else   ///< else of defined(uG31xx_OS_ANDROID)	      
+#else   ///< else of defined(uG31xx_OS_ANDROID)
   } CapacityInternalDataType;
 #endif  ///< end of defined(uG31xx_OS_ANDROID)
 
+
+CapacityDataType *ptrCapData = _UPI_NULL_;
 
 typedef void (*VerFuncArguObjRtnNull)(CapacityInternalDataType *obj);
 typedef void (*VerFuncArguObjS16RtnNull)(CapacityInternalDataType *obj, _cap_s16_ argu);
@@ -119,7 +122,8 @@ typedef void (*VerFuncArguObjS16RtnNull)(CapacityInternalDataType *obj, _cap_s16
 
 #endif  ///< end of MEAS_STATUS_REFER_ET
 
-#define LIMIT_FCC_WITH_ILMD_RANGE     (20)
+#define LIMIT_FCC_WITH_ILMD_RANGE       (20)
+#define LIMIT_FCC_WITH_ILMD_UPPER_RATIO (10)
 
 /**
  * @brief LimitValue
@@ -155,6 +159,8 @@ _cap_s32_ LimitValue(_cap_s32_ input, _cap_s32_ reference, _cap_u8_ percent)
   }
 
   /// [AT-PM] : Check upper bound ; 04/02/2014
+  percent = percent/LIMIT_FCC_WITH_ILMD_UPPER_RATIO;
+  percent = (percent == 0) ? 1 : percent;
   reference = reference + reference*percent/CONST_PERCENTAGE;
   if(input <= reference)
   {
@@ -179,13 +185,13 @@ _cap_s32_ LimitValue(_cap_s32_ input, _cap_s32_ reference, _cap_u8_ percent)
  */
 _cap_s16_ GetBatteryTemperature(CapacityInternalDataType *obj)
 {
-  if(obj->info->measurement->status & MEAS_STATUS_REFER_ET)
+  if(ptrMeasData->status & MEAS_STATUS_REFER_ET)
   {
-    return ((_cap_s16_)obj->info->measurement->extTemperature);
+    return ((_cap_s16_)ptrMeasData->extTemperature);
   }
   else
   {
-    return ((_cap_s16_)obj->info->measurement->intTemperature);
+    return ((_cap_s16_)ptrMeasData->intTemperature);
   }
 }
 
@@ -200,16 +206,16 @@ _cap_s16_ GetBatteryTemperature(CapacityInternalDataType *obj)
 void GetBatteryState(CapacityInternalDataType *obj)
 {
   _cap_u32_ tmp32;
-  
+
   /// [AT-PM] : Update last state ; 01/25/2013
   tmp32 = (obj->info->status & CAP_STS_CURR_STATE) >> 2;
-  
-  if(obj->info->measurement->currAvg < -(obj->info->ggbParameter->standbyCurrent))
+
+  if(ptrMeasData->currAvg < -(ptrCellParameter->standbyCurrent))
   {
     /// [AT-PM] : Discharging mode ; 01/25/2013
     tmp32 = tmp32 | CAP_STS_CURR_DSG;
   }
-  else if(obj->info->measurement->currAvg > obj->info->ggbParameter->standbyCurrent)
+  else if(ptrMeasData->currAvg > ptrCellParameter->standbyCurrent)
   {
     /// [AT-PM] : Charging mode ; 01/25/2013
     tmp32 = tmp32 | CAP_STS_CURR_CHG;
@@ -292,7 +298,7 @@ _cap_bool_ CapStatusFCGet(CapacityDataType *info)
  * @return  _UPI_NULL_
  */
 void FullChargeRelease(CapacityInternalDataType *obj)
-{  
+{
   CapStatusFCClear(obj->info);
   obj->info->status = obj->info->status & (~CAP_STS_CHARGER_FULL);
   obj->info->tpTime = 0;
@@ -316,9 +322,9 @@ _cap_u8_ CalChgRsocWithCurrent(CapacityInternalDataType *obj)
   _cap_s16_ currStep;
   _cap_u16_ minCurrStep;
 
-  curr = obj->info->measurement->currAvg;
+  curr = ptrMeasData->currAvg;
   rsoc = FULL_CHARGE_RSOC;
-  currStep = obj->info->ggbParameter->TPCurrent;
+  currStep = ptrCellParameter->TPCurrent;
   minCurrStep = obj->info->fcc;
   minCurrStep = minCurrStep / CONST_PERCENTAGE;
   UG31_LOGD("[%s]: curr = %d, rsoc = %d, currStep = %d, minCurrStep = %d, obj->info->fcc = %d\n", __func__,
@@ -367,10 +373,10 @@ void PredictChargeCapacity(CapacityInternalDataType *obj)
 {
   _cap_s16_ curr;
   _cap_s32_ tmp32;
-  
+
   /// [AT-PM] : Check current is decreasing ; 08/02/2013
-  curr = (_cap_s16_)obj->info->measurement->currAvg;
-  curr = curr - obj->info->ggbParameter->TPCurrent;
+  curr = (_cap_s16_)ptrMeasData->currAvg;
+  curr = curr - ptrCellParameter->TPCurrent;
   UG31_LOGD("[%s]: Delta Charging Current = %d (%d) -> %d\n", __func__, curr, obj->info->lastCVDeltaChgCurr, obj->info->cvCheckCnt);
   if(obj->info->lastCVDeltaChgCurr <= 0)
   {
@@ -468,7 +474,7 @@ void FindNacIdxVoltage(CapacityInternalDataType *obj, _cap_u16_ voltage)
 
   obj->idxNacVoltage[INDEX_BOUNDARY_HIGH] = obj->idxNacVoltage[INDEX_BOUNDARY_LOW] - 1;
 
-  if((obj->info->ggbParameter->NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_ALWAYS_UPDATE_FCC_AT_LAST) &&
+  if((ptrCellParameter->NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_ALWAYS_UPDATE_FCC_AT_LAST) &&
      (obj->idxNacVoltage[INDEX_BOUNDARY_LOW] >= (SOV_NUMS - 1)) &&
      (obj->info->tableUpdateIdx < SOV_NUMS))
   {
@@ -492,7 +498,7 @@ void FindOcvIdxVoltage(CapacityInternalDataType *obj, _cap_u8_ tableIdx, _cap_u1
   obj->idxOcvVoltage[INDEX_BOUNDARY_LOW] = 0;
   while(obj->idxOcvVoltage[INDEX_BOUNDARY_LOW] < OCV_NUMS)
   {
-    if(voltage >= obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+    if(voltage >= ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                [tableIdx]
                                                [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]])
     {
@@ -536,7 +542,7 @@ void FindOcvFcc(CapacityInternalDataType *obj)
   idx = 0;
   while(idx < C_RATE_NUMS)
   {
-    tmp32 = tmp32 + obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]][idx][0];
+    tmp32 = tmp32 + ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]][idx][0];
     idx = idx + 1;
   }
   tmp32 = tmp32/C_RATE_NUMS;
@@ -544,34 +550,34 @@ void FindOcvFcc(CapacityInternalDataType *obj)
 }
 
 static _cap_u8_ OcvSocTable[] = {
-  100,  
-  95,   
-  90,   
-  85,   
-  80,   
-  75,   
-  70,   
-  65,   
-  60,   
-  55,   
-  50,   
-  45,   
-  40,   
-  35,   
-  30,   
-  25,   
-  20,   
-  15,   
-  10,   
-  5,    
-  0,    
+  100,
+  95,
+  90,
+  85,
+  80,
+  75,
+  70,
+  65,
+  60,
+  55,
+  50,
+  45,
+  40,
+  35,
+  30,
+  25,
+  20,
+  15,
+  10,
+  5,
+  0,
 };
 
 static _cap_s16_ TemperatureTable[] = {
-  450, 
-  250, 
-  150, 
-  50,  
+  450,
+  250,
+  150,
+  50,
 };
 
 /**
@@ -592,76 +598,76 @@ void FindOcvRM(CapacityInternalDataType *obj, _cap_u8_ tableIdx, _cap_u16_ volta
   _cap_s32_ voltLow;
 
   UG31_LOGN("[%s] INIT_OCV[%d][%d][%d] (%d) = %d\n", __func__,
-            obj->idxTemperature[INDEX_BOUNDARY_LOW], 
-            tableIdx, 
+            obj->idxTemperature[INDEX_BOUNDARY_LOW],
+            tableIdx,
             obj->idxOcvVoltage[INDEX_BOUNDARY_LOW],
             OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]],
-            obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+            ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                          [tableIdx]
                                          [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]]);
   UG31_LOGN("[%s] INIT_OCV[%d][%d][%d] (%d) = %d\n", __func__,
-            obj->idxTemperature[INDEX_BOUNDARY_LOW], 
-            tableIdx, 
+            obj->idxTemperature[INDEX_BOUNDARY_LOW],
+            tableIdx,
             obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH],
             OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]],
-            obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+            ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                          [tableIdx]
                                          [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]]);
   UG31_LOGN("[%s] INIT_OCV[%d][%d][%d] (%d) = %d\n", __func__,
-            obj->idxTemperature[INDEX_BOUNDARY_HIGH], 
-            tableIdx, 
+            obj->idxTemperature[INDEX_BOUNDARY_HIGH],
+            tableIdx,
             obj->idxOcvVoltage[INDEX_BOUNDARY_LOW],
             OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]],
-            obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+            ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
                                          [tableIdx]
                                          [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]]);
   UG31_LOGN("[%s] INIT_OCV[%d][%d][%d] (%d) = %d\n", __func__,
-            obj->idxTemperature[INDEX_BOUNDARY_HIGH], 
-            tableIdx, 
+            obj->idxTemperature[INDEX_BOUNDARY_HIGH],
+            tableIdx,
             obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH],
             OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]],
-            obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+            ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
                                          [tableIdx]
                                          [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]]);
 
   /// [AT-PM] : Interpolate voltage ; 02/16/2014
   if(obj->idxTemperature[INDEX_BOUNDARY_HIGH] == obj->idxTemperature[INDEX_BOUNDARY_LOW])
   {
-    voltHigh = obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+    voltHigh = ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                             [tableIdx]
                                             [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]];
-    voltLow = obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+    voltLow = ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                            [tableIdx]
                                            [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]];
   }
   else
   {
-    tmp32 = (_cap_s32_)obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+    tmp32 = (_cap_s32_)ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
                                                     [tableIdx]
                                                     [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]];
-    tmp32 = tmp32 - obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+    tmp32 = tmp32 - ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                  [tableIdx]
                                                  [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]];
-    tmp32 = tmp32*(GetBatteryTemperature(obj) - 
+    tmp32 = tmp32*(GetBatteryTemperature(obj) -
                    TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
-    tmp32 = tmp32/(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] - 
+    tmp32 = tmp32/(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] -
                    TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
-    tmp32 = tmp32 + obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+    tmp32 = tmp32 + ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                  [tableIdx]
                                                  [obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]];
     voltHigh = tmp32;
 
-    tmp32 = (_cap_s32_)obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+    tmp32 = (_cap_s32_)ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
                                                     [tableIdx]
                                                     [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]];
-    tmp32 = tmp32 - obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+    tmp32 = tmp32 - ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                  [tableIdx]
                                                  [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]];
-    tmp32 = tmp32*(GetBatteryTemperature(obj) - 
+    tmp32 = tmp32*(GetBatteryTemperature(obj) -
                    TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
-    tmp32 = tmp32/(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] - 
+    tmp32 = tmp32/(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] -
                    TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
-    tmp32 = tmp32 + obj->info->ggbTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+    tmp32 = tmp32 + ptrCellTable->INIT_OCV[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                  [tableIdx]
                                                  [obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]];
     voltLow = tmp32;
@@ -669,7 +675,7 @@ void FindOcvRM(CapacityInternalDataType *obj, _cap_u8_ tableIdx, _cap_u16_ volta
               (int)voltHigh,
               (int)voltLow);
   }
-  
+
   /// [AT-PM] : Calculate RSOC ; 01/25/2013
   if(OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]] == OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]])
   {
@@ -680,15 +686,22 @@ void FindOcvRM(CapacityInternalDataType *obj, _cap_u8_ tableIdx, _cap_u16_ volta
     tmp32 = (_cap_s32_)voltage;
     tmp32 = tmp32 - voltLow;
     tmp32 = tmp32*
-            (OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]] - 
+            (OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_HIGH]] -
              OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]]);
-    tmp32 = tmp32/(voltHigh - voltLow);
+		if(voltHigh != voltLow)
+		{
+			tmp32 = tmp32/(voltHigh - voltLow);
+		}
+		else
+		{
+			tmp32 = 0;
+		}
     tmp32 = tmp32 + OcvSocTable[obj->idxOcvVoltage[INDEX_BOUNDARY_LOW]];
   }
-  UG31_LOGD("[%s] RSOC = %d (%d)\n", __func__, 
-            obj->info->rsoc, 
+  UG31_LOGD("[%s] RSOC = %d (%d)\n", __func__,
+            obj->info->rsoc,
             (int)tmp32);
-  
+
   /// [AT-PM] : Calculate RM ; 01/25/2013
   tmp32 = tmp32*obj->info->fcc/CONST_PERCENTAGE;
   obj->rm = (_cap_u16_)tmp32;
@@ -706,13 +719,18 @@ void FindOcvRM(CapacityInternalDataType *obj, _cap_u8_ tableIdx, _cap_u16_ volta
  */
 _cap_bool_ IsSuspendOperation(CapacityInternalDataType *obj)
 {
-  if((obj->info->inSuspend == CAP_TRUE) && 
-     (obj->info->measurement->deltaTime >= IS_SUSPEND_OPERATION_DELAT_TIME))
+  if((obj->info->inSuspend == CAP_TRUE) &&
+     (ptrMeasData->deltaTime >= IS_SUSPEND_OPERATION_DELAT_TIME))
   {
     return (CAP_TRUE);
   }
   return (CAP_FALSE);
 }
+
+#define CHG_SPEED_DOWN_RSOC_THRD_1      (25)
+#define CHG_SPEED_DOWN_RSOC_THRD_2      (50)
+#define CHG_SPEED_DOWN_RSOC_THRD_3      (75)
+#define CHG_SPEED_DOWN_RSOC_THRD_4      (100)
 
 /**
  * @brief ChargeSpeedDown
@@ -723,7 +741,7 @@ _cap_bool_ IsSuspendOperation(CapacityInternalDataType *obj)
  * @return  _UPI_NULL_
  */
 void ChargeSpeedDown(CapacityInternalDataType *obj)
-{  
+{
   _cap_s32_ tmp32 = 0;
   _cap_u8_ rsoc;
   _cap_u8_ minRsoc;
@@ -737,7 +755,7 @@ void ChargeSpeedDown(CapacityInternalDataType *obj)
   if(IsSuspendOperation(obj) == CAP_TRUE)
   {
     UG31_LOGN("[%s]: In suspend operation. (%d)\n", __func__,
-              (int)obj->info->measurement->deltaTime);
+              (int)ptrMeasData->deltaTime);
     return;
   }
 
@@ -758,15 +776,58 @@ void ChargeSpeedDown(CapacityInternalDataType *obj)
   tmp32 = (_cap_s32_)obj->info->avgVoltage;
   tmp32 = tmp32 - obj->info->startChgVolt;
   tmp32 = tmp32 * (minRsoc - obj->info->startChgRsoc);
-  if(obj->info->ggbParameter->TPVoltage > obj->info->startChgVolt)
+  if(ptrCellParameter->TPVoltage > obj->info->startChgVolt)
   {
-    tmp32 = tmp32 / (obj->info->ggbParameter->TPVoltage - obj->info->startChgVolt);
+    tmp32 = tmp32 / (ptrCellParameter->TPVoltage - obj->info->startChgVolt);
   }
   tmp32 = tmp32 + obj->info->startChgRsoc;
-  UG31_LOGD("[%s] Predict RSOC = %d, Current RSOC = %d (%d)\n", __func__, 
-            (int)tmp32, 
-            rsoc,
-            obj->info->rsoc);
+
+  /// [AT-PM] : Apply offset ; 07/06/2014
+  if(rsoc < CHG_SPEED_DOWN_RSOC_THRD_1)
+  {
+    tmp32 = tmp32 + obj->info->ccChgOffset25;
+    UG31_LOGD("[%s] Predict RSOC = %d, Offset = %d, Current RSOC = %d (%d)\n", __func__,
+              (int)tmp32,
+              obj->info->ccChgOffset25,
+              rsoc,
+              obj->info->rsoc);
+  }
+  else if(rsoc < CHG_SPEED_DOWN_RSOC_THRD_2)
+  {
+    tmp32 = tmp32 + obj->info->ccChgOffset50;
+    UG31_LOGD("[%s] Predict RSOC = %d, Offset = %d, Current RSOC = %d (%d)\n", __func__,
+              (int)tmp32,
+              obj->info->ccChgOffset50,
+              rsoc,
+              obj->info->rsoc);
+  }
+  else if(rsoc < CHG_SPEED_DOWN_RSOC_THRD_3)
+  {
+    tmp32 = tmp32 + obj->info->ccChgOffset75;
+    UG31_LOGD("[%s] Predict RSOC = %d, Offset = %d, Current RSOC = %d (%d)\n", __func__,
+              (int)tmp32,
+              obj->info->ccChgOffset75,
+              rsoc,
+              obj->info->rsoc);
+  }
+  else if(rsoc < CHG_SPEED_DOWN_RSOC_THRD_4)
+  {
+    tmp32 = tmp32 + obj->info->ccChgOffset100;
+    UG31_LOGD("[%s] Predict RSOC = %d, Offset = %d, Current RSOC = %d (%d)\n", __func__,
+              (int)tmp32,
+              obj->info->ccChgOffset100,
+              rsoc,
+              obj->info->rsoc);
+  }
+  else
+  {
+    UG31_LOGD("[%s] Predict RSOC = %d, Offset = %d, Current RSOC = %d (%d)\n", __func__,
+              (int)tmp32,
+              0,
+              rsoc,
+              obj->info->rsoc);
+  }
+
   if(rsoc > tmp32)
   {
     tmp32 = tmp32 * obj->fcc / CONST_PERCENTAGE;
@@ -790,14 +851,14 @@ void ChargeSpeedDown(CapacityInternalDataType *obj)
 void FullChargeSet(CapacityInternalDataType *obj)
 {
   obj->info->reverseCap = 0;
-  
+
   ResetSelfD(obj);
   ResetSelfLearning(obj);
-  
+
   /// [AT-PM] : Set full charge state ; 01/25/2013
   CapStatusFCSet(obj->info);
   obj->info->status = obj->info->status | CAP_STS_DSG_AFTER_FC;
-  obj->info->status = obj->info->status & (~CAP_STS_DSGCHARGE_INITED);  
+  obj->info->status = obj->info->status & (~CAP_STS_DSGCHARGE_INITED);
   obj->rm = obj->fcc;
 }
 
@@ -813,6 +874,45 @@ void CapStatusFCStep100Set(CapacityDataType *data)
 {
   data->status = data->status | CAP_STS_FORCE_STEP_TO_100;
   data->fcStep100 = CAP_TRUE;
+}
+
+/**
+ * @brief CapStatusAdjustCellTableSet
+ *
+ * Set CAP_STS_ADJUST_CELL_TABLE status
+ *
+ * @para data address of data strcture CapacityDataType
+ * @return NULL
+ */
+void CapStatusAdjustCellTableSet(CapacityDataType *data)
+{
+  data->status = data->status | CAP_STS_ADJUST_CELL_TABLE;
+}
+
+/**
+ * @brief CapStatusAdjustCellTableClear
+ *
+ * Clear CAP_STS_ADJUST_CELL_TABLE status
+ *
+ * @para data address of data strcture CapacityDataType
+ * @return NULL
+ */
+void CapStatusAdjustCellTableClear(CapacityDataType *data)
+{
+  data->status = data->status & (~CAP_STS_ADJUST_CELL_TABLE);
+}
+
+/**
+ * @brief CapStatusAdjustCellTableGet
+ *
+ * Get CAP_STS_ADJUST_CELL_TABLE status
+ *
+ * @para data address of data strcture CapacityDataType
+ * @return NULL
+ */
+_cap_bool_ CapStatusAdjustCellTableGet(CapacityDataType *info)
+{
+  return ((info->status & CAP_STS_ADJUST_CELL_TABLE) ? CAP_TRUE : CAP_FALSE);
 }
 
 
@@ -849,10 +949,10 @@ void FindIdxTemperatureVer0(CapacityInternalDataType *obj, _cap_s16_ argu)
   if(obj->idxTemperature[INDEX_BOUNDARY_LOW] >= TEMPERATURE_NUMS)
   {
     obj->idxTemperature[INDEX_BOUNDARY_LOW] = TEMPERATURE_NUMS - 1;
-    obj->idxTemperature[INDEX_BOUNDARY_HIGH] = obj->idxTemperature[INDEX_BOUNDARY_LOW];    
+    obj->idxTemperature[INDEX_BOUNDARY_HIGH] = obj->idxTemperature[INDEX_BOUNDARY_LOW];
     return;
   }
-  
+
   obj->idxTemperature[INDEX_BOUNDARY_HIGH] = obj->idxTemperature[INDEX_BOUNDARY_LOW] - 1;
 }
 
@@ -999,47 +1099,47 @@ void CreateNacVoltageTableVer0(CapacityInternalDataType *obj)
   while(idx < OCV_NUMS)
   {
     /// [AT-PM] : Temperature interpolation ; 01/25/2013
-    if(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] == 
+    if(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] ==
        TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]])
     {
-      valueInterpolate1 = obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      valueInterpolate1 = ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                                  [obj->idxNacCRate[INDEX_BOUNDARY_LOW]]
                                                                  [idx];
-      valueInterpolate2 = obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      valueInterpolate2 = ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                                  [obj->idxNacCRate[INDEX_BOUNDARY_HIGH]]
                                                                  [idx];
     }
     else
     {
-      tmp32 = (_cap_s32_)obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+      tmp32 = (_cap_s32_)ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
                                                                 [obj->idxNacCRate[INDEX_BOUNDARY_LOW]]
                                                                 [idx];
-      tmp32 = tmp32 - obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      tmp32 = tmp32 - ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                              [obj->idxNacCRate[INDEX_BOUNDARY_LOW]]
                                                              [idx];
       tmp32 = tmp32*(temperature - TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
       tmp32 = tmp32/
-              (TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] - 
+              (TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] -
                TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
-      valueInterpolate1 = tmp32 + obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      valueInterpolate1 = tmp32 + ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                                          [obj->idxNacCRate[INDEX_BOUNDARY_LOW]]
                                                                          [idx];
 
-      tmp32 = (_cap_s32_)obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+      tmp32 = (_cap_s32_)ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
                                                                 [obj->idxNacCRate[INDEX_BOUNDARY_HIGH]]
                                                                 [idx];
-      tmp32 = tmp32 - obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      tmp32 = tmp32 - ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                              [obj->idxNacCRate[INDEX_BOUNDARY_HIGH]]
                                                              [idx];
       tmp32 = tmp32*(temperature - TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
       tmp32 = tmp32/
-              (TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] - 
+              (TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] -
                TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
-      valueInterpolate2 = tmp32 + obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      valueInterpolate2 = tmp32 + ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                                          [obj->idxNacCRate[INDEX_BOUNDARY_HIGH]]
                                                                          [idx];
     }
-    
+
     /// [AT-PM] : CRate interpolation ; 01/25/2013
     if(CRateTable[obj->idxNacCRate[INDEX_BOUNDARY_HIGH]] == CRateTable[obj->idxNacCRate[INDEX_BOUNDARY_LOW]])
     {
@@ -1054,12 +1154,12 @@ void CreateNacVoltageTableVer0(CapacityInternalDataType *obj)
       tmp32 = tmp32 + valueInterpolate1;
     }
     obj->tableNacVoltage[idx] = (_cap_s16_)tmp32;
-    UG31_LOGD("[%s]: NAC voltage Table[%d] = %dmV (%d,%d) (%d,%d)\n", __func__, 
-              idx, obj->tableNacVoltage[idx], 
-              obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][idx],
-              obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][idx],
-              obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]][obj->idxNacCRate[INDEX_BOUNDARY_HIGH]][idx],
-              obj->info->ggbTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_HIGH]][idx]);
+    UG31_LOGD("[%s]: NAC voltage Table[%d] = %dmV (%d,%d) (%d,%d)\n", __func__,
+              idx, obj->tableNacVoltage[idx],
+              ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][idx],
+              ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][idx],
+              ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]][obj->idxNacCRate[INDEX_BOUNDARY_HIGH]][idx],
+              ptrCellTable->CELL_VOLTAGE_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_HIGH]][idx]);
     idx = idx + 1;
   }
 }
@@ -1078,16 +1178,16 @@ void CreateNacVoltageTableVer2(CapacityInternalDataType *obj)
   _cap_s16_ base;
   _cap_s32_ deltaSoc;
 
-  obj->tableNacVoltage[0] = (_cap_s16_)obj->info->ggbParameter->TPVoltage;
-  obj->tableNacVoltage[SOV_NUMS - 1] = (_cap_s16_)obj->info->ggbParameter->edv1Voltage;
+  obj->tableNacVoltage[0] = (_cap_s16_)ptrCellParameter->TPVoltage;
+  obj->tableNacVoltage[SOV_NUMS - 1] = (_cap_s16_)ptrCellParameter->edv1Voltage;
   base = obj->tableNacVoltage[0] - obj->tableNacVoltage[SOV_NUMS - 1];
   UG31_LOGD("[%s]: Head = %d, End = %d, Base = %d\n", __func__, obj->tableNacVoltage[0], obj->tableNacVoltage[SOV_NUMS - 1], base);
-  
+
   idx = 1;
   while(idx < (SOV_NUMS - 1))
   {
-    deltaSoc = (_cap_s32_)obj->info->ggbParameter->SOV_TABLE[idx - 1];
-    deltaSoc = deltaSoc - obj->info->ggbParameter->SOV_TABLE[idx];
+    deltaSoc = (_cap_s32_)ptrCellParameter->SOV_TABLE[idx - 1];
+    deltaSoc = deltaSoc - ptrCellParameter->SOV_TABLE[idx];
     deltaSoc = deltaSoc*base/CONST_PERCENTAGE/10;
     obj->tableNacVoltage[idx] = (_cap_s16_)deltaSoc;
     obj->tableNacVoltage[idx] = obj->tableNacVoltage[idx - 1] + obj->tableNacVoltage[idx];
@@ -1128,44 +1228,44 @@ void CreateNacTableVer0(CapacityInternalDataType *obj)
   while(idx < SOV_NUMS)
   {
     /// [AT-PM] : Temperature interpolation ; 01/25/2013
-    if(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] == 
+    if(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] ==
        TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]])
     {
-      valueInterpolate1 = obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      valueInterpolate1 = ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                              [obj->idxNacCRate[INDEX_BOUNDARY_LOW]]
                                                              [idx];
 
-      valueInterpolate2 = obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      valueInterpolate2 = ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                              [obj->idxNacCRate[INDEX_BOUNDARY_HIGH]]
                                                              [idx];
     }
     else
     {
-      tmp32 = (_cap_s32_)obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+      tmp32 = (_cap_s32_)ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
                                                             [obj->idxNacCRate[INDEX_BOUNDARY_LOW]]
                                                             [idx];
-      tmp32 = tmp32 - obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      tmp32 = tmp32 - ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                          [obj->idxNacCRate[INDEX_BOUNDARY_LOW]]
                                                          [idx];
       tmp32 = tmp32*(temperature - TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
       tmp32 = tmp32/
-              (TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] - 
+              (TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] -
                TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
-      valueInterpolate1 = tmp32 + obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      valueInterpolate1 = tmp32 + ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                                      [obj->idxNacCRate[INDEX_BOUNDARY_LOW]]
                                                                      [idx];
-      
-      tmp32 = (_cap_s32_)obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+
+      tmp32 = (_cap_s32_)ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
                                                             [obj->idxNacCRate[INDEX_BOUNDARY_HIGH]]
                                                             [idx];
-      tmp32 = tmp32 - obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      tmp32 = tmp32 - ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                          [obj->idxNacCRate[INDEX_BOUNDARY_HIGH]]
                                                          [idx];
       tmp32 = tmp32*(temperature - TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
       tmp32 = tmp32/
-              (TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] - 
+              (TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] -
                TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
-      valueInterpolate2 = tmp32 + obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+      valueInterpolate2 = tmp32 + ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                                      [obj->idxNacCRate[INDEX_BOUNDARY_HIGH]]
                                                                      [idx];
     }
@@ -1187,12 +1287,12 @@ void CreateNacTableVer0(CapacityInternalDataType *obj)
     UG31_LOGD("[%s]: NAC Table Index = (%d-%d, %d-%d)\n", __func__,
               obj->idxTemperature[INDEX_BOUNDARY_HIGH], obj->idxTemperature[INDEX_BOUNDARY_LOW],
               obj->idxNacCRate[INDEX_BOUNDARY_HIGH], obj->idxNacCRate[INDEX_BOUNDARY_LOW]);
-    UG31_LOGD("[%s]: NAC Table[%d] = %dmAh (%d,%d) (%d,%d)\n", __func__, 
-              idx, obj->tableNac[idx], 
-              obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][idx],
-              obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][idx],
-              obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]][obj->idxNacCRate[INDEX_BOUNDARY_HIGH]][idx],
-              obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_HIGH]][idx]);
+    UG31_LOGD("[%s]: NAC Table[%d] = %dmAh (%d,%d) (%d,%d)\n", __func__,
+              idx, obj->tableNac[idx],
+              ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][idx],
+              ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][idx],
+              ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]][obj->idxNacCRate[INDEX_BOUNDARY_HIGH]][idx],
+              ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_HIGH]][idx]);
     idx = idx + 1;
   }
 }
@@ -1213,7 +1313,7 @@ void CreateNacTableVer1(CapacityInternalDataType *obj)
 
   /// [AT-PM] : Copy nac table from global variable ; 10/25/2013
   upi_memcpy((_cap_u8_ *)obj->tableNac, (_cap_u8_ *)obj->info->tableNac, sizeof(_cap_s16_)*SOV_NUMS);
-  
+
   /// [AT-PM] : Get ratio ; 10/25/2013
   while(1)
   {
@@ -1253,13 +1353,13 @@ void CreateNacTableVer1(CapacityInternalDataType *obj)
     UG31_LOGD("[%s]: Ratio[%d] = %d - %d\n", __func__, idx, obj->tableNac[idx], base);
     idx = idx + 1;
   }
-  
+
   /// [AT-PM] : Get capacity at each region ; 10/25/2013
   obj->tableNac[0] = 0;
   idx = 1;
   while(idx < SOV_NUMS)
   {
-    tmp32 = (_cap_s32_)obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][0];
+    tmp32 = (_cap_s32_)ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][0];
     tmp32 = tmp32*obj->tableNac[idx]/base;
     if(tmp32 <= 0)
     {
@@ -1310,8 +1410,8 @@ void FindNacRM(CapacityInternalDataType *obj, _cap_u16_ voltage)
   }
   UG31_LOGD("[%s]: RM below voltage region %d = %d\n", __func__, obj->idxNacVoltage[INDEX_BOUNDARY_LOW], (int)min);
 
-  /// [AT-PM] : Calculate RM for capacity parser ; 02/09/2013  
-  if(obj->tableNacVoltage[obj->idxNacVoltage[INDEX_BOUNDARY_LOW]] == 
+  /// [AT-PM] : Calculate RM for capacity parser ; 02/09/2013
+  if(obj->tableNacVoltage[obj->idxNacVoltage[INDEX_BOUNDARY_LOW]] ==
      obj->tableNacVoltage[obj->idxNacVoltage[INDEX_BOUNDARY_HIGH]])
   {
     tmp32 = 0;
@@ -1322,13 +1422,13 @@ void FindNacRM(CapacityInternalDataType *obj, _cap_u16_ voltage)
     tmp32 = tmp32 - obj->tableNacVoltage[obj->idxNacVoltage[INDEX_BOUNDARY_LOW]];
     tmp32 = tmp32*
             obj->tableNac[obj->idxNacVoltage[INDEX_BOUNDARY_LOW]]/
-            (obj->tableNacVoltage[obj->idxNacVoltage[INDEX_BOUNDARY_HIGH]] - 
+            (obj->tableNacVoltage[obj->idxNacVoltage[INDEX_BOUNDARY_HIGH]] -
              obj->tableNacVoltage[obj->idxNacVoltage[INDEX_BOUNDARY_LOW]]);
   }
   tmp32 = tmp32 + min;
   obj->rm = (_cap_u16_)tmp32;
   obj->fcc = (_cap_u16_)obj->tableNac[0];
-  UG31_LOGD("[%s]: Predicted RM = %d (%d)\n", __func__, 
+  UG31_LOGD("[%s]: Predicted RM = %d (%d)\n", __func__,
             obj->rm,
             obj->fcc);
 
@@ -1347,13 +1447,13 @@ void FindNacRM(CapacityInternalDataType *obj, _cap_u16_ voltage)
       tmp32 = 0;
     }
     obj->fccRM = (_cap_u16_)tmp32;
-    UG31_LOGD("[%s]: Predicted RM for FCC Update = %d - ( %d + %d ) = %d\n", __func__, 
-              (int)obj->fcc, 
-              (int)obj->info->preDsgCharge, 
-              (int)obj->info->dsgCharge, 
+    UG31_LOGD("[%s]: Predicted RM for FCC Update = %d - ( %d + %d ) = %d\n", __func__,
+              (int)obj->fcc,
+              (int)obj->info->preDsgCharge,
+              (int)obj->info->dsgCharge,
               (int)obj->fccRM);
   }
-  
+
   if(obj->info->status & CAP_STS_INIT_PROCEDURE)
   {
     UG31_LOGD("[%s]: Initial procedure no voltage weighting\n", __func__);
@@ -1375,7 +1475,7 @@ void FindNacRM(CapacityInternalDataType *obj, _cap_u16_ voltage)
     weightVolt = obj->idxNacVoltage[INDEX_BOUNDARY_LOW];
     weightCC = (SOV_NUMS - 1) - obj->idxNacVoltage[INDEX_BOUNDARY_LOW];
     tmp32 = SOV_NUMS - 1;
-    switch(obj->info->ggbParameter->NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_VOLTAGE_CC_WEIGHT)
+    switch(ptrCellParameter->NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_VOLTAGE_CC_WEIGHT)
     {
       case  NAC_LMD_ADJUST_CFG_VOLTAGE_CC_WEIGHT_1:
         tmp32 = tmp32*tmp32;
@@ -1404,7 +1504,7 @@ void FindNacRM(CapacityInternalDataType *obj, _cap_u16_ voltage)
     weightVolt = weightVolt*obj->rm;
     tmp32 = (weightCC + weightVolt)/tmp32;
     obj->rm = (_cap_u16_)tmp32;
-  }  
+  }
   UG31_LOGN("[%s]: Target Predicted RM = %d (%d,%d)\n", __func__, obj->rm, (int)weightCC, (int)weightVolt);
 
   /// [AT-PM] : Check predicted RSOC and current RSOC ; 04/02/2013
@@ -1416,7 +1516,7 @@ void FindNacRM(CapacityInternalDataType *obj, _cap_u16_ voltage)
     tmp32 = tmp32*obj->info->fcc/CONST_PERCENTAGE;
     obj->rm = (_cap_u16_)tmp32;
     obj->fcc = obj->info->fcc;
-    UG31_LOGN("[%s]: Target Predicted RM with RSOC = %d (%d)\n", __func__, 
+    UG31_LOGN("[%s]: Target Predicted RM with RSOC = %d (%d)\n", __func__,
               (int)obj->rm,
               (int)obj->fcc);
   }
@@ -1435,10 +1535,10 @@ void FindNacRM(CapacityInternalDataType *obj, _cap_u16_ voltage)
 void CalculateCRate(CapacityInternalDataType *obj)
 {
   _cap_s32_ cRate;
-  
+
   /// [AT-PM] : Calculate CRate ; 01/25/2013
-  cRate = (_cap_s32_)obj->info->measurement->currAvg;
-  cRate = cRate*C_RATE_CONVERT_BASE/obj->info->ggbParameter->ILMD;
+  cRate = (_cap_s32_)ptrMeasData->currAvg;
+  cRate = cRate*C_RATE_CONVERT_BASE/ptrCellParameter->ILMD;
   obj->cRate = (_cap_u8_)cRate;
   cRate = (cRate + obj->info->avgCRate)/2;
   if(cRate < AVG_CRATE_MINIMUM_VALUE)
@@ -1451,7 +1551,7 @@ void CalculateCRate(CapacityInternalDataType *obj)
 
 #define INIT_CAP_PARSER_FULL_SOC      (100)
 
-static _cap_s8_ const InitCapMap[] = 
+static _cap_s8_ const InitCapMap[] =
 {
   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      ///< 0% ~ 9%
   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,      ///< 10% ~ 19%
@@ -1481,7 +1581,7 @@ void InitCapacityParser(CapacityInternalDataType *obj)
   _cap_s8_ newRsoc;
   _cap_u32_ tmp32;
 
-  if(obj->info->ggbParameter->NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_REMOVE_INIT_PARSER)
+  if(ptrCellParameter->NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_REMOVE_INIT_PARSER)
   {
     UG31_LOGN("[%s]: NAC_LMD_ADJUST_CFG_REMOVE_INIT_PARSER is set\n", __func__);
     return;
@@ -1493,7 +1593,7 @@ void InitCapacityParser(CapacityInternalDataType *obj)
             newRsoc,
             obj->info->rsoc);
 
-  if((obj->info->ggbParameter->NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_INIT_PARSER_FORCE_100_EN) &&
+  if((ptrCellParameter->NacLmdAdjustCfg & NAC_LMD_ADJUST_CFG_INIT_PARSER_FORCE_100_EN) &&
      (!(obj->info->status & CAP_STS_NO_INIT_FORCE_100)) &&
      (newRsoc > INIT_PARSER_FORCE_100_THRD))
   {
@@ -1501,7 +1601,7 @@ void InitCapacityParser(CapacityInternalDataType *obj)
               newRsoc);
     newRsoc = CONST_PERCENTAGE;
   }
-  
+
   if(newRsoc == obj->info->rsoc)
   {
     UG31_LOGN("[%s]: No changed.\n", __func__);
@@ -1528,11 +1628,11 @@ void InitCharge(CapacityInternalDataType *obj)
 {
   _cap_u16_ tmp16;
   _cap_u32_ tmp32;
-  
+
   /// [AT-PM] : Find temperature index ; 01/25/2013
-  if(FindIdxTemperature[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+  if(FindIdxTemperature[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
   {
-    (*FindIdxTemperature[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj, GetBatteryTemperature(obj));
+    (*FindIdxTemperature[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(obj, GetBatteryTemperature(obj));
   }
 
   switch(obj->info->status & CAP_STS_CURR_STATE)
@@ -1540,25 +1640,26 @@ void InitCharge(CapacityInternalDataType *obj)
     case CAP_STS_CURR_STANDBY:
       UG31_LOGN("[%s]: (0x%08x) CAP_STS_CURR_STANDBY\n", __func__, (unsigned int)obj->info->status);
       /// [AT-PM] : Loop up OCV table ; 01/25/2013
-      FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1VoltageAvg);
+      FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, ptrMeasData->bat1VoltageAvg);
       FindOcvFcc(obj);
-      FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1VoltageAvg);
+      FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, ptrMeasData->bat1VoltageAvg);
       obj->info->rm = obj->rm;
       break;
     case CAP_STS_CURR_CHG:
       UG31_LOGN("[%s]: (0x%08x) CAP_STS_CURR_CHG\n", __func__, (unsigned int)obj->info->status);
       /// [AT-PM] : Look up stand alone table ; 03/18/2014
-      tmp16 = obj->info->measurement->bat1VoltageAvg;
-      tmp16 = tmp16 - obj->info->measurement->currAvg/CHARGE_VOLTAGE_CONST;
+      tmp16 = ptrMeasData->bat1VoltageAvg;
+      tmp16 = tmp16 - ptrMeasData->currAvg/CHARGE_VOLTAGE_CONST;
       FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, tmp16);
       FindOcvFcc(obj);
       FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, tmp16);
       /// [AT-PM] : Check minimum rsoc threshold for stand alone table ; 03/18/2014
       tmp32 = (_cap_u32_)obj->info->fcc;
       tmp32 = tmp32*CHARGE_TABLE_REF_THRESHOLD/CONST_PERCENTAGE;
-      if(obj->info->rm < tmp32)
+      if((obj->rm < tmp32) &&
+				 (ptrMeasData->currAvg > ptrCellParameter->ILMD / 4))
       {
-        tmp16 = obj->info->measurement->bat1VoltageAvg;
+        tmp16 = ptrMeasData->bat1VoltageAvg;
         FindOcvIdxVoltage(obj, OCV_TABLE_IDX_CHARGE, tmp16);
         FindOcvFcc(obj);
         FindOcvRM(obj, OCV_TABLE_IDX_CHARGE, tmp16);
@@ -1569,30 +1670,30 @@ void InitCharge(CapacityInternalDataType *obj)
       UG31_LOGN("[%s]: (0x%08x) CAP_STS_CURR_DSG\n", __func__, (unsigned int)obj->info->status);
       /// [AT-PM] : Loop up NAC table ; 01/25/2013
       CalculateCRate(obj);
-      if(FindNacIdxCRate[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+      if(FindNacIdxCRate[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
       {
-        (*FindNacIdxCRate[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj);
+        (*FindNacIdxCRate[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(obj);
       }
-      if(CreateNacVoltageTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+      if(CreateNacVoltageTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
       {
-        (*CreateNacVoltageTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj);
+        (*CreateNacVoltageTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(obj);
       }
-      FindNacIdxVoltage(obj, (_cap_u16_)obj->info->measurement->bat1VoltageAvg);
-      if(CreateNacTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+      FindNacIdxVoltage(obj, (_cap_u16_)ptrMeasData->bat1VoltageAvg);
+      if(CreateNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
       {
-        (*CreateNacTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj);
+        (*CreateNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(obj);
       }
-      obj->fcc = (_cap_u16_)LimitValue((_cap_s32_)obj->tableNac[0], (_cap_s32_)obj->info->ggbParameter->ILMD, LIMIT_FCC_WITH_ILMD_RANGE);
+      obj->fcc = (_cap_u16_)LimitValue((_cap_s32_)obj->tableNac[0], (_cap_s32_)ptrCellParameter->ILMD, LIMIT_FCC_WITH_ILMD_RANGE);
       obj->info->fcc = obj->tableNac[0];
-      FindNacRM(obj, (_cap_u16_)obj->info->measurement->bat1VoltageAvg);
+      FindNacRM(obj, (_cap_u16_)ptrMeasData->bat1VoltageAvg);
       obj->info->rm = obj->rm;
       break;
     default:
       UG31_LOGE("[%s]: (0x%08x) CAP_STS_UNKNOWN\n", __func__, (unsigned int)obj->info->status);
       /// [AT-PM] : Loop up OCV table ; 01/25/2013
-      FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1VoltageAvg);
+      FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, ptrMeasData->bat1VoltageAvg);
       FindOcvFcc(obj);
-      FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, obj->info->measurement->bat1VoltageAvg);
+      FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, ptrMeasData->bat1VoltageAvg);
       obj->info->rm = obj->rm;
       break;
   }
@@ -1606,6 +1707,7 @@ void InitCharge(CapacityInternalDataType *obj)
   obj->info->rsoc = (_cap_u8_)CalculateRsoc(obj->info->rm, obj->info->fcc);
   obj->info->fccBackup = obj->info->fcc;
   obj->info->predictRsoc = obj->info->rsoc;
+  obj->info->tableRsoc = obj->info->rsoc;
   UG31_LOGN("[%s]: Initial capacity %d / %d = %d\n", __func__,
             obj->info->rm, obj->info->fcc, obj->info->rsoc);
 }
@@ -1639,7 +1741,7 @@ _cap_bool_ CheckTableAvailable(CapacityInternalDataType *data)
 /**
  * @brief EncriptTable
  *
- *  Encript table from data->info->ggbTable->CELL_NAC_TABLE to data->info->encriptTable
+ *  Encript table from ptrCellTable->CELL_NAC_TABLE to data->info->encriptTable
  *
  * @para  data  address of CapacityInternalDataType
  * @return  _UPI_NULL_
@@ -1697,16 +1799,16 @@ void EncriptTable(CapacityInternalDataType *data)
       idxCRate = 0;
       while(idxCRate < C_RATE_NUMS)
       {
-        if(data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] < SOV_NUMS)
+        if(ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] < SOV_NUMS)
         {
-          data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] = SOV_NUMS - 1;
+          ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] = SOV_NUMS - 1;
         }
-        data->info->encriptTable[idx] = data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] / 256;
+        data->info->encriptTable[idx] = ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] / 256;
         UG31_LOGD("[%s]: Encripted Value [%d] = %d\n", __func__,
                   idx, data->info->encriptTable[idx]);
-        data->info->encriptTable[idx+1] = data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] % 256;
+        data->info->encriptTable[idx+1] = ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] % 256;
         UG31_LOGD("[%s]: Encripted Value [%d] = %d\n", __func__,
-                  idx+1, data->info->encriptTable[idx+1]);  
+                  idx+1, data->info->encriptTable[idx+1]);
         idx = idx + 2;
         idxCRate = idxCRate + 1;
       }
@@ -1725,30 +1827,30 @@ void EncriptTable(CapacityInternalDataType *data)
         idxSov = 1;
         while(idxSov < SOV_NUMS)
         {
-          tmp32 = (_cap_u32_)data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov];
-          tmp32 = tmp32*1000*CONST_ROUNDING/data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0];
+          tmp32 = (_cap_u32_)ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov];
+          tmp32 = tmp32*1000*CONST_ROUNDING/ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0];
           tmp32 = (tmp32 + CONST_ROUNDING_5)/CONST_ROUNDING;
           percentage[idxTemp][idxCRate][idxSov - 1] = (_cap_u16_)tmp32;
           UG31_LOGD("[%s]: Percentage =  Table[%d][%d][%d] * %d / %d = %d  * %d / %d = %d\n", __func__,
                     idxTemp, idxCRate, idxSov,
                     CELL_TABLE_ENCRIPTION_RATIO,
-                    data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0],
-                    data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov],
+                    ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0],
+                    ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov],
                     CELL_TABLE_ENCRIPTION_RATIO,
-                    data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0],
+                    ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0],
                     percentage[idxTemp][idxCRate][idxSov - 1]);
           idxSov = idxSov + 1;
         }
-        if(data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] < SOV_NUMS)
+        if(ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] < SOV_NUMS)
         {
-          data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] = SOV_NUMS - 1;
+          ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] = SOV_NUMS - 1;
         }
-        data->info->encriptTable[idx] = data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] / 256;
+        data->info->encriptTable[idx] = ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] / 256;
         UG31_LOGD("[%s]: Encripted Value [%d] = %d\n", __func__,
                   idx, data->info->encriptTable[idx]);
-        data->info->encriptTable[idx+1] = data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] % 256;
+        data->info->encriptTable[idx+1] = ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] % 256;
         UG31_LOGD("[%s]: Encripted Value [%d] = %d\n", __func__,
-                  idx+1, data->info->encriptTable[idx+1]);  
+                  idx+1, data->info->encriptTable[idx+1]);
         idx = idx + 2;
         idxCRate = idxCRate + 1;
       }
@@ -1784,7 +1886,7 @@ void EncriptTable(CapacityInternalDataType *data)
 /**
  * @brief DecriptTable
  *
- *  Decript table from data->info->encriptTable to data->info->ggbTable->CELL_NAC_TABLE
+ *  Decript table from data->info->encriptTable to ptrCellTable->CELL_NAC_TABLE
  *
  * @para  data  address of CapacityInternalDataType
  * @return  _UPI_NULL_
@@ -1807,34 +1909,34 @@ void DecriptTable(CapacityInternalDataType *data)
     while(idxCRate < C_RATE_NUMS)
     {
       idxSov = 0;
-      data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] = 0;
-      data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] = 
+      ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] = 0;
+      ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] =
         data->info->encriptTable[idx] * 256 +  data->info->encriptTable[idx+1];
-      if(data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] < SOV_NUMS)
+      if(ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] < SOV_NUMS)
       {
-        data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] = SOV_NUMS - 1;
+        ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] = SOV_NUMS - 1;
       }
       UG31_LOGD("[%s]: Table[%d][%d][%d] = %d\n", __func__,
                 idxTemp, idxCRate, 0,
-                data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0]);
+                ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0]);
       idxSov = 1;
       tmp = 0;
       while(idxSov < SOV_NUMS)
       {
         tmp32 = (_cap_u32_)data->info->encriptTable[idxSov - 1];
-        tmp32 = tmp32*data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0]*CONST_ROUNDING/CELL_TABLE_ENCRIPTION_RATIO;
+        tmp32 = tmp32*ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0]*CONST_ROUNDING/CELL_TABLE_ENCRIPTION_RATIO;
         tmp32 = (tmp32 + CONST_ROUNDING_5)/CONST_ROUNDING;
-        data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] = (_upi_s16_)tmp32;
+        ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] = (_upi_s16_)tmp32;
         /// [FC] : Limit the minimum capacity to 1 ; 06/14/2013
-        if(data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] < 1)
+        if(ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] < 1)
         {
-          data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] = 1;
+          ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] = 1;
         }
-        tmp = tmp + data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov];
+        tmp = tmp + ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov];
         idxSov = idxSov + 1;
       }
       /// [FC] : Distribute insufficient or superfluous capacity ; 06/14/2013
-      tmp = data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] - tmp;
+      tmp = ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0] - tmp;
       while(tmp)
       {
         idxSov = 1;
@@ -1842,16 +1944,16 @@ void DecriptTable(CapacityInternalDataType *data)
         {
           if(tmp > 0)
           {
-            data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] = 
-              data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] + 1;
+            ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] =
+              ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] + 1;
             tmp = tmp - 1;
           }
           else
           {
-            if(data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] > 1)
+            if(ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] > 1)
             {
-              data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] = 
-                data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] - 1;
+              ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] =
+                ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov] - 1;
               tmp = tmp + 1;
             }
           }
@@ -1868,9 +1970,9 @@ void DecriptTable(CapacityInternalDataType *data)
         UG31_LOGD("[%s]: Table[%d][%d][%d] = ( Encript Value [%d] = %d ) x %d / %d = %d\n", __func__,
                   idxTemp, idxCRate, idxSov, idxSov-1,
                   data->info->encriptTable[idxSov-1],
-                  data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0],
+                  ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0],
                   CELL_TABLE_ENCRIPTION_RATIO,
-                  data->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov]);
+                  ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov]);
         idxSov = idxSov + 1;
       }
       idx = idx + 2;
@@ -1908,7 +2010,7 @@ void PrepareNacTableVer1(CapacityInternalDataType *obj)
     idxCRate = 0;
     while(idxCRate < C_RATE_NUMS)
     {
-      tmp32 = tmp32 + obj->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][0];
+      tmp32 = tmp32 + ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][0];
       dataCnt = dataCnt + 1;
       idxCRate = idxCRate + 1;
     }
@@ -1916,30 +2018,30 @@ void PrepareNacTableVer1(CapacityInternalDataType *obj)
   }
   tmp32 = tmp32/dataCnt;
 
-  ratio = (_cap_s32_)obj->info->ggbParameter->ILMD;
+  ratio = (_cap_s32_)ptrCellParameter->ILMD;
   ratio = ratio*PREPARE_NAC_TABLE_VER1_CONST;
   ratio = ratio/tmp32;
 
   /// [AT-PM] : Prepare NAC table ; 10/28/2013
   obj->info->tableNac[0] = 0;
-  
+
   idxSov = 1;
   while(idxSov < SOV_NUMS)
   {
     dataCnt = 0;
     tmp32 = 0;
-    
+
     idxTemp = 0;
     while(idxTemp < TEMPERATURE_NUMS)
     {
       idxCRate = 0;
       while(idxCRate < C_RATE_NUMS)
       {
-        tmp32 = tmp32 + obj->info->ggbTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov];
+        tmp32 = tmp32 + ptrCellTable->CELL_NAC_TABLE[idxTemp][idxCRate][idxSov];
         dataCnt = dataCnt + 1;
         idxCRate = idxCRate + 1;
       }
-      
+
       idxTemp = idxTemp + 1;
     }
 
@@ -1947,7 +2049,7 @@ void PrepareNacTableVer1(CapacityInternalDataType *obj)
     obj->info->tableNac[idxSov] = (_cap_s16_)tmp32;
     obj->info->tableNac[0] = obj->info->tableNac[0] + obj->info->tableNac[idxSov];
     UG31_LOGD("[%s]: tableNac[%d] = %d (%d)\n", __func__, idxSov, obj->info->tableNac[idxSov], obj->info->tableNac[0]);
-    
+
     idxSov = idxSov + 1;
   }
 }
@@ -1980,9 +2082,9 @@ void SaveUpdateNacTable(CapacityInternalDataType *data)
   upi_memcpy(tmpTable, data->info->encriptTable, data->info->tableSize);
 
   /// [AT-PM] : Refresh NAC table ; 02/26/2013
-  if(CreateNacTable[GET_CAP_ALGORITHM_VER(data->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+  if(CreateNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
   {
-    (*CreateNacTable[GET_CAP_ALGORITHM_VER(data->info->ggbParameter->NacLmdAdjustCfg)])(data);
+    (*CreateNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(data);
   }
 
   /// [AT-PM] : Encript table ; 01/31/2013
@@ -1993,15 +2095,15 @@ void SaveUpdateNacTable(CapacityInternalDataType *data)
   UpiFreeTableBuf((_sys_u8_ **)&tmpTable);
 
   /// [AT-PM] : Prepare NAC table ; 10/25/2013
-  if(PrepareNacTable[GET_CAP_ALGORITHM_VER(data->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+  if(PrepareNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
   {
-    (*PrepareNacTable[GET_CAP_ALGORITHM_VER(data->info->ggbParameter->NacLmdAdjustCfg)])(data);
+    (*PrepareNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(data);
   }
 
   /// [AT-PM] : Refresh NAC table ; 02/26/2013
-  if(CreateNacTable[GET_CAP_ALGORITHM_VER(data->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+  if(CreateNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
   {
-    (*CreateNacTable[GET_CAP_ALGORITHM_VER(data->info->ggbParameter->NacLmdAdjustCfg)])(data);
+    (*CreateNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(data);
   }
 }
 
@@ -2030,7 +2132,7 @@ void UpdateCCRecord(CapacityInternalDataType *obj)
     return;
   }
 
-  /// [AT-PM] : Check discharge time ; 07/18/2013  
+  /// [AT-PM] : Check discharge time ; 07/18/2013
   if(obj->info->dsgChargeTime == 0)
   {
     UG31_LOGE("[%s]: Discharge time = 0\n", __func__);
@@ -2054,7 +2156,7 @@ void UpdateCCRecord(CapacityInternalDataType *obj)
     obj->info->ccRecord[0] = obj->info->ccRecord[0] + obj->info->ccRecord[idx];
     UG31_LOGD("[%s]: New CC Record[%d] = %d (%d)\n", __func__,
               idx, obj->info->ccRecord[idx], obj->info->ccRecord[0]);
-    
+
     idx = idx + 1;
   }
 }
@@ -2124,7 +2226,7 @@ void UpdateProcedureVer0(CapacityInternalDataType *obj)
     idxCRate = obj->idxNacCRate[INDEX_BOUNDARY_HIGH];
     while(idxCRate <= obj->idxNacCRate[INDEX_BOUNDARY_LOW])
     {
-      tmp32 = (_cap_s32_)obj->info->ggbTable->CELL_NAC_TABLE[idxTemperature][idxCRate][obj->info->tableUpdateIdx];
+      tmp32 = (_cap_s32_)ptrCellTable->CELL_NAC_TABLE[idxTemperature][idxCRate][obj->info->tableUpdateIdx];
       tmp32 = tmp32 + offset;
       if(tmp32 < 1)
       {
@@ -2132,15 +2234,15 @@ void UpdateProcedureVer0(CapacityInternalDataType *obj)
       }
       UG31_LOGD("[%s]: Update NAC Table[%d][%d][%d] = %d -> %d\n", __func__,
                 idxTemperature, idxCRate, obj->info->tableUpdateIdx,
-                obj->info->ggbTable->CELL_NAC_TABLE[idxTemperature][idxCRate][obj->info->tableUpdateIdx], (int)tmp32);
-      obj->info->ggbTable->CELL_NAC_TABLE[idxTemperature][idxCRate][obj->info->tableUpdateIdx] = (_upi_s16_)tmp32;
+                ptrCellTable->CELL_NAC_TABLE[idxTemperature][idxCRate][obj->info->tableUpdateIdx], (int)tmp32);
+      ptrCellTable->CELL_NAC_TABLE[idxTemperature][idxCRate][obj->info->tableUpdateIdx] = (_upi_s16_)tmp32;
 
-      tmp32 = offset + (_cap_s32_)obj->info->ggbTable->CELL_NAC_TABLE[idxTemperature][idxCRate][0];
+      tmp32 = offset + (_cap_s32_)ptrCellTable->CELL_NAC_TABLE[idxTemperature][idxCRate][0];
       if(tmp32 <= SOV_NUMS - 1)
       {
         tmp32 = SOV_NUMS - 1;
       }
-      obj->info->ggbTable->CELL_NAC_TABLE[idxTemperature][idxCRate][0] = (_upi_s16_)tmp32;
+      ptrCellTable->CELL_NAC_TABLE[idxTemperature][idxCRate][0] = (_upi_s16_)tmp32;
 
       idxCRate = idxCRate + 1;
     }
@@ -2167,7 +2269,7 @@ void UpdateProcedureVer1(CapacityInternalDataType *obj)
             (int)obj->info->dsgCharge, (int)obj->info->dsgChargeStart, obj->tableNac[obj->info->tableUpdateIdx], (int)offset);
 
   /// [AT-PM] : Update FCC table ; 10/25/2013
-  tmp32 = (_cap_s32_)obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][0];
+  tmp32 = (_cap_s32_)ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][0];
   tmp32 = tmp32 + offset;
   if(tmp32 < SOV_NUMS)
   {
@@ -2175,8 +2277,8 @@ void UpdateProcedureVer1(CapacityInternalDataType *obj)
   }
   UG31_LOGD("[%s]: Update table FCC[%d][%d][%d] = %d (%d)\n", __func__, obj->idxTemperature[INDEX_BOUNDARY_LOW],
             obj->idxNacCRate[INDEX_BOUNDARY_LOW], 0, (int)tmp32,
-            obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][0]);
-  obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][0] = (_upi_s16_)tmp32;
+            ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][0]);
+  ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]][obj->idxNacCRate[INDEX_BOUNDARY_LOW]][0] = (_upi_s16_)tmp32;
 
   /// [AT-PM] : Update capacity in the region ; 10/25/2013
   tmp32 = (_cap_s32_)obj->info->tableNac[obj->info->tableUpdateIdx];
@@ -2230,7 +2332,7 @@ void UpdateTable(CapacityInternalDataType *obj)
     return;
   }
 
-  /// [AT-PM] : Check discharge time ; 07/18/2013  
+  /// [AT-PM] : Check discharge time ; 07/18/2013
   if(obj->info->dsgChargeTime == 0)
   {
     UG31_LOGE("[%s]: Discharge time = 0\n", __func__);
@@ -2240,32 +2342,32 @@ void UpdateTable(CapacityInternalDataType *obj)
   /// [AT-PM] : Calculate average c-rate ; 01/31/2013
   tmp32 = tmp32*TIME_SEC_TO_HOUR/obj->info->dsgChargeTime;
   UG31_LOGD("[%s]: Average C-Rate tmp = %d x %d / %d\n", __func__, (int)tmp32, TIME_SEC_TO_HOUR, (int)obj->info->dsgChargeTime);
-  tmp32 = tmp32*C_RATE_CONVERT_BASE*(-1)/obj->info->ggbParameter->ILMD;
-  UG31_LOGD("[%s]: Average C-Rate = %d x %d x (-1) / %d\n", __func__, (int)tmp32, C_RATE_CONVERT_BASE, obj->info->ggbParameter->ILMD);
+  tmp32 = tmp32*C_RATE_CONVERT_BASE*(-1)/ptrCellParameter->ILMD;
+  UG31_LOGD("[%s]: Average C-Rate = %d x %d x (-1) / %d\n", __func__, (int)tmp32, C_RATE_CONVERT_BASE, ptrCellParameter->ILMD);
   obj->cRate = (_cap_u8_)tmp32;
   UG31_LOGD("[%s]: Average C-Rate = %d\n", __func__, obj->cRate);
 
   /// [AT-PM] : Refresh NAC and voltage table ; 01/31/2013
-  if(FindNacIdxCRate[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+  if(FindNacIdxCRate[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
   {
-    (*FindNacIdxCRate[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj);
+    (*FindNacIdxCRate[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(obj);
   }
-  if(CreateNacVoltageTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+  if(CreateNacVoltageTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
   {
-    (*CreateNacVoltageTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj);
+    (*CreateNacVoltageTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(obj);
   }
   FindNacIdxVoltage(obj, obj->info->avgVoltage);
-  if(CreateNacTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+  if(CreateNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
   {
-    (*CreateNacTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj);
+    (*CreateNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(obj);
   }
 
   /// [AT-PM] : Update NAC table ; 10/25/2013
-  if(UpdateProcedure[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+  if(UpdateProcedure[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
   {
-    (*UpdateProcedure[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj);
+    (*UpdateProcedure[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(obj);
   }
-  
+
   /// [AT-PM] : Save updated NAC table ; 01/31/2013
   SaveUpdateNacTable(obj);
   return;
@@ -2347,28 +2449,28 @@ _cap_s32_ GetCCRecordFromTable(CapacityInternalDataType *obj, _cap_u8_ idxSov, _
   _cap_s16_ temperature;
 
   temperature = GetBatteryTemperature(obj);
-  
-  if(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] == 
+
+  if(TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] ==
      TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]])
   {
-    valueInterpolate = (_cap_s32_)obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+    valueInterpolate = (_cap_s32_)ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                                      [idxCRate]
                                                                      [idxSov];
   }
   else
   {
-    valueInterpolate = (_cap_s32_)obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
+    valueInterpolate = (_cap_s32_)ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_HIGH]]
                                                                      [idxCRate]
                                                                      [idxSov];
-    valueInterpolate = valueInterpolate - obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+    valueInterpolate = valueInterpolate - ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                                      [idxCRate]
                                                                      [idxSov];
     valueInterpolate = valueInterpolate*(temperature - TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
     valueInterpolate = valueInterpolate/
-                       (TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] - 
+                       (TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_HIGH]] -
                         TemperatureTable[obj->idxTemperature[INDEX_BOUNDARY_LOW]]);
     valueInterpolate = valueInterpolate +
-                       obj->info->ggbTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
+                       ptrCellTable->CELL_NAC_TABLE[obj->idxTemperature[INDEX_BOUNDARY_LOW]]
                                                           [idxCRate]
                                                           [idxSov];
   }
@@ -2391,27 +2493,27 @@ void InitCCRecord(CapacityInternalDataType *obj)
   _cap_s32_ valueInterpolate;
 
   obj->info->ccRecord[0] = 0;
-  
+
   idxSov = 1;
   while(idxSov < SOV_NUMS)
   {
     tmp32 = 0;
-    
+
     idxCRate = 0;
     while(idxCRate < C_RATE_NUMS)
     {
       valueInterpolate = GetCCRecordFromTable(obj, idxSov, idxCRate);
       tmp32 = tmp32 + valueInterpolate;
-      
+
       idxCRate = idxCRate + 1;
     }
-    
+
     tmp32 = tmp32/idxCRate;
     obj->info->ccRecord[idxSov] = (_cap_s16_)tmp32;
     obj->info->ccRecord[0] = obj->info->ccRecord[0] + obj->info->ccRecord[idxSov];
     UG31_LOGD("[%s]: CC Record[%d] = %d (%d)\n", __func__,
               idxSov, obj->info->ccRecord[idxSov], obj->info->ccRecord[0]);
-    
+
     idxSov = idxSov + 1;
   }
 }
@@ -2460,17 +2562,21 @@ void UpiInitCapacity(CapacityDataType *data)
   _cap_u8_ *ptr;
 
   UG31_LOGI("[%s]: %s\n", __func__, CAPACITY_VERSION);
-  
+
   /// [AT-PM] : Initialize variables ; 01/25/2013
   data->status = CAP_STS_LAST_STANDBY | CAP_STS_CURR_STANDBY | CAP_STS_INIT_PROCEDURE | CAP_STS_RELEASE_100;
   data->status = data->status & (~(CAP_STS_INIT_TIMER_PASS));
   data->tableUpdateIdx = SOV_NUMS;
-  data->dsgChargeStart = (_cap_s32_)data->ggbParameter->ILMD*2;
+  data->dsgChargeStart = (_cap_s32_)ptrCellParameter->ILMD*2;
   data->tableUpdateDisqTime = 0;
   data->standbyDsgRatio = 0;
   data->standbyMilliSec = 0;
   data->standbyHour = 0;
   data->inSuspendMilliSec = 0;
+  data->ccChgOffset25 = 0;
+  data->ccChgOffset50 = 0;
+  data->ccChgOffset75 = 0;
+  data->ccChgOffset100 = 0;
 
   #ifdef  UG31XX_SHELL_ALGORITHM
     obj = (CapacityInternalDataType *)upi_malloc(sizeof(CapacityInternalDataType));
@@ -2485,20 +2591,20 @@ void UpiInitCapacity(CapacityDataType *data)
     *(ptr + idx) = 0;
     idx = idx + 1;
   }
-  
+
   obj->info = data;
   obj->rm = obj->info->rm;
-  obj->fcc = (_cap_u16_)LimitValue((_cap_s32_)obj->info->fcc, (_cap_s32_)obj->info->ggbParameter->ILMD, LIMIT_FCC_WITH_ILMD_RANGE);
+  obj->fcc = (_cap_u16_)LimitValue((_cap_s32_)obj->info->fcc, (_cap_s32_)ptrCellParameter->ILMD, LIMIT_FCC_WITH_ILMD_RANGE);
 
   UG31_LOGN("[%s]: Temperature Table: %d / %d / %d / %d\n", __func__,
             TemperatureTable[0], TemperatureTable[1], TemperatureTable[2], TemperatureTable[3]);
   UG31_LOGN("[%s]: CRate Table: %d / %d / %d / %d\n", __func__,
             CRateTable[0], CRateTable[1], CRateTable[2], CRateTable[3]);
   UG31_LOGN("[%s]: Current status: %d mV / %d mA / %d 0.1oC / %d 0.1oC\n", __func__,
-            data->measurement->bat1VoltageAvg, data->measurement->currAvg, data->measurement->intTemperature, data->measurement->extTemperature);
-  
+            ptrMeasData->bat1VoltageAvg, ptrMeasData->currAvg, ptrMeasData->intTemperature, ptrMeasData->extTemperature);
+
   /// [AT-PM] : Get battery state ; 01/25/2013
-  data->avgVoltage = (_cap_u16_)data->measurement->bat1VoltageAvg;
+  data->avgVoltage = (_cap_u16_)ptrMeasData->bat1VoltageAvg;
   data->avgTemperature = GetBatteryTemperature(obj);
   GetBatteryState(obj);
   /// [AT-PM] : Release full charge condition ; 01/25/2013
@@ -2508,12 +2614,12 @@ void UpiInitCapacity(CapacityDataType *data)
   data->lastRsoc = data->rsoc;
   /// [AT-PM] : Initialize record CC array ; 02/19/2013
   InitCCRecord(obj);
-  /// [AT-PM] : Reset RSOC filter ; 02/07/2014  
+  /// [AT-PM] : Reset RSOC filter ; 02/07/2014
   RsocFilterReset(obj, RSOC_FILTER_FLAG_RESET_ALL);
-  
+
   data->status = data->status & (~CAP_STS_INIT_PROCEDURE);
   #ifdef  UG31XX_SHELL_ALGORITHM
-    upi_free(obj);  
+    upi_free(obj);
   #endif  ///< end of UG31XX_SHELL_ALGORITHM
 }
 
@@ -2548,10 +2654,10 @@ void UpiTableCapacity(CapacityDataType *data)
 
   obj->info = data;
   obj->rm = obj->info->rm;
-  obj->fcc = (_cap_u16_)LimitValue((_cap_s32_)obj->info->fcc, (_cap_s32_)obj->info->ggbParameter->ILMD, LIMIT_FCC_WITH_ILMD_RANGE);
+  obj->fcc = (_cap_u16_)LimitValue((_cap_s32_)obj->info->fcc, (_cap_s32_)ptrCellParameter->ILMD, LIMIT_FCC_WITH_ILMD_RANGE);
 
   /// [AT-PM] : Find out initial capacity ; 01/28/2013
-  obj->info->status = obj->info->status | (CAP_STS_INIT_PROCEDURE | 
+  obj->info->status = obj->info->status | (CAP_STS_INIT_PROCEDURE |
                                            CAP_STS_NO_INIT_FORCE_100);
   InitCharge(obj);
   obj->info->status = obj->info->status & (~(CAP_STS_INIT_PROCEDURE |
@@ -2591,8 +2697,6 @@ void UpiInitNacTable(CapacityDataType *data)
   }
 
   obj->info = data;
-  obj->rm = obj->info->rm;
-  obj->fcc = (_cap_u16_)LimitValue((_cap_s32_)obj->info->fcc, (_cap_s32_)obj->info->ggbParameter->ILMD, LIMIT_FCC_WITH_ILMD_RANGE);
 
   idx = 0;
   while(idx < ENCRIPT_TABLE_SIZE)
@@ -2609,24 +2713,40 @@ void UpiInitNacTable(CapacityDataType *data)
   #endif  ///< end of UG31XX_RESET_DATABASE
   if(rtn == _UPI_FALSE_)
   {
-    /// [AT-PM] : Encript table from GGB file ; 01/31/2013
+		#ifdef UG31XX_ADJUST_CELL_TABLE
+	    /// [AT-PM] : Encript table from GGB file ; 01/31/2013
+	    if(CapStatusAdjustCellTableGet(data) == _UPI_TRUE_)
+	    {
+		upiGG_AdjustCellTable(data);
+				CapStatusAdjustCellTableClear(data);
+	    }
+		#endif  ///< end of UG31XX_ADJUST_CELL_TABLE
     EncriptTable(obj);
   }
   else
   {
     /// [AT-PM] : Decript table ; 01/31/2013
     DecriptTable(obj);
+		#ifdef UG31XX_ADJUST_CELL_TABLE
+	    if(CapStatusAdjustCellTableGet(data) == _UPI_TRUE_)
+	    {
+		upiGG_AdjustCellTable(data);
+				CapStatusAdjustCellTableClear(data);
+	    }
+		#endif	///< end of UG31XX_ADJUST_CELL_TABLE
   }
+  obj->rm = obj->info->rm;
+  obj->fcc = (_cap_u16_)LimitValue((_cap_s32_)obj->info->fcc, (_cap_s32_)ptrCellParameter->ILMD, LIMIT_FCC_WITH_ILMD_RANGE);
 
   /// [AT-PM] : Prepare NAC table ; 10/25/2013
-  if(PrepareNacTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+  if(PrepareNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
   {
-    (*PrepareNacTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj);
+    (*PrepareNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(obj);
   }
   /// [AT-PM] : Reset update NAC table buffer ; 11/05/2013
-  if(ResetUpdateNacTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+  if(ResetUpdateNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
   {
-    (*ResetUpdateNacTable[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj);
+    (*ResetUpdateNacTable[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(obj);
   }
 
   #ifdef  UG31XX_SHELL_ALGORITHM
@@ -2654,7 +2774,7 @@ void UpiSetChargerFull(CapacityDataType *data, _cap_bool_ isFull)
   #endif  ///< end of UG31XX_SHELL_ALGORITHM
   obj->info = data;
   obj->rm = obj->info->rm;
-  obj->fcc = (_cap_u16_)LimitValue((_cap_s32_)obj->info->fcc, (_cap_s32_)obj->info->ggbParameter->ILMD, LIMIT_FCC_WITH_ILMD_RANGE);
+  obj->fcc = (_cap_u16_)LimitValue((_cap_s32_)obj->info->fcc, (_cap_s32_)ptrCellParameter->ILMD, LIMIT_FCC_WITH_ILMD_RANGE);
 
   if(isFull == _UPI_FALSE_)
   {
@@ -2706,7 +2826,7 @@ void UpiSetChargerFullStep(CapacityDataType *data, GG_BATTERY_INFO *orgData)
 void UpiInitDsgCharge(CapacityDataType *data)
 {
   data->dsgCharge = 0;
-  data->qFromCurr = (_cap_s32_)data->ggbParameter->ILMD;
+  data->qFromCurr = (_cap_s32_)ptrCellParameter->ILMD;
   data->qFromCC = 0;
   data->qFromCurrBuf = 0;
   data->status = data->status | CAP_STS_DSGCHARGE_INITED;
@@ -2717,7 +2837,7 @@ void UpiInitDsgCharge(CapacityDataType *data)
 /**
  * @brief UpiAdjustCCRecord
  *
- *  Adjust CCRecord according to FCC 
+ *  Adjust CCRecord according to FCC
  *
  * @para  data  address of CapacityDataType
  * @return  NULL
@@ -2760,7 +2880,7 @@ _cap_u16_ CalculateRsoc(_cap_u32_ rm, _cap_u16_ fcc)
 
   if(fcc == 0)
   {
-    tmp32 = rm*CONST_PERCENTAGE*CONST_ROUNDING;    
+    tmp32 = rm*CONST_PERCENTAGE*CONST_ROUNDING;
     UG31_LOGE("[%s]: FCC = 0. (%d <-> %d)\n", __func__,
               (int)tmp32,
               (int)rm);
@@ -2821,17 +2941,20 @@ _cap_u8_ UpiGetOcvSoc(CapacityDataType *data, _cap_u16_ volt)
     obj = &capData;
   #endif  ///< end of UG31XX_SHELL_ALGORITHM
 
-  upi_memset((_cap_u8_ *)obj, 0, sizeof(CapacityInternalDataType));  
+  upi_memset((_cap_u8_ *)obj, 0, sizeof(CapacityInternalDataType));
   obj->info = data;
-  
-  if(FindIdxTemperature[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
+
+  if(FindIdxTemperature[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)] != _UPI_NULL_)
   {
-    (*FindIdxTemperature[GET_CAP_ALGORITHM_VER(obj->info->ggbParameter->NacLmdAdjustCfg)])(obj, GetBatteryTemperature(obj));
+    (*FindIdxTemperature[GET_CAP_ALGORITHM_VER(ptrCellParameter->NacLmdAdjustCfg)])(obj, GetBatteryTemperature(obj));
   }
 
   FindOcvIdxVoltage(obj, OCV_TABLE_IDX_STAND_ALONE, volt);
   FindOcvRM(obj, OCV_TABLE_IDX_STAND_ALONE, volt);
   soc = (_cap_u8_)CalculateRsoc((_cap_u32_)obj->rm, obj->info->fcc);
+  #ifdef  UG31XX_SHELL_ALGORITHM
+    upi_free(obj);
+  #endif  ///< end of UG31XX_SHELL_ALGORITHM
   return (soc);
 }
 

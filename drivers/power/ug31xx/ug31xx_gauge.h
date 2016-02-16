@@ -8,9 +8,9 @@
 #define UG31XX_DEV_NAME        "ug31xx-gauge"
 
 typedef enum {
- 	UG31XX_DRV_NOT_READY = 0,
- 	UG31XX_DRV_INIT_OK,
- 	UG31XX_DRV_SUSPEND,
+	UG31XX_DRV_NOT_READY = 0,
+	UG31XX_DRV_INIT_OK,
+	UG31XX_DRV_SUSPEND,
 } ug31xx_drv_status_t;
 
 typedef enum {
@@ -53,8 +53,23 @@ typedef enum {
 #define LKM_OPTIONS_ENABLE_REVERSE_CURRENT  (1<<4)
 #define LKM_OPTIONS_ADJUST_DESIGN_CAPACITY  (1<<5)
 #define LKM_OPTIONS_DISABLE_BACHUP_FILE     (1<<6)
+#define LKM_OPTIONS_FORCE_RESET_TOTALLY     (1<<7)
 
 #endif  ///< end of _LKM_OPTIONS_
+
+#define UG31XX_KOBJ_CMD1A     (1<<0)
+#define UG31XX_KOBJ_CMD1B     (1<<1)
+#define UG31XX_KOBJ_CMD1C     (1<<2)
+#define UG31XX_KOBJ_CMD1D     (1<<3)
+#define UG31XX_KOBJ_CMD1E     (1<<4)
+#define UG31XX_KOBJ_CMD2      (1<<5)
+#define UG31XX_KOBJ_CMD3      (1<<6)
+#define UG31XX_KOBJ_CMD4      (1<<7)
+#define UG31XX_KOBJ_CMD5      (1<<8)
+#define UG31XX_KOBJ_CMD6      (1<<9)
+#define UG31XX_KOBJ_CMD7      (1<<10)
+#define UG31XX_KOBJ_CMD8      (1<<11)
+#define UG31XX_KOBJ_CMD9      (1<<12)
 
 struct ug31xx_module_interface {
 	int (*initial)(char *ggb, unsigned char cable);
@@ -63,7 +78,7 @@ struct ug31xx_module_interface {
 	int (*resume)(char user_space_response);
 	int (*shutdown)(void);
 	int (*update)(char user_space_response);
-	int (*reset)(char *ggb);
+	int (*reset)(char *ggb, char keep_rsoc, char reset_chip);
 
 	int (*shell_update)(void);
 	unsigned char * (*shell_memory)(int *mem_size);
@@ -71,7 +86,7 @@ struct ug31xx_module_interface {
 	unsigned char * (*shell_backup_memory)(int *mem_size);
 	unsigned char * (*shell_table_memory)(int *mem_size);
 	unsigned char * (*shell_table_buf_memory)(int *mem_size);
-  
+
 	int (*get_voltage)(void);
 	int (*get_voltage_now)(void);
 	int (*get_current)(void);
@@ -89,6 +104,7 @@ struct ug31xx_module_interface {
 	int (*get_battery_removed)(void);
 	int (*get_alarm_status)(void);
 	int (*get_charge_termination_current)(void);
+	int (*get_charge_termination_voltage)(void);
 	int (*get_full_charge_status)(void);
 	int (*get_design_capacity)(void);
 	int (*get_rsense)(void);
@@ -111,10 +127,15 @@ struct ug31xx_module_interface {
 	int (*get_ggb_board_gain)(void);
 	unsigned int (*get_ggb_config)(void);
 	unsigned char (*get_decimate_rst_sts)(void);
+  int (*get_delta_time)(void);
+  void (*get_cc_chg_offset)(unsigned int *offset_25, unsigned int *offset_50, unsigned int *offset_75, unsigned int *offset_100);
+  int (*get_suspend_time)(void);
+  int (*get_table_rsoc)(void);
 
 	int (*set_backup_file)(char enable);
 	int (*set_charger_full)(char is_full);
 	int (*set_charge_termination_current)(int curr);
+	int (*set_charge_termination_voltage)(int volt);
 	int (*set_battery_temp_external)(void);
 	int (*set_battery_temp_internal)(void);
 	int (*set_rsense)(int rsense);
@@ -132,6 +153,8 @@ struct ug31xx_module_interface {
 	int (*set_standby_current)(int curr);
 	int (*set_ggb_board_gain)(int gain);
 	int (*set_ggb_config)(unsigned int config);
+  int (*set_cc_chg_offset)(unsigned int offset_25, unsigned int offset_50, unsigned int offset_75, unsigned int offset_100);
+  int (*set_capacity_force)(int rsoc);
 
 	int (*chk_backup_file)(void);
 	int (*enable_save_data)(char enable);
@@ -139,10 +162,11 @@ struct ug31xx_module_interface {
 	int (*ug31xx_i2c_read)(unsigned short addr, unsigned char *data);
 	int (*ug31xx_i2c_write)(unsigned short addr, unsigned char *data);
 	int (*reset_cycle_count)(void);
-	int (*adjust_cell_table)(unsigned short design_capacity);
+	int (*adjust_cell_table)(unsigned short adjust_design_capacity, char force_reset);
 	int (*calibrate_offset)(unsigned char options);
 	int (*backup_pointer)(void);
 	int (*restore_pointer)(void);
+  int (*reset_q_from_cc)(void);
 };
 
 enum {
@@ -152,10 +176,10 @@ enum {
 };
 
 enum {
-	UG31XX_NO_CABLE = 0,
-	UG31XX_USB_PC_CABLE = 1,
-	UG31XX_PAD_POWER = 2,
-	UG31XX_AC_ADAPTER_CABLE = 3
+	UG31XX_NO_CABLE = 2,
+	UG31XX_USB_PC_CABLE = 0,
+	UG31XX_PAD_POWER = 5,
+	UG31XX_AC_ADAPTER_CABLE = 1
 };
 
 enum {

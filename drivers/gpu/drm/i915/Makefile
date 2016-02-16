@@ -61,11 +61,12 @@ i915-y := i915_drv.o i915_dma.o i915_irq.o \
 	  dsi_mod_panasonic_vvx09f006a00.o	\
 	  dsi_mod_auo_b101uan01.o	\
 	  dsi_mod_jdi_lpm070w425b.o	\
-	  dsi_mod_nov_m176.o \
+	  dsi_mod_vbt_generic.o	\
+	  dsi_mod_auo_b101ean01.o \
+	  dsi_mod_innolux_m181.o	\
+	  dsi_mod_nov_m176.o	\
 	  dsi_mod_auo_m181.o \
-	  dsi_mod_innolux_m181.o \
-	  dsi_mod_ivo_m181.o \
-	  dsi_mod_vbt_generic.o
+	  dsi_mod_ivo_m181.o
 
 i915-$(CONFIG_COMPAT)   += i915_ioc32.o
 

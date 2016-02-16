@@ -29,9 +29,8 @@
 #include <linux/slab.h>
 #include <linux/wakelock.h>
 #include <linux/intel_mid_pm.h>
-
 #include <trace/events/mmc.h>
-
+#include <linux/slab.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
@@ -237,6 +236,19 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 
 EXPORT_SYMBOL(mmc_request_done);
 
+static void mmc_qos_update(struct mmc_host *host, struct mmc_request *mrq,
+		s32 new_value)
+{
+	if (!host || !host->qos || !mrq)
+		return;
+
+	if (host->card && mmc_card_mmc(host->card) && mrq->data) {
+		if (mrq->data->flags & MMC_DATA_WRITE)
+			pm_qos_update_request(host->qos, new_value);
+	} else
+		pm_qos_update_request(host->qos, new_value);
+}
+
 static void
 mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 {
@@ -298,15 +310,7 @@ mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 	}
 	mmc_host_clk_hold(host);
 	led_trigger_event(host->led, LED_FULL);
-	if (host->qos) {
-		if (host->card && mmc_card_mmc(host->card) && mrq->data) {
-			if (mrq->data->flags & MMC_DATA_WRITE)
-				pm_qos_update_request(host->qos,
-						CSTATE_EXIT_LATENCY_C2);
-		} else
-			pm_qos_update_request(host->qos,
-					CSTATE_EXIT_LATENCY_C2);
-	}
+	mmc_qos_update(host, mrq, CSTATE_EXIT_LATENCY_C2);
 	host->ops->request(host, mrq);
 }
 
@@ -461,6 +465,7 @@ static int mmc_wait_for_data_req_done(struct mmc_host *host,
 			    mmc_card_removed(host->card)) {
 				err = host->areq->err_check(host->card,
 							    host->areq);
+				mmc_qos_update(host, mrq, PM_QOS_DEFAULT_VALUE);
 				break; /* return err */
 			} else {
 				pr_info("%s: req failed (CMD%u): %d, retrying...\n",
@@ -488,27 +493,20 @@ static void mmc_wait_for_req_done(struct mmc_host *host,
 	struct mmc_command *cmd;
 
 	while (1) {
-		wait_for_completion_io(&mrq->completion);
+		wait_for_completion(&mrq->completion);
 
 		cmd = mrq->cmd;
 		if (!cmd->error || !cmd->retries ||
-		    mmc_card_removed(host->card))
+		    mmc_card_removed(host->card)) {
+			mmc_qos_update(host, mrq, PM_QOS_DEFAULT_VALUE);
 			break;
+		}
 
 		pr_debug("%s: req failed (CMD%u): %d, retrying...\n",
 			 mmc_hostname(host), cmd->opcode, cmd->error);
 		cmd->retries--;
 		cmd->error = 0;
 		host->ops->request(host, mrq);
-	}
-	if (host->qos) {
-		if (host->card && mmc_card_mmc(host->card) && mrq->data) {
-			if (mrq->data->flags & MMC_DATA_WRITE)
-				pm_qos_update_request(host->qos,
-						PM_QOS_DEFAULT_VALUE);
-		} else
-			pm_qos_update_request(host->qos,
-					PM_QOS_DEFAULT_VALUE);
 	}
 }
 
@@ -1056,6 +1054,8 @@ void mmc_set_chip_select(struct mmc_host *host, int mode)
 static void __mmc_set_clock(struct mmc_host *host, unsigned int hz)
 {
 	WARN_ON(hz < host->f_min);
+	if (hz < host->f_min)
+		hz = host->f_min;
 
 	if (hz > host->f_max)
 		hz = host->f_max;
@@ -1487,9 +1487,12 @@ int mmc_set_signal_voltage(struct mmc_host *host, int signal_voltage)
 
 power_cycle:
 	if (err) {
+		int ocr;
 		pr_debug("%s: Signal voltage switch failed, "
 			"power cycling card\n", mmc_hostname(host));
+		ocr = host->ocr;
 		mmc_power_cycle(host);
+		host->ocr = mmc_select_voltage(host, ocr);
 	}
 
 	mmc_host_clk_release(host);
@@ -1565,8 +1568,14 @@ static void mmc_power_up(struct mmc_host *host)
 	/*
 	 * This delay should be sufficient to allow the power supply
 	 * to reach the minimum voltage.
+	 * Different device may have different supply power up time.
+	 * The max value should be 35ms per spec. If there is tPRU,
+	 * use it to wait for supply power up stable.
 	 */
-	usleep_range(16000, 17000);
+	if (host->tpru)
+		usleep_range(host->tpru * 1000, host->tpru * 1000 + 100);
+	else
+		usleep_range(10000, 11000);
 
 	host->ios.clock = host->f_init;
 
@@ -1576,8 +1585,13 @@ static void mmc_power_up(struct mmc_host *host)
 	/*
 	 * This delay must be at least 74 clock sizes, or 1 ms, or the
 	 * time required to reach a stable voltage.
+	 * Different device may have different supply ramp up time.
+	 * If there is tRAMP, use it to wait for supply ramp up stable.
 	 */
-	usleep_range(5000, 6000);
+	if (host->tramp)
+		usleep_range(host->tramp * 1000, host->tramp * 1000 + 100);
+	else
+		usleep_range(5000, 6000);
 
 	mmc_host_clk_release(host);
 }
@@ -1606,6 +1620,7 @@ void mmc_power_off(struct mmc_host *host)
 	host->ios.power_mode = MMC_POWER_OFF;
 	host->ios.bus_width = MMC_BUS_WIDTH_1;
 	host->ios.timing = MMC_TIMING_LEGACY;
+	host->ios.signal_voltage = 0;
 	mmc_set_ios(host);
 
 	if (host->ops->set_dev_power)
@@ -1624,8 +1639,12 @@ void mmc_power_off(struct mmc_host *host)
 void mmc_power_cycle(struct mmc_host *host)
 {
 	mmc_power_off(host);
-	/* Wait at least 1 ms according to SD spec */
-	mmc_delay(1);
+	/*
+	 * Wait at least 1 ms according to SD spec
+	 * some of the SD card seems only 1ms is not enough,
+	 * change the actual delay to be 10ms for safe
+	 */
+	mmc_delay(10);
 	mmc_power_up(host);
 }
 
@@ -1922,10 +1941,66 @@ static unsigned int mmc_erase_timeout(struct mmc_card *card,
 static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 			unsigned int to, unsigned int arg)
 {
+	struct mmc_request mrq = {NULL};
 	struct mmc_command cmd = {0};
 	unsigned int qty = 0;
 	unsigned int fr, nr;
 	int err;
+	struct mmc_data data = {0};
+	struct scatterlist sg;
+	void *data_buf;
+	
+	//add dummy read for Hynix eMMC 4.5 0x03 fw
+	if(card->cid.manfid == 0x90 &&
+	  card->cid.fwrev == 0x03 &&
+	  card->ext_csd.rev == 6) {
+		cmd.opcode = MMC_READ_SINGLE_BLOCK;
+		cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_ADTC;
+		cmd.arg = from;
+
+		data_buf = kmalloc(512, GFP_KERNEL);
+		if (data_buf == NULL)
+			return -ENOMEM;
+
+		mrq.cmd = &cmd;
+		mrq.data = &data;
+
+		data.blksz = 512;
+		data.blocks = 1;
+		data.flags = MMC_DATA_READ;
+		data.sg = &sg;
+		data.sg_len = 1;
+
+		sg_init_one(&sg, data_buf, 512);
+
+		mmc_set_data_timeout(&data, card);
+
+		mmc_wait_for_req(card->host, &mrq);
+		kfree(data_buf);
+
+		if (cmd.error)
+			return cmd.error;
+		if (data.error)
+			return data.error;
+
+		do {
+			memset(&cmd, 0, sizeof(struct mmc_command));
+			cmd.opcode = MMC_SEND_STATUS;
+			cmd.arg = card->rca << 16;
+			cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
+			/* Do not retry else we can't see errors */
+			err = mmc_wait_for_cmd(card->host, &cmd, 0);
+			if (err || (cmd.resp[0] & 0xFDF92000)) {
+				pr_err("error %d requesting status %#x\n",
+					err, cmd.resp[0]);
+				err = -EIO;
+				goto out;
+			}
+		} while (!(cmd.resp[0] & R1_READY_FOR_DATA) ||
+			R1_CURRENT_STATE(cmd.resp[0]) == R1_STATE_PRG);
+
+		memset(&cmd, 0, sizeof(struct mmc_command));
+	}
 
 	fr = from;
 	nr = to - from + 1;
@@ -2321,18 +2396,6 @@ static int mmc_do_hw_reset(struct mmc_host *host, int check)
 			}
 
 		}
-	}
-
-	/*
-	 * It was observed that some kind of eMMC device may fail to response
-	 * to CMD suddenly during normal usage. And the issue dispeared if
-	 * the same eMMC device working in DDR50. So disabling HS200 and force
-	 * the eMMC device working in DDR50 before reset the eMMC device.
-	 */
-	if ((host->caps2 & MMC_CAP2_HS200_1_8V_SDR) &&
-			(host->caps2 & MMC_CAP2_HS200_DIS)) {
-		pr_warn("%s: disable eMMC HS200\n", __func__);
-		host->caps2 &= ~MMC_CAP2_HS200_1_8V_SDR;
 	}
 
 	if (card && mmc_card_sd(card) &&

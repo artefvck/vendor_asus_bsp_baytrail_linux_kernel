@@ -40,13 +40,6 @@
 /*Added for HDMI Audio */
 #include "hdmi_audio_if.h"
 
-
-int i915_rotation __read_mostly;
-module_param_named(i915_rotation, i915_rotation, int, 0600);
-MODULE_PARM_DESC(i915_rotation,
-		"Enable 180 degree hardware rotation support, "
-		"1=180 degree, 0=0 degree ");
-
 static int i915_modeset __read_mostly = -1;
 module_param_named(modeset, i915_modeset, int, 0400);
 MODULE_PARM_DESC(modeset,
@@ -111,13 +104,24 @@ MODULE_PARM_DESC(vbt_sdvo_panel_type,
 		"Override/Ignore selection of SDVO panel mode in the VBT "
 		"(-2=ignore, -1=auto [default], index in VBT BIOS table)");
 
-int i915_mipi_panel_id __read_mostly = 6; //m176 panel 
-//int i915_mipi_panel_id __read_mostly = 7;	//m181_auo_panel
-//int i915_mipi_panel_id __read_mostly = 8;	//m181_innolux_panel
-//module_param_named(mipi_panel_id, i915_mipi_panel_id, int, 0600);
-//MODULE_PARM_DESC(mipi_panel_id,
-//		"MIPI Panel selection in case MIPI block is not present in VBT "
-//		"(-1=auto [default], mipi panel id)");
+int i915_mipi_panel_id __read_mostly = -1;
+module_param_named(mipi_panel_id, i915_mipi_panel_id, int, 0600);
+MODULE_PARM_DESC(mipi_panel_id,
+		"MIPI Panel selection in case MIPI block is not present in VBT "
+		"(-1=auto [default], mipi panel id)");
+
+#if defined(CONFIG_TF103CE) || defined(CONFIG_TF303CL)
+int hdmi_connect_state __read_mostly = 0;
+module_param_named(hdmi_state, hdmi_connect_state, int, 0644);
+MODULE_PARM_DESC(hdmi_state,
+		 "Show hdmi status");
+
+int i915_pre_emp_vswing_setting __read_mostly = 0;
+module_param_named(pre_emp_vswing_setting, i915_pre_emp_vswing_setting, int, 0600);
+MODULE_PARM_DESC(pre_emp_vswing_setting,
+		 "Need to get HDMI pre-emp, vswing settings from VBT."
+		 "(definitions: 0 = 1000MV_2DB ,1 = 1000MV_0DB, 2 = 800MV_0DB, 3 = 600MV_2DB, 4 = 600MV_0DB)");
+#endif
 
 static bool i915_try_reset __read_mostly = true;
 module_param_named(reset, i915_try_reset, bool, 0600);
@@ -247,10 +251,18 @@ MODULE_PARM_DESC(i915_enable_kernel_batch_copy,
 		"i915 submits a kernel managed copy of the user passed batch buffer. "
 		"(default: -1)");
 
-int i915_enable_cmd_parser __read_mostly = -1;
+int i915_enable_cmd_parser __read_mostly = 1;
 module_param_named(i915_enable_cmd_parser, i915_enable_cmd_parser, int, 0600);
 MODULE_PARM_DESC(i915_enable_cmd_parser,
-		"Enable command parsing (default: false)");
+		"Enable command parsing (default: true)");
+
+int i915_drrs_interval __read_mostly = 180;
+module_param_named(drrs_interval, i915_drrs_interval, int, 0600);
+MODULE_PARM_DESC(drrs_interval,
+	"DRRS idleness detection interval (default: 180 ms)."
+	"If this field is set to 0, then seamless DRRS feature "
+	"based on idleness detection is disabled."
+	"The interval is to be set in milliseconds.");
 
 static struct drm_driver driver;
 extern int intel_agp_enabled;
@@ -418,6 +430,7 @@ static const struct intel_device_info intel_valleyview_m_info = {
 	.is_mobile = 1,
 	.num_pipes = 2,
 	.is_valleyview = 1,
+	.is_valleyview_c0 = 0,
 	.has_dpst = 1,
 	.display_mmio_offset = VLV_DISPLAY_BASE,
 	.has_llc = 0, /* legal, last one wins */
@@ -427,6 +440,7 @@ static const struct intel_device_info intel_valleyview_d_info = {
 	GEN7_FEATURES,
 	.num_pipes = 2,
 	.is_valleyview = 1,
+	.is_valleyview_c0 = 0,
 	.display_mmio_offset = VLV_DISPLAY_BASE,
 	.has_llc = 0, /* legal, last one wins */
 };
@@ -448,16 +462,6 @@ static const struct intel_device_info intel_haswell_m_info = {
 	.has_fbc = 1,
 	.has_vebox_ring = 1,
 };
-
-static const struct intel_device_info intel_cherryview_info = {
-	.gen = 8, .num_pipes = 2,
-	.need_gfx_hws = 1, .has_hotplug = 1,
-	.has_bsd_ring = 1,
-	.has_blt_ring = 1,
-	.is_valleyview = 1,
-	.display_mmio_offset = VLV_DISPLAY_BASE,
-};
-
 
 static const struct pci_device_id pciidlist[] = {		/* aka */
 	INTEL_VGA_DEVICE(0x3577, &intel_i830_info),		/* I830_M */
@@ -571,10 +575,6 @@ static const struct pci_device_id pciidlist[] = {		/* aka */
 	INTEL_VGA_DEVICE(0x0f33, &intel_valleyview_m_info),
 	INTEL_VGA_DEVICE(0x0157, &intel_valleyview_m_info),
 	INTEL_VGA_DEVICE(0x0155, &intel_valleyview_d_info),
-	INTEL_VGA_DEVICE(0x22b0, &intel_cherryview_info),
-	INTEL_VGA_DEVICE(0x22b1, &intel_cherryview_info),
-	INTEL_VGA_DEVICE(0x22b2, &intel_cherryview_info),
-	INTEL_VGA_DEVICE(0x22b3, &intel_cherryview_info),
 	{0, 0, 0}
 };
 
@@ -902,6 +902,10 @@ int i915_reset(struct drm_device *dev)
 		 * after the reset and the re-install of drm irq. */
 		if (INTEL_INFO(dev)->gen > 5) {
 			mutex_lock(&dev->struct_mutex);
+			/* Cancel delayed work for media promotion timer */
+			if (IS_VALLEYVIEW(dev) && dev_priv->rc6.enabled)
+				cancel_delayed_work_sync(
+					&dev_priv->rps.vlv_media_timeout_work);
 			intel_enable_gt_powersave(dev);
 			mutex_unlock(&dev->struct_mutex);
 		}
@@ -1062,9 +1066,15 @@ static int i915_suspend_common(struct device *dev)
 static int i915_pm_suspend(struct device *dev)
 {
 	int ret;
+	char *envp[] = { "GSTATE=3", NULL };
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct drm_device *drm_dev = pci_get_drvdata(pdev);
 
 	DRM_DEBUG_PM("PM Suspend called\n");
 	ret = i915_suspend_common(dev);
+	if (!ret)
+		kobject_uevent_env(&drm_dev->primary->kdev.kobj,
+			KOBJ_CHANGE, envp);
 	DRM_DEBUG_PM("PM Suspend finished\n");
 
 	return ret;
@@ -1074,9 +1084,15 @@ static int i915_pm_suspend(struct device *dev)
 static int i915_rpm_suspend(struct device *dev)
 {
 	int ret;
+	char *envp[] = { "GSTATE=3", NULL };
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct drm_device *drm_dev = pci_get_drvdata(pdev);
 
 	DRM_DEBUG_PM("Runtime PM Suspend called\n");
 	ret = i915_suspend_common(dev);
+	if (!ret)
+		kobject_uevent_env(&drm_dev->primary->kdev.kobj,
+			KOBJ_CHANGE, envp);
 	DRM_DEBUG_PM("Runtime PM Suspend finished\n");
 
 	return ret;
@@ -1087,10 +1103,14 @@ static int i915_pm_resume(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	char *envp[] = { "GSTATE=0", NULL };
 	u32 ret;
 
 	DRM_DEBUG_PM("PM Resume called\n");
 	ret = i915_resume_common(drm_dev, false);
+	if (!ret)
+		kobject_uevent_env(&drm_dev->primary->kdev.kobj,
+			KOBJ_CHANGE, envp);
 	DRM_DEBUG_PM("PM Resume finished\n");
 
 	return ret;
@@ -1101,10 +1121,14 @@ static int i915_rpm_resume(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct drm_device *drm_dev = pci_get_drvdata(pdev);
+	char *envp[] = { "GSTATE=0", NULL };
 	int ret;
 
 	DRM_DEBUG_PM("Runtime PM Resume called\n");
 	ret = i915_resume_common(drm_dev, false);
+	if (!ret)
+		kobject_uevent_env(&drm_dev->primary->kdev.kobj,
+			KOBJ_CHANGE, envp);
 	DRM_DEBUG_PM("Runtime PM Resume finished\n");
 
 	return ret;
@@ -1283,7 +1307,7 @@ static struct pci_driver i915_pci_driver = {
 };
 
 static int __init i915_init(void)
-{	
+{
 	driver.num_ioctls = i915_max_ioctl;
 
 	/*

@@ -12,5 +12,7 @@
 #ifndef _PLATFORM_HM2056_H_
 #define _PLATFORM_HM2056_H_
 
-extern void *hm2056_platform_data(void *info) __attribute__((weak));
+extern void *hm2056b_platform_data(void *info) __attribute__((weak));
+extern void *hm2056f_platform_data(void *info) __attribute__((weak));
+
 #endif

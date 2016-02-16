@@ -4,7 +4,7 @@
  *  Header of OTP conversion module
  *
  * @author  AllenTeng <allen_teng@upi-semi.com>
- * @revision  $Revision: 503 $
+ * @revision  $Revision: 107 $
  */
 
 /// [AT-PM] : Product Type definition in OTP ; 01/23/2013
@@ -36,7 +36,7 @@ typedef struct OtpDataST {
   _otp_u16_ versionMain;
   _otp_u16_ versionSub;
   _otp_u8_ empty;
-  
+
   /// [AT-PM] : Raw data ; 01/23/2013
   _otp_u8_ otp1[OTP1_SIZE];
   _otp_u8_ otp2[OTP2_SIZE];
@@ -51,13 +51,13 @@ typedef struct OtpDataST {
   _otp_u16_ aveIT80;
 
   _otp_u8_ bgrTune;
-  
+
   _otp_u8_ deltaET;
   _otp_u8_ deltaVref;
   _otp_u16_ devAddr;
 
   _otp_u16_ ftIT;
-  
+
   _otp_u8_ indexAdc1V100T25;
   _otp_u8_ indexAdc1V200T25;
   _otp_u8_ indexAdc2V100T25;
@@ -66,10 +66,12 @@ typedef struct OtpDataST {
   _otp_s8_ oscDeltaCode25;
   _otp_s8_ oscDeltaCode80;
   _otp_u8_ otpCellEN;
-  
+
   _otp_u8_ productType;
-  
+
 } ALIGNED_ATTRIBUTE OtpDataType;
+
+extern OtpDataType *ptrOtpData;
 
 /**
  * @brief UpiConvertOtp
@@ -89,4 +91,3 @@ extern void UpiConvertOtp(OtpDataType *data);
  * @return  NULL
  */
 extern void UpiPrintOtpVersion(void);
-

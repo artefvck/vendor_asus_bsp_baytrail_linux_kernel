@@ -34,7 +34,7 @@ u16 max_limit_value_Jtouch = 2844;     // screen max limit for Jtouch
 u16 min_limit_value_Jtouch = 1470;     // screen min limit fot Jtouch
 u16 max_limit_value_Ofilm = 3054;     // screen max limit for Ofilm
 u16 min_limit_value_Ofilm = 1490;     // screen min limit for Ofilm
-u16 max_limit_value_Soe = 2953;		  // screen max limit for Soe
+u16 max_limit_value_Soe = 3150;		  // screen max limit for Soe
 u16 min_limit_value_Soe = 1431;		  // screen min limit for Soe
 /*
 u16 max_limit_value_Wintek= 2500;            // screen max limit for Wintek
@@ -136,7 +136,7 @@ static struct gt9xx_open_info *touchpad_sum;
 #define _MIN_ERROR_NUM      (sample_set_num * 9 / 10)
                     
 //static char *result_lines[32 * 24 + 20]; // [200];
-static char *result_lines[31 * 17 +20];//for 176
+static char *result_lines[32 * 24 +20];//for 181
 static char tmp_info_line[80];
 static u32 RsltIndex = 0;
 
@@ -147,8 +147,8 @@ static void append_info_line(void)
         result_lines[RsltIndex] = (char *)kzalloc(strlen(tmp_info_line), GFP_KERNEL);
         memcpy(result_lines[RsltIndex], tmp_info_line, strlen(tmp_info_line));
     }
-//    if (RsltIndex != (32 * 24 + 19)) //199)
-       if (RsltIndex != (31 * 17 + 19))
+    if (RsltIndex != (32 * 24 + 19)) //199)
+       //if (RsltIndex != (31 * 17 + 19))
         ++RsltIndex;
     else {
         kfree(result_lines[RsltIndex]);
@@ -1323,7 +1323,7 @@ s32 gtp_read_rawdata(struct i2c_client* client, u16* data)
     #if GTP_DEBUG_ARRAY_ON
         printk("%d ", data[i/2]);
         ++j;
-        if((j%10) == 0)
+        if((j%24) == 0)
             printk("\n");
     #endif
     }
@@ -1363,7 +1363,7 @@ static void gtp_raw_test_init(u32 check_types)
     
 #if AREA_ACCORD_CHECK
     AreaCheckResult=0;
-    for (i = 0; i < MAX_SENSOR_NUM * MAX_DRIVER_NUM; i++)
+    for (i = 0; i < SENSOR_NUM * DRIVER_NUM; i++)
     {
         channel_status[i]=0;
         beyond_accord_limit_num[i]=0;
@@ -1820,16 +1820,20 @@ static s32 gtp_get_test_result(void)
     {
         i = 0;
         SET_INFO_LINE_INFO("Beyond Area Accord Check Info:");
-        for (j = 0; j < MAX_SENSOR_NUM * MAX_DRIVER_NUM; j++)			
+        for (j = 0; j < SENSOR_NUM * DRIVER_NUM; j++)			
         {
-            if (channel_status[j] & _BEYOND_ACCORD_LIMIT)
+		
+			//GTP_INFO("  [%d]Ch: [%d], T: [%d], Val: [%d]", i, j, beyond_accord_limit_num[j], beyond_accord_limit_val[j]);
+            //if (channel_status[j] & _BEYOND_ACCORD_LIMIT) 
+			//if (beyond_accord_limit_num[j])//Miles
+			if (beyond_accord_limit_val[j])//Miles
             {
                 if (i < _BEYOND_REC_MAX)
                 {
                     i++;
-                   // SET_INFO_LINE_INFO("  [%d]Ch: [%d], T: [%d], Val: [%d]", i, j, beyond_accord_limit_num[j], beyond_accord_limit_val[j]);
-		    GTP_INFO("  [%d]Ch: [%d], T: [%d], Val: [%d]", i, j, beyond_accord_limit_num[j], beyond_accord_limit_val[j]);
-		     msleep(10);
+                    //SET_INFO_LINE_INFO("  [%d]Ch: [%d], T: [%d], Val: [%d]", i, j, beyond_accord_limit_num[j], beyond_accord_limit_val[j]);
+					GTP_INFO("  [%d]Ch: [%d], T: [%d], Val: [%d]", i, j, beyond_accord_limit_num[j], beyond_accord_limit_val[j]);
+					msleep(10);
                 }
             }
         }

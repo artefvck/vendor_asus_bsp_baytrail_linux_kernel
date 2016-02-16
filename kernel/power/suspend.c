@@ -28,8 +28,45 @@
 #include <linux/rtc.h>
 #include <linux/workqueue.h>
 #include <trace/events/power.h>
+#include <linux/module.h>
+#include <linux/time.h>
 
 #include "power.h"
+
+#include <asm/intel_scu_pmic.h>
+#include <asm/intel_scu_ipc.h>
+#include <linux/mfd/intel_mid_pmic.h>
+
+#ifdef CONFIG_SLEEPING_BEAUTY
+#include <linux/gpio.h>
+struct gpio_suspend_status gpio_sb_suspend_value[ARCH_NR_GPIOS];
+#endif	// CONFIG_SLEEPING_BEAUTY
+
+bool debug_suspend_enabled = 0;
+EXPORT_SYMBOL(debug_suspend_enabled);
+module_param_named(debug_suspend, debug_suspend_enabled,
+			bool, S_IRUGO | S_IWUSR);
+
+bool dump_pmic_register_enabled = 0;
+EXPORT_SYMBOL(dump_pmic_register_enabled);
+module_param_named(dump_pmic_register_enabled, dump_pmic_register_enabled,
+			bool, S_IRUGO | S_IWUSR);
+
+#ifdef CONFIG_SLEEPING_BEAUTY
+bool dump_gpio_enabled = 0;
+EXPORT_SYMBOL(dump_gpio_enabled);
+module_param_named(dump_gpio_enabled, dump_gpio_enabled,
+			bool, S_IRUGO | S_IWUSR);
+extern void dump_gpio(void);
+
+bool dump_ic_register_enabled = 0;
+EXPORT_SYMBOL(dump_ic_register_enabled);
+module_param_named(dump_ic_register_enabled, dump_ic_register_enabled,
+			bool, S_IRUGO | S_IWUSR);
+extern void sb_tp_0(void);
+extern void sb_gsensor_0(void);
+extern void sb_ecompass_0(void);
+#endif	// CONFIG_SLEEPING_BEAUTY
 
 static void do_suspend_sync(struct work_struct *work);
 
@@ -54,6 +91,20 @@ static DECLARE_COMPLETION(suspend_sync_complete);
 
 static DECLARE_WAIT_QUEUE_HEAD(suspend_freeze_wait_head);
 static bool suspend_freeze_wake;
+
+void dump_pmic_register(const char* message)
+{
+	if (dump_pmic_register_enabled) {
+		u16 i=0;
+		printk("%s: %s\n", __func__, message);
+		for (i = 0; i < 0xff; i++) {
+			int ret = intel_mid_pmic_readb(i);
+			printk("%s: reg 0x%x = 0x%x\n", __func__, i, ret);
+			if (ret) printk(".........reg read error!\n");
+		}
+	}
+}
+EXPORT_SYMBOL(dump_pmic_register);
 
 static void freeze_begin(void)
 {
@@ -224,6 +275,7 @@ void __attribute__ ((weak)) arch_suspend_enable_irqs(void)
 static int suspend_enter(suspend_state_t state, bool *wakeup)
 {
 	int error;
+	struct timespec after, before;
 
 	if (need_suspend_ops(state) && suspend_ops->prepare) {
 		error = suspend_ops->prepare();
@@ -231,7 +283,32 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 			goto Platform_finish;
 	}
 
+#ifdef CONFIG_SLEEPING_BEAUTY
+	if (dump_gpio_enabled) {
+		int i=0;
+		for ( i=0 ; i<ARCH_NR_GPIOS ; i++) {
+			if ( gpio_sb_suspend_value[i].bChanged ) {
+				error = gpio_direction_output(i, gpio_sb_suspend_value[i].uNewSuspendValue);
+				gpio_set_value(i, gpio_sb_suspend_value[i].uNewSuspendValue);
+				//error = gpio_direction_output(108, 1);
+				if (error)
+					printk("gpio suspend change: fail! gpio-%d, gpio-new-value: %d",
+							i, gpio_sb_suspend_value[i].uNewSuspendValue);
+			}
+		}
+		printk("SB Debug: dump_gpio in suspend_enter\n");
+		dump_gpio();
+	}
+	if (dump_ic_register_enabled) {
+		printk("SB Debug: dump_ic_register in suspend_enter\n");
+		sb_tp_0();	// dump touch ic part.
+		sb_gsensor_0(); // dump g-sensor ic part.
+		sb_ecompass_0(); // dump e-comapss ic part.
+	}
+#endif	// CONFIG_SLEEPING_BEAUTY
+
 	error = dpm_suspend_end(PMSG_SUSPEND);
+	dump_pmic_register("dpm_suspend_end finish");
 	if (error) {
 		printk(KERN_ERR "PM: Some devices failed to power down\n");
 		goto Platform_finish;
@@ -265,6 +342,14 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	BUG_ON(!irqs_disabled());
 
 	error = syscore_suspend();
+
+	if (debug_suspend_enabled) {
+		read_persistent_clock(&before);
+		//printk("Entering suspend state LP0");
+	}
+
+	printk("Entering suspend state LP0\n");
+
 	if (!error) {
 		*wakeup = pm_wakeup_pending();
 		if (!(suspend_test(TEST_CORE) || *wakeup)) {
@@ -272,6 +357,12 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 			events_check_enabled = false;
 		}
 		syscore_resume();
+	}
+
+	if (debug_suspend_enabled) {
+		read_persistent_clock(&after);
+		after = timespec_sub(after, before);
+		printk("Suspended for %lu.%03lu seconds\n", after.tv_sec, 0);
 	}
 
 	arch_suspend_enable_irqs();
@@ -315,6 +406,7 @@ int suspend_devices_and_enter(suspend_state_t state)
 	ftrace_stop();
 	suspend_test_start();
 	error = dpm_suspend_start(PMSG_SUSPEND);
+	dump_pmic_register("dpm_suspend_start finish");
 	if (error) {
 		printk(KERN_ERR "PM: Some devices failed to suspend\n");
 		goto Recover_platform;
@@ -396,6 +488,7 @@ static int enter_state(suspend_state_t state)
 	if (suspend_test(TEST_FREEZER))
 		goto Finish;
 
+	dump_pmic_register("Entering suspend devices");
 	pr_debug("PM: Entering %s sleep\n", pm_states[state]);
 	pm_restrict_gfp_mask();
 	error = suspend_devices_and_enter(state);

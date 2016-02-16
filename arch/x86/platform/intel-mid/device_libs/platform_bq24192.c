@@ -27,7 +27,6 @@
 #include "platform_bq24192.h"
 #include <linux/usb/otg.h>
 #include <asm/intel_em_config.h>
-#include <asm/intel_vlv2.h>
 
 #define FPO_OVERRIDE_BIT	(1 << 1)
 
@@ -60,6 +59,7 @@ char *bq24192_supplied_to[] = {
 	"max170xx_battery",
 	"max17042_battery",
 	"max17047_battery",
+	"intel_fuel_gauge",
 };
 
 static int const bptherm_curve_data[BPTHERM_CURVE_MAX_SAMPLES]
@@ -96,13 +96,13 @@ static int platform_read_adc_temp(int *temp,
 #ifndef CONFIG_ACPI
 static bool msic_battery_check(void)
 {
-	//tan if (get_oem0_table() == NULL) {
-	//	pr_info("Invalid battery detected\n");
-	//	return false;
-	//} else {
-	//	pr_info("Valid battery detected\n");
+	if (get_oem0_table() == NULL) {
+		pr_info("Invalid battery detected\n");
+		return false;
+	} else {
+		pr_info("Valid battery detected\n");
 		return true;
-	//}
+	}
 }
 
 void *platform_init_battery_adc(int num_sensors, int chan_number, int flag)
@@ -110,9 +110,9 @@ void *platform_init_battery_adc(int num_sensors, int chan_number, int flag)
 	pr_debug("%s\n", __func__);
 
 	/* Allocate ADC Channels */
-	return NULL; //tan
-	//tan	(chgr_gpadc_handle = intel_mid_gpadc_alloc(num_sensors,
-	//			  chan_number | flag));
+	return
+		(chgr_gpadc_handle = intel_mid_gpadc_alloc(num_sensors,
+				  chan_number | flag));
 }
 
 /* returns the battery pack temperature read from adc */
@@ -190,8 +190,7 @@ static void dump_batt_chrg_profile(struct ps_pse_mod_prof *bcprof,
 
 static void platform_get_sfi_batt_table(void *table, bool fpo_override_bit)
 {
-	struct sfi_table_simple *sb = NULL;//tan
-	//tan		 (struct sfi_table_simple *)get_oem0_table();
+	struct sfi_table_simple *sb = NULL;
 	struct platform_batt_profile *batt_prof;
 	u8 *bprof_ptr;
 
@@ -199,6 +198,9 @@ static void platform_get_sfi_batt_table(void *table, bool fpo_override_bit)
 
 	pr_debug("%s\n", __func__);
 
+#ifdef CONFIG_SFI
+	sb = (struct sfi_table_simple *)get_oem0_table();
+#endif
 	if (sb == NULL) {
 		pr_debug("Invalid Battery detected\n");
 		return;
@@ -455,16 +457,16 @@ static int initialize_platform_data(void)
 {
 
 	pr_debug("%s:\n", __func__);
-	/*
+
 	chgr_gpadc_handle = platform_init_battery_adc(
 			BATT_NUM_GPADC_SENSORS,	GPADC_BPTHERM_CHNUM,
 			CH_NEED_VCALIB | CH_NEED_VREF);
-	
+
 	if (chgr_gpadc_handle == NULL) {
 		pr_err("%s: unable to get the adc value\n", __func__);
 		return -1;
 	}
-	*/
+
 	platform_init_battery_threshold(TEMP_NR_RNG,
 				&platform_data.safety_param,
 				&platform_data.batt_profile);
@@ -476,7 +478,7 @@ static int platform_get_irq_number(void)
 {
 	int irq;
 	pr_debug("%s:\n", __func__);
-	irq = VV_PMIC_IRQBASE+4;
+	irq = gpio_to_irq(CHGR_INT_N);
 	pr_debug("%s:%d:irq = %d\n", __func__, __LINE__, irq);
 	return irq;
 }
@@ -598,9 +600,9 @@ static int platform_read_adc_temp(int *temp,
 		goto read_adc_exit;
 	}
 
-	//tan ret = intel_mid_gpadc_sample(chgr_gpadc_handle,
-	//			GPADC_BPTHERM_SAMPLE_COUNT,
-	//			&gpadc_sensor_val);
+	ret = intel_mid_gpadc_sample(chgr_gpadc_handle,
+				GPADC_BPTHERM_SAMPLE_COUNT,
+				&gpadc_sensor_val);
 	if (ret) {
 		pr_err("EM:%s:adc driver api returned error(%d)\n",
 							__func__, ret);
@@ -714,7 +716,8 @@ static void platform_clvp_init_chrg_params(
 				RP_BQ24192);
 	/* WA for pmic rpmsg service registration
 	   for power source detection driver */
-
+	register_rpmsg_service("rpmsg_pmic_charger", RPROC_SCU,
+				RP_PMIC_CHARGER);
 #endif
 }
 
@@ -734,34 +737,3 @@ void *bq24192_platform_data(void *info)
 
 	return &platform_data;
 }
-
-static struct bq24192_platform_data platform_data_init=
-{
-	.throttle_states = bq24192_throttle_states,
-	.supplied_to = bq24192_supplied_to,
-	.num_throttle_states = ARRAY_SIZE(bq24192_throttle_states),
-	.num_supplicants = ARRAY_SIZE(bq24192_supplied_to),
-	.supported_cables = POWER_SUPPLY_CHARGER_TYPE_USB,
-	.init_platform_data = initialize_platform_data,
-	.get_irq_number = platform_get_irq_number,
-	.drive_vbus = platform_drive_vbus,
-	.get_battery_pack_temp = NULL,
-	.query_otg = NULL,
-	.free_platform_data = platform_free_data,
-	.slave_mode = 0,	
-};
-
-static struct i2c_board_info __initdata bq24192_i2c_device = {
-	 I2C_BOARD_INFO("bq24192", 0x6b),
-	.platform_data = &platform_data_init,
-};
-
-static int __init bq24192_platform_init(void)
-{
-	if (msic_battery_check())
-		platform_data_init.sfi_tabl_present = true;
-	else
-		platform_data_init.sfi_tabl_present = false;
-	return i2c_register_board_info(1, &bq24192_i2c_device, 1);
-}
-module_init(bq24192_platform_init);

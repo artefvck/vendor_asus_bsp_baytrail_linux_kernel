@@ -20,9 +20,9 @@ typedef struct CELL_PARAMETER
   char project[CELL_PARAMETER_STRING_LENGTH];    //Project name defined by uPI
   _upi_u16_ ggb_version;       //0x0102 => 2.1
 
-  char customerSelfDef[CELL_PARAMETER_STRING_LENGTH];  //Customer name record by customer 
+  char customerSelfDef[CELL_PARAMETER_STRING_LENGTH];  //Customer name record by customer
   char projectSelfDef[CELL_PARAMETER_STRING_LENGTH];   //Project name record by customer
-  _upi_u16_ cell_type_code; 
+  _upi_u16_ cell_type_code;
 
   _upi_u8_ ICType;  /*[2:0]=000 -> uG3100 [2:0]=001 -> uG3101
                             [2:0]=010 -> uG3102 [2:0]=100 -> uG3103_2
@@ -32,14 +32,14 @@ typedef struct CELL_PARAMETER
                          bit[3] cbc_en21
                          bit[2] pwm
                          bit[1] alarm
-                         bit[0] gpio */	   
+                         bit[0] gpio */
   _upi_u8_ gpio2; /*bit[4] cbc_en32
                         bit[3] cbc_en21
                         bit[2] pwm
                         bit[1] alarm
                         bit[0] gpio */
-  _upi_u8_ gpio34;			//11/22/2011 -->reg92  
-  
+  _upi_u8_ gpio34;			//11/22/2011 -->reg92
+
   _upi_u8_ cellNumber;
   _upi_u8_ assignCellOneTo;
   _upi_u8_ assignCellTwoTo;
@@ -85,9 +85,9 @@ typedef struct CELL_PARAMETER
   _upi_u8_ alarm_timer;		//11/22/2011  00:*5,01:*10,10:*15,11:*20
   _upi_u8_ pwm_timer; /*[1:0]=00:32k [1:0]=01:16k
                                 [1:0]=10:8k  [1:0]=11: 4k */
-  
+
   _upi_u8_ clkDivA;			//11/22/2011
-  _upi_u8_ clkDivB;			//11/22/2011	
+  _upi_u8_ clkDivB;			//11/22/2011
   _upi_u8_ alarmEnable; /*[7]:COC [6]:DOC [5]:IT [4]:ET
                                     [3]:VP  [2]:V3  [1]:V2 [0]:V1 */
   _upi_u8_ cbcEnable; /*[1]:CBC_EN32  [0]:CBC_EN21 */
@@ -106,27 +106,27 @@ typedef struct CELL_PARAMETER
   _upi_u16_ adc2_gain;
   _upi_s16_ adc2_offset;
   _upi_u16_ R;
-  
+
   _upi_u16_ rtTable[ET_NUMS];
   // SOV_TABLE %
-  _upi_u16_ SOV_TABLE[SOV_NUMS]; 
+  _upi_u16_ SOV_TABLE[SOV_NUMS];
 
   _upi_s16_ adc_d1;				//2012/06/06/update for IT25
   _upi_s16_ adc_d2;				//2012/06/06/update for IT80
-  
+
   _upi_s16_ adc_d3;       ///< [AT-PM] : Used for ADC calibration IT code ; 08/15/2012
   _upi_s16_ adc_d4;
-  
+
   _upi_s16_ adc_d5;
   _upi_u16_ CycleCountThrd;
-  
+
   _upi_u32_ NacLmdAdjustCfg;
-  
+
 }ALIGNED_ATTRIBUTE CELL_PARAMETER;
 
 typedef struct CELL_TABLE
-{		
-  _upi_s16_ INIT_OCV[TEMPERATURE_NUMS][OCV_TABLE_IDX_COUNT][OCV_NUMS];							//initial OCV Table,0.1C/0.2C OCV/charge table 
+{
+  _upi_s16_ INIT_OCV[TEMPERATURE_NUMS][OCV_TABLE_IDX_COUNT][OCV_NUMS];							//initial OCV Table,0.1C/0.2C OCV/charge table
   _upi_s16_ CELL_VOLTAGE_TABLE[TEMPERATURE_NUMS][C_RATE_NUMS][OCV_NUMS];		//cell behavior Model,the voltage data
   _upi_s16_ CELL_NAC_TABLE[TEMPERATURE_NUMS][C_RATE_NUMS][OCV_NUMS];				//cell behavior Model,the deltaQ
 } ALIGNED_ATTRIBUTE CELL_TABLE;
@@ -145,7 +145,7 @@ typedef struct _GGBX_FILE_HEADER
   _upi_u32_ parameter_size;   ///< size of parameter block
   _upi_u32_ cell_table_size;  ///< size of cell table
   _upi_u64_ length;           //size that not only include ggb content. (multi-file support)
-  _upi_u64_ num_ggb;          //number of ggb files. 
+  _upi_u64_ num_ggb;          //number of ggb files.
 } ALIGNED_ATTRIBUTE GGBX_FILE_HEADER;
 
 typedef struct ADC_CHECK
@@ -168,9 +168,9 @@ typedef struct USER_REGISTER
 	_upi_u8_ charge_low;
 	_upi_u8_ charge_high;
 	_upi_u8_ counter_low;
-	_upi_u8_ counter_high;  
+	_upi_u8_ counter_high;
 	_upi_u8_ current_low;
-  _upi_u8_ current_high;
+	_upi_u8_ current_high;
 	_upi_u8_ vbat1_low;
 	_upi_u8_ vbat1_high;
 	_upi_u8_ intr_temper_low;
@@ -186,23 +186,22 @@ typedef struct USER_REGISTER
 	_upi_u8_ intr_status;
 	_upi_u8_ alram_en;
 	_upi_u8_ ctrl2;
-} ALIGNED_ATTRIBUTE USER_REGISTER; 
+} ALIGNED_ATTRIBUTE USER_REGISTER;
 
-//2012/08/24/new add for system suspend 
-typedef struct _GG_SUSPEND_INFO{	
-	_upi_u16_     LMD;						//battery Qmax (maH)
-	_upi_u16_     NAC;						//battery NAC(maH)
-	_upi_u16_     RSOC;						//Battery Current RSOC(%)
-	_upi_u32_	currentTime;			//the time tick	
+//2012/08/24/new add for system suspend
+typedef struct _GG_SUSPEND_INFO{
+	_upi_u16_	LMD;				//battery Qmax (maH)
+	_upi_u16_	NAC;				//battery NAC(maH)
+	_upi_u16_	RSOC;				//Battery Current RSOC(%)
+	_upi_u32_	currentTime;			//the time tick
 
 } ALIGNED_ATTRIBUTE GG_SUSPEND_INFO,*PGG_SUSPEND_INFO;
 
-typedef struct _GG_BATTERY_INFO{	
+typedef struct _GG_BATTERY_INFO{
 	_upi_u16_     LMD;				//battery Qmax (maH)
 	_upi_u16_     NAC;				//battery NAC(maH)
 	_upi_u16_     RSOC;				//Battery Current RSOC(%)
-
-  _upi_u8_      Ready;
+	_upi_u8_      Ready;
 } ALIGNED_ATTRIBUTE GG_BATTERY_INFO;
 
 /// [AT-PM] : Used for TI bq27520 like command ; 10/11/2012
@@ -213,7 +212,7 @@ typedef struct GG_TI_BQ27520 {
   _upi_s16_ AR;
 
   _upi_u16_ Temp;
-  
+
   _upi_u16_ Flags;
   _upi_s16_ SINow;
   _upi_s32_ SIBuf;
@@ -224,7 +223,7 @@ typedef struct GG_TI_BQ27520 {
   _upi_u8_ MliDsgSoc;
 
   _upi_u16_ AE;
-  
+
   _upi_s16_ AP;
   _upi_u16_ APStartChgE;
   _upi_u16_ APStartDsgE;
@@ -238,7 +237,7 @@ typedef struct GG_TI_BQ27520 {
   _upi_u16_ Dli;
 
   _upi_u16_ Dlb;
-  
+
   _upi_s8_ FCSet;
   _upi_s8_ FCClear;
   _upi_u8_ Soc1Set;
@@ -269,13 +268,13 @@ typedef struct _GG_USER_REG{
 	_upi_s16_	regCurrentAve;			  ///< [AT-PM] : 0x06 - Ave Current ; 04/08/2013
 	_upi_s16_	regVbat1Ave;			    ///< [AT-PM] : 0x08 - Ave VBat1 ; 04/08/2013
 	_upi_u16_	regITAve;				      ///< [AT-PM] : 0x0A - Ave IT ; 04/08/2013
-	_upi_s16_ regOffsetCurrentAve;  ///< [AT-PM] : 0x0C - Ave Offset Current ; 04/08/2013
-	_upi_u16_ regETAve;				      ///< [AT-PM] : 0x0E - Ave ET ; 04/08/2013
-	_upi_u16_ regRidAve;				    ///< [AT-PM] : 0x10 - Ave RID ; 04/08/2013
-	_upi_u8_  regAlarm1Status;      ///< [AT-PM] : 0x12 - Alarm1 Status ; 04/08/2013
-	_upi_u8_  regAlarm2Status;      ///< [AT-PM] : 0x13 - Alarm2 Status ; 04/08/2013
-	_upi_u8_  regIntrStatus;	      ///< [AT-PM] : 0x14 - INTR Status ; 04/08/2013
-	_upi_u8_  regAlarmEnable;       ///< [AT-PM] : 0x15 - Alarm EN ; 04/08/2013
+	_upi_s16_	regOffsetCurrentAve;  ///< [AT-PM] : 0x0C - Ave Offset Current ; 04/08/2013
+	_upi_u16_	regETAve;				      ///< [AT-PM] : 0x0E - Ave ET ; 04/08/2013
+	_upi_u16_	regRidAve;				    ///< [AT-PM] : 0x10 - Ave RID ; 04/08/2013
+	_upi_u8_	regAlarm1Status;      ///< [AT-PM] : 0x12 - Alarm1 Status ; 04/08/2013
+	_upi_u8_	regAlarm2Status;      ///< [AT-PM] : 0x13 - Alarm2 Status ; 04/08/2013
+	_upi_u8_	regIntrStatus;	      ///< [AT-PM] : 0x14 - INTR Status ; 04/08/2013
+	_upi_u8_		regAlarmEnable;       ///< [AT-PM] : 0x15 - Alarm EN ; 04/08/2013
   _upi_u8_  regCtrl2;				      ///< [AT-PM] : 0x16 - CTRL2 ; 04/08/2013
 } ALIGNED_ATTRIBUTE GG_USER_REG, *PGG_USER_REG;
 
@@ -309,14 +308,14 @@ typedef struct _GG_DEVICE_INFO{
 	_upi_s16_	   vBat1_AdcCode;				//debug use
 	_upi_s16_	   vBat1_AveAdcCode;
 
-	_upi_s16_	   fwCalAveCurrent_mA;			//f/w calculate average current	
-	_upi_u32_	   lastTime;					//	
-	_upi_s16_	   chargeRegister;				//coulomb counter register  
+	_upi_s16_	   fwCalAveCurrent_mA;			//f/w calculate average current
+	_upi_u32_	   lastTime;					//
+	_upi_s16_	   chargeRegister;				//coulomb counter register
 	_upi_u16_	   AdcCounter;					//ADC convert counter
 
-	_upi_s16_	   preChargeRegister;			//coulomb counter register  
+	_upi_s16_	   preChargeRegister;			//coulomb counter register
 	_upi_s16_    aveCurrentRegister;			//2012/0711/jacky
-	_upi_u16_	   preAdcCounter;				
+	_upi_u16_	   preAdcCounter;
 	_upi_s32_	   fwChargeData_mAH;			//fw calculate maH (Q= I * T)
 
 	_upi_s32_    chargeData_mAh;				//maH calculate from charge register
@@ -330,11 +329,11 @@ typedef struct _GG_DEVICE_INFO{
 	_upi_u16_	   v2_mV;						//v2
 	_upi_u16_	   v3_mV;						//v3
 
-	_upi_u16_	   vBat1Average_mV;				//vbat1 	 
-	_upi_u16_	   vBat2Average_mV;		
-	_upi_u16_	   vBat3Average_mV;		
+	_upi_u16_	   vBat1Average_mV;				//vbat1
+	_upi_u16_	   vBat2Average_mV;
+	_upi_u16_	   vBat3Average_mV;
 
-	
+
 	_upi_u16_    vCell1_mV;					//v Cell1
 	_upi_u16_	   vCell2_mV;					//v Cell2
 	_upi_u16_	   vCell3_mV;					//v Cell3
@@ -355,11 +354,11 @@ typedef struct _GG_CAPACITY {
 	_upi_u16_     LMD;						    //battery Qmax (maH)
 	_upi_u16_     NAC;						    //battery NAC(maH)
 	_upi_u16_     RSOC;					    //Battery Current RSOC(%)
-	
-  _upi_u8_      Ready;
+
+	 _upi_u8_      Ready;
 
   #ifdef  uG31xx_OS_WINDOWS
-    _upi_s32_     DsgCharge;
+	_upi_s32_     DsgCharge;
   #endif  ///< end of uG31xx_OS_WINDOWS
 } ALIGNED_ATTRIBUTE GG_CAPACITY, *PGG_CAPACITY;
 
@@ -397,4 +396,3 @@ typedef struct GG_CAP_LOG_ST
 /// ===========================================
 /// End of typeDefine.h
 /// ===========================================
-

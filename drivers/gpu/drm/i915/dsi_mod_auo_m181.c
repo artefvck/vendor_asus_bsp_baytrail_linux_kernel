@@ -39,9 +39,9 @@
 #include "dsi_mod_auo_m181.h"
 
 #include <linux/lnw_gpio.h>
-#include <linux/acpi_gpio.h>	
-#include <linux/acpi.h>			
-#include <linux/gpio.h>			
+#include <linux/acpi_gpio.h>
+#include <linux/acpi.h>
+#include <linux/gpio.h>
 #include <linux/mfd/intel_mid_pmic.h>
 
 #define DEBUG 1
@@ -95,12 +95,14 @@ bool auo_m181_init(struct intel_dsi_device *dsi)
 	intel_dsi->clk_hs_to_lp_count = 0x0F; //sean test
 	intel_dsi->video_frmt_cfg_bits = DISABLE_VIDEO_BTA;
 	intel_dsi->dphy_reg = 0x3B113E0C; //sean test
+	intel_dsi->pclk = 78312;
+	intel_dsi->burst_mode_ratio = 100; //liwei add
 
 	intel_dsi->backlight_off_delay = 50;
 	intel_dsi->send_shutdown = true;
 	intel_dsi->backlight_on_delay = 50;	//sean test t9 >= 50
 	intel_dsi->shutdown_pkt_delay = 50;	//sean test
-	
+
 	intel_dsi->clock_stop = true;	//seantest no continue more
 
 	return true;
@@ -116,18 +118,18 @@ void auo_m181_dpms(struct intel_dsi_device *dsi, bool enable)
 	DRM_DEBUG_KMS("\n");
 	sean_debug("----sean test----m181_auo_dpms----\n");
 	if (enable) {
-		
+
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_EXIT_SLEEP_MODE);
 		dsi_vc_dcs_write_1(intel_dsi, 0, MIPI_DCS_SET_TEAR_ON, 0x00);
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_ON);
 		dsi_vc_dcs_write_1(intel_dsi, 0, 0x14, 0x55);
-		
+
 
 	} else {
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_OFF);
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_ENTER_SLEEP_MODE);
 	}
-	*/ 	 	 
+	*/
 }
 
 int auo_m181_mode_valid(struct intel_dsi_device *dsi,
@@ -152,7 +154,7 @@ void auo_m181_panel_reset(struct intel_dsi_device *dsi)
 	if (err){
 		printk("%s:----sean test----m181_panel_reset----\n",__func__);
 	}
-	
+
 	gpio_direction_output(69, 0);
 	gpio_set_value(69, 1);
 	usleep_range(1000,2000);	//sean test t5 >= 5
@@ -167,14 +169,14 @@ void auo_m181_panel_reset(struct intel_dsi_device *dsi)
 
 void auo_m181_disable_panel_power(struct intel_dsi_device *dsi)
 {
-    int err;
-    err = gpio_request(69, "sd_pwr_en1");
+	int err;
+	err = gpio_request(69, "sd_pwr_en1");
 	if (err){
 		printk("%s:----sean test----m181_auo_panel_request fail----\n",__func__);
 	}
 
 	err =  intel_mid_pmic_readb(0x52);
-    sean_debug("%s:----sean test----auo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,err);
+	sean_debug("%s:----sean test----auo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,err);
 
 	msleep(100);	//sean test t12 >= 50
 
@@ -185,18 +187,18 @@ void auo_m181_disable_panel_power(struct intel_dsi_device *dsi)
 
 	//msleep(5);	//sean test t13 =< 50
 
-    //sean_debug("%s:----sean test----auo_m181_disable_panel_power----%d\n", __func__,__LINE__);
-    intel_mid_pmic_writeb(0x52,0x00);//PANEL_EN 3.3v
-    usleep_range(16000,17000); //sean test t15 <= 10
-    intel_mid_pmic_writeb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 1.8v
-    sean_debug("%s:----sean test----panel 1.8V set low----%d\n", __func__,__LINE__);
+	//sean_debug("%s:----sean test----auo_m181_disable_panel_power----%d\n", __func__,__LINE__);
+	intel_mid_pmic_writeb(0x52,0x00);//PANEL_EN 3.3v
+	usleep_range(16000,17000); //sean test t15 <= 10
+	intel_mid_pmic_writeb(0x3C,0x24);//GPIOxxxCTLO GPIO1P1 1.8v
+	sean_debug("%s:----sean test----panel 1.8V set low----%d\n", __func__,__LINE__);
 
-    err =  intel_mid_pmic_readb(0x52);
-    sean_debug("%s:----sean test----auo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,err);
+	err =  intel_mid_pmic_readb(0x52);
+	sean_debug("%s:----sean test----auo_m181_disable_panel_power----%d,3.3v:%d\n", __func__,__LINE__,err);
 
-    gpio_free(69);
+	gpio_free(69);
 
-    msleep(500);	//sean test t17 >= 500
+	msleep(500);	//sean test t17 >= 500
 }
 
 void auo_m181_send_otp_cmds(struct intel_dsi_device *dsi)
@@ -234,7 +236,7 @@ void auo_m181_send_otp_cmds(struct intel_dsi_device *dsi)
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);	//sean test /password
 	}
 
-	msleep(5);	
+	msleep(5);
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x11);			//sean test /sleep out
 	msleep(5);
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x29);			//sean test /display on
@@ -272,7 +274,7 @@ void auo_m181_disable(struct intel_dsi_device *dsi)
 	//========== power off setting ==========
 	dsi_vc_dcs_write_0(intel_dsi, 0, 0x28);			//sean test /display off
 	msleep(10);
-	
+
 	{
 		unsigned char data[] = {0xC3, 0x40, 0x00,0x20};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 4);	//sean test /disable power IC

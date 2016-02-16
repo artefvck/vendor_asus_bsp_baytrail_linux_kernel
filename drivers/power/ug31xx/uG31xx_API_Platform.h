@@ -28,7 +28,7 @@ typedef char                _upi_bool_;
   #pragma pack(push)
   #pragma pack(1)
 
-  #include <windows.h>  
+  #include <windows.h>
   #include "../../uG31xx_I2C_DLL/uG3100Dll/uG31xx_I2C.h"
   #include <assert.h>
   #include "wDebug.h"
@@ -47,7 +47,7 @@ typedef char                _upi_bool_;
     #define UPI_BOOT_STATUS_IC_IS_NOT_ACTIVE    (1<<1)
     #define UPI_BOOT_STATUS_WRONG_PRODUCT_TYPE  (1<<2)
     #define UPI_BOOT_STATUS_FC                  (1<<3)
-    
+
     #define DEFAULT_TIME_TICK               (0xffffffff)
     #define RESET_COULOMB_COUNTER_DELTA_CAP (10)
 
@@ -65,16 +65,16 @@ typedef char                _upi_bool_;
       #include <linux/kernel.h>
       #include <asm/uaccess.h>
       #include <asm/unaligned.h>
-      
+
     #endif  ///< end of BUILD_UG31XX_LIB
-    
+
   #endif  ///< end of uG31xx_BOOT_LOADER
 
-  #define EXPORTS 
-  
+  #define EXPORTS
+
   #define GGBX_FILE_TAG         (0x5F47475F) // _GG_
   #define GGBX_FACTORY_FILE_TAG (0x5F67675F) // _gg_
-  
+
 #endif  ///< end of defined (uG31xx_OS_WINDOWS)
 
 /// ===================================
@@ -87,7 +87,7 @@ typedef char                _upi_bool_;
   extern _upi_bool_ create_backup_file(const wchar_t *filename, _upi_u8_ *data, _upi_u8_ size);
   extern _upi_bool_ read_backup_file(const wchar_t *filename, _upi_u8_ *data, _upi_u32_ size);
   extern _upi_bool_ write_backup_file(const wchar_t *filename, _upi_u8_ *data, _upi_u32_ size);
-  
+
 #else   ///< else of uG31xx_OS_WINDOWS
 
   #define UG31XX_KERNEL_FILE_EXIST      (1<<0)
@@ -100,19 +100,19 @@ typedef char                _upi_bool_;
   #define UG31XX_USER_FILE_WRITE        (1<<7)
 
   #ifndef  uG31xx_BOOT_LOADER
-  
+
     extern _upi_bool_ is_file_exist(char *filename);
     extern _upi_bool_ create_backup_file(char *filename, _upi_u8_ *data, _upi_u8_ size);
     extern _upi_bool_ read_backup_file(char *filename, _upi_u8_ *data, _upi_u32_ size);
     extern _upi_bool_ write_backup_file(char *filename, _upi_u8_ *data, _upi_u32_ size);
-    
+
     extern void set_shell_ap_name(char *apname);
     extern _upi_u8_ get_file_op_status(void);
     extern _upi_u8_ set_file_op_status_bit(_upi_u8_ bit_sts);
     extern _upi_u8_ clear_file_op_status_bit(_upi_u8_ bit_sts);
 
   #endif  ///< end of uG31xx_BOOT_LOADER
-  
+
 #endif  ///< end of uG31xx_OS_WINDOWS
 
 /// ===================================
@@ -127,7 +127,7 @@ typedef char                _upi_bool_;
     #define memcpy
     #define malloc
     #define free
-    
+
   #endif  ///< end of BUILD_UG31XX_LIB
 
 #endif  ///< end of uG31xx_BOOT_LOADER
@@ -187,7 +187,7 @@ extern _upi_u8_ Ug31DebugEnable;
       #define printf
 
     #endif  ///< end of BUILD_UG31XX_LIB
-   
+
     #define UG31_LOGE(...)  printf(__VA_ARGS__)
     #define UG31_LOGI(...)  printf(__VA_ARGS__)
     #define UG31_LOGN(...)  printf(__VA_ARGS__)
@@ -196,9 +196,9 @@ extern _upi_u8_ Ug31DebugEnable;
   #else   ///< else of uG31xx_BOOT_LOADER
 
     #ifdef  BUILD_UG31XX_LIB
-  
+
       #define printk
-  
+
     #endif  ///< end of BUILD_UG31XX_LIB
 
     #define UG31_LOGE(...)  if(Ug31DebugEnable >= LOG_LEVEL_ERROR)\
@@ -209,12 +209,12 @@ extern _upi_u8_ Ug31DebugEnable;
                               printk("<UG31/N>" __VA_ARGS__);
     #define UG31_LOGD(...)  if(Ug31DebugEnable >= LOG_LEVEL_DEBUG)\
                               printk("<UG31/D>" __VA_ARGS__);
-    
-    extern int ug31_printk(int level, const char *fmt, ...); 
-    extern int ug31_printk_special(int level, const char *fmt, ...); 
+
+    extern int ug31_printk(int level, const char *fmt, ...);
+    extern int ug31_printk_special(int level, const char *fmt, ...);
 
   #endif  ///< end of uG31xx_BOOT_LOADER
-  
+
 #endif  ///< end of defined (uG31xx_OS_WINDOWS)
 
 /// ===================================
@@ -242,4 +242,3 @@ extern _upi_u8_ Ug31DebugEnable;
 #endif  ///< end of uG31xx_BOOT_LOADER
 
 #endif  ///< end of uG31xx_OS_WINDOWS
-

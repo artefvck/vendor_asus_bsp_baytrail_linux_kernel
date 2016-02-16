@@ -646,3 +646,11 @@ config MMC_REALTEK_PCI
 	help
 	  Say Y here to include driver code to support SD/MMC card interface
 	  of Realtek PCI-E card reader
+
+config MMC_DISABLE_HS200_HS400
+        tristate "disable HS200 and HS400"
+        default n
+        help
+          This selects will disable eMMC HS200 and HS400.
+          If your eMMC have timing issue, try to disable or fill the
+          tune value to the right register.

@@ -123,6 +123,15 @@ void unregister_early_suspend(struct early_suspend *handler)
 }
 EXPORT_SYMBOL(unregister_early_suspend);
 
+#ifdef CONFIG_SLEEPING_BEAUTY
+extern void dump_gpio(void);
+extern bool dump_gpio_enabled;
+extern bool dump_ic_register_enabled;
+extern void sb_tp_0(void);
+extern void sb_gsensor_0(void);
+extern void sb_ecompass_0(void);
+#endif	// CONFIG_SLEEPING_BEAUTY
+
 static void early_suspend(struct work_struct *work)
 {
 	struct early_suspend *pos;
@@ -146,14 +155,23 @@ static void early_suspend(struct work_struct *work)
 
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("early_suspend: call handlers\n");
+
+	dump_pmic_register("early_suspend call handlers start");
+
 	list_for_each_entry(pos, &early_suspend_handlers, link) {
-		if (pos->suspend != NULL)
+		if (pos->suspend != NULL) {
+			if (debug_mask & DEBUG_SUSPEND)
+				pr_info("early_suspend: calling handler name : %pf, level : %d \n", pos->suspend , pos->level);
 			pos->suspend(pos);
+		}
 	}
 	mutex_unlock(&early_suspend_lock);
 
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("early_suspend: after call handlers\n");
+
+	dump_pmic_register("early_suspend after call handlers");
+
 	/* just wake up flusher to start write back and don't wait it finished*/
 	wakeup_flusher_threads(0, WB_REASON_SYNC);
 abort:
@@ -161,6 +179,18 @@ abort:
 	if (state == SUSPEND_REQUESTED_AND_SUSPENDED)
 		__pm_relax(early_suspend_ws);
 	spin_unlock_irqrestore(&state_lock, irqflags);
+#ifdef CONFIG_SLEEPING_BEAUTY
+	if (dump_gpio_enabled) {
+		printk("SB Debug: dump_gpio in early_suspend\n");
+		dump_gpio();
+	}
+	if (dump_ic_register_enabled) {
+		printk("SB Debug: dump_ic_register in early_suspend\n");
+		sb_tp_0();	// dump touch ic part.
+		sb_gsensor_0(); // dump g-sensor ic part.
+		sb_ecompass_0(); // dump e-comapss ic part.
+	}
+#endif	// CONFIG_SLEEPING_BEAUTY
 	queue_work(suspend_wq, &suspend_work);
 }
 
@@ -186,8 +216,11 @@ static void late_resume(struct work_struct *work)
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("late_resume: call handlers\n");
 	list_for_each_entry_reverse(pos, &early_suspend_handlers, link)
-		if (pos->resume != NULL)
+		if (pos->resume != NULL) {
+			if (debug_mask & DEBUG_SUSPEND)
+				pr_info("late_resume: calling handler name : %pf, level : %d \n", pos->resume, pos->level);
 			pos->resume(pos);
+		}
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("late_resume: done\n");
 abort:

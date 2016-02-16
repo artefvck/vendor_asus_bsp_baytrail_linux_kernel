@@ -21,9 +21,14 @@
 #define VERSION "2.10a"
 
 static int otg_id = -1;
+static struct wake_lock wakelock;
 static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off);
 static int dwc3_intel_byt_notify_charger_type(struct dwc_otg2 *otg,
 		enum power_supply_charger_event event);
+
+extern int enable_5v_support_usb_otg(struct dwc_otg2 *otg);
+extern int disable_5v_support_usb_otg(struct dwc_otg2 *otg);
+extern int usb_id;
 
 static int charger_detect_enable(struct dwc_otg2 *otg)
 {
@@ -35,6 +40,18 @@ static int charger_detect_enable(struct dwc_otg2 *otg)
 	data = (struct intel_dwc_otg_pdata *)otg->otg_data;
 
 	return data->charger_detect_enable;
+}
+
+static int sdp_charging(struct dwc_otg2 *otg)
+{
+	struct intel_dwc_otg_pdata *data;
+
+	if (!otg || !otg->otg_data)
+		return 0;
+
+	data = (struct intel_dwc_otg_pdata *)otg->otg_data;
+
+	return data->sdp_charging;
 }
 
 static void usb2phy_eye_optimization(struct dwc_otg2 *otg)
@@ -49,8 +66,8 @@ static void usb2phy_eye_optimization(struct dwc_otg2 *otg)
 		return;
 
 	/* Modify VS1 for better quality in eye diagram */
-	if (data && data->ti_phy_vs1)
-		usb_phy_io_write(phy, data->ti_phy_vs1,
+	if (data && data->ulpi_eye_calibration)
+		usb_phy_io_write(phy, data->ulpi_eye_calibration,
 			TUSB1211_VENDOR_SPECIFIC1_SET);
 
 	usb_put_phy(phy);
@@ -212,6 +229,83 @@ static void set_sus_phy(struct dwc_otg2 *otg, int bit)
 	otg_write(otg, GUSB3PIPECTL0, data);
 }
 
+static int dwc3_check_gpio_id(struct dwc_otg2 *otg2)
+{
+	struct dwc_otg2 *otg = dwc3_get_otg();
+	struct intel_dwc_otg_pdata *data;
+	int id = 0;
+	int next = 0;
+	int count = 0;
+	unsigned long timeout;
+
+	otg_dbg(otg, "start check gpio id\n");
+
+	data = (struct intel_dwc_otg_pdata *)otg->otg_data;
+
+	/* Polling ID GPIO PIN value for SW debounce as HW debouce chip
+	 * is not connected on BYT CR board */
+	if (data && data->gpio_id) {
+		id = gpio_get_value(data->gpio_id);
+
+		/* If get 20 of the same value in a row by GPIO read,
+		 * then end SW debouce and return the ID value.
+		 * the total length of debouce time is 80ms~100ms for
+		 * 20 times GPIO read on BYT CR, which is longer than
+		 * normal debounce time done by HW chip.
+		 * Also set 200ms timeout value to avoid impact from
+		 * pin unstable cases */
+		timeout = jiffies + msecs_to_jiffies(200);
+		while ((count < 20) && (!time_after(jiffies, timeout))) {
+			next = gpio_get_value(data->gpio_id);
+			otg_dbg(otg, "id value pin %d = %d\n",
+				data->gpio_id, next);
+			if (next < 0)
+				return -EINVAL;
+			else if (id == next)
+				count++;
+			else {
+				id = next;
+				count = 0;
+			}
+		}
+		if (count >= 20) {
+			otg_dbg(otg, "id debounce done = %d\n", id);
+			return id;
+		}
+	}
+
+	return -ENODEV;
+}
+
+static irqreturn_t dwc3_gpio_id_irq(int irq, void *dev)
+{
+	struct dwc_otg2 *otg = dwc3_get_otg();
+	struct intel_dwc_otg_pdata *data;
+	int id;
+
+	data = (struct intel_dwc_otg_pdata *)otg->otg_data;
+
+	id = dwc3_check_gpio_id(otg);
+	usb_id = id;
+
+	if (id == 0 || id == 1) {
+		if (data->id != id) {
+			data->id = id;
+			dev_info(otg->dev, "ID notification (id = %d)\n",
+					data->id);
+
+			printk(KERN_INFO "%s : id = %d\n", __func__, data->id);
+			if (!(data->id)) enable_5v_support_usb_otg(otg);
+			else disable_5v_support_usb_otg(otg);
+
+			atomic_notifier_call_chain(&otg->usb2_phy.notifier,
+				USB_EVENT_ID, &id);
+		}
+	}
+
+	return IRQ_HANDLED;
+}
+
 static void dwc_otg_suspend_discon_work(struct work_struct *work)
 {
 	struct dwc_otg2 *otg = dwc3_get_otg();
@@ -269,6 +363,7 @@ int dwc3_intel_byt_platform_init(struct dwc_otg2 *otg)
 {
 	struct intel_dwc_otg_pdata *data;
 	u32 gctl;
+	int id_value;
 	int retval;
 
 	data = (struct intel_dwc_otg_pdata *)otg->otg_data;
@@ -294,6 +389,54 @@ int dwc3_intel_byt_platform_init(struct dwc_otg2 *otg)
 					data->gpio_reset);
 			return retval;
 		}
+	}
+
+	if (data && data->gpio_id) {
+		dev_info(otg->dev,  "USB ID detection - Enabled - GPIO\n");
+
+		/* Set ID default value to 1 Floating */
+		data->id = 1;
+
+		retval = gpio_request(data->gpio_id, "gpio_id");
+		if (retval < 0) {
+			otg_err(otg, "failed to request ID pin %d\n",
+					data->gpio_id);
+			return retval;
+		}
+
+		retval = gpio_direction_input(data->gpio_id);
+		if (retval < 0) {
+			otg_err(otg, "failed to request ID pin %d\n",
+					data->gpio_id);
+			return retval;
+		}
+
+		wake_lock_init(&wakelock, WAKE_LOCK_SUSPEND, "dwc_otg_wakelock");
+		retval = request_threaded_irq(gpio_to_irq(data->gpio_id),
+				NULL, dwc3_gpio_id_irq,
+				IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING |
+				IRQF_ONESHOT, "dwc-gpio-id", otg->dev);
+
+		if (retval < 0) {
+			otg_err(otg, "failed to request interrupt gpio ID\n");
+			return retval;
+		}
+
+		otg_dbg(otg, "GPIO ID request/Interrupt reuqest Done\n");
+
+		id_value = dwc3_check_gpio_id(otg);
+		if ((id_value == 0 || id_value == 1) &&
+					(data->id != id_value)) {
+			data->id = id_value;
+			dev_info(otg->dev, "ID notification (id = %d)\n",
+						data->id);
+
+			if (!(data->id)) enable_5v_support_usb_otg(otg);
+
+			atomic_notifier_call_chain(&otg->usb2_phy.notifier,
+					USB_EVENT_ID, &id_value);
+		} else
+			otg_dbg(otg, "Get incorrect ID value %d\n", id_value);
 	}
 
 	/* Don't let phy go to suspend mode, which
@@ -417,7 +560,8 @@ static int dwc3_intel_byt_set_power(struct usb_phy *_otg,
 	if (!data)
 		return -EINVAL;
 
-	if (ma == OTG_USB2_100MA ||
+	if (ma == OTG_USB2_0MA ||
+		ma == OTG_USB2_100MA ||
 		ma == OTG_USB3_150MA ||
 		ma == OTG_USB2_500MA ||
 		ma == OTG_USB3_900MA ||
@@ -431,7 +575,7 @@ static int dwc3_intel_byt_set_power(struct usb_phy *_otg,
 	}
 
 	/* Needn't notify charger capability if charger_detection disable */
-	if (!charger_detect_enable(otg))
+	if (!charger_detect_enable(otg) && !sdp_charging(otg))
 		return 0;
 
 	if (ma == OTG_DEVICE_SUSPEND) {
@@ -458,10 +602,16 @@ static int dwc3_intel_byt_set_power(struct usb_phy *_otg,
 		 * Should send 0ma with SUSPEND event
 		 */
 		else
-			cap.ma = 0;
+			cap.ma = 2;
 
-		atomic_notifier_call_chain(&otg->usb2_phy.notifier,
-				USB_EVENT_CHARGER, &cap);
+		if (sdp_charging(otg)) {
+			otg_dbg(otg, "Notify EM cap.ma = %d\n", cap.ma);
+			atomic_notifier_call_chain(&otg->usb2_phy.notifier,
+					USB_EVENT_ENUMERATED, &cap.ma);
+		} else
+			atomic_notifier_call_chain(&otg->usb2_phy.notifier,
+					USB_EVENT_CHARGER, &cap);
+
 		otg_dbg(otg, "Notify EM	CHARGER_EVENT_SUSPEND\n");
 
 		return 0;
@@ -482,6 +632,9 @@ static int dwc3_intel_byt_set_power(struct usb_phy *_otg,
 
 	/* Covert macro to integer number*/
 	switch (ma) {
+	case OTG_USB2_0MA:
+		ma = 0;
+		break;
 	case OTG_USB2_100MA:
 		ma = 100;
 		break;
@@ -522,7 +675,7 @@ static int dwc3_intel_byt_notify_charger_type(struct dwc_otg2 *otg,
 	unsigned long flags;
 
 	/* Just return if charger detection is not enabled */
-	if (!charger_detect_enable(otg))
+	if (!charger_detect_enable(otg) && !sdp_charging(otg))
 		return 0;
 
 	/* If OTG driver doesn't do charger detection, then no need
@@ -555,8 +708,13 @@ static int dwc3_intel_byt_notify_charger_type(struct dwc_otg2 *otg,
 	cap.chrg_evt = event;
 	spin_unlock_irqrestore(&otg->lock, flags);
 
-	atomic_notifier_call_chain(&otg->usb2_phy.notifier, USB_EVENT_CHARGER,
-			&cap);
+	if (sdp_charging(otg)) {
+		otg_dbg(otg, "Notify EM cap.ma = %d\n", cap.ma);
+		atomic_notifier_call_chain(&otg->usb2_phy.notifier,
+				USB_EVENT_ENUMERATED, &cap.ma);
+	} else
+		atomic_notifier_call_chain(&otg->usb2_phy.notifier,
+				USB_EVENT_CHARGER, &cap);
 
 	return 0;
 }
@@ -772,7 +930,7 @@ static enum power_supply_charger_cable_type
 	enum power_supply_charger_cable_type type =
 		POWER_SUPPLY_CHARGER_TYPE_NONE;
 
-	/* No need to do charger detection if not enabled 
+	/* No need to do charger detection if not enabled
 	if (!charger_detect_enable(otg))
 		return POWER_SUPPLY_CHARGER_TYPE_USB_SDP;*/
 
@@ -991,12 +1149,25 @@ static int dwc3_intel_byt_handle_notification(struct notifier_block *nb,
 	spin_lock_irqsave(&otg->lock, flags);
 	switch (event) {
 	case USB_EVENT_VBUS:
+		otg_dbg(otg, "VBUS event received %d\n", val);
 		if (val) {
 			otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
 			otg->otg_events &= ~OEVT_A_DEV_SESS_END_DET_EVNT;
 		} else {
 			otg->otg_events |= OEVT_A_DEV_SESS_END_DET_EVNT;
 			otg->otg_events &= ~OEVT_B_DEV_SES_VLD_DET_EVNT;
+		}
+		state = NOTIFY_OK;
+		break;
+	case USB_EVENT_ID:
+		if (!val) {
+			/* for byt-cr, the usb3750 need take 1s to enable switch between usb device and host mode,
+			 * it cause the host need take the least 1s to detect the device connect.
+			 * so consider the time more than 1s for s3->s0, 3s wakelock is needed to let host
+			 * has the enough time to enumerate the connect device for s3->s0
+			 */
+			wake_lock_timeout(&wakelock, msecs_to_jiffies(3000));
+
 		}
 		state = NOTIFY_OK;
 		break;

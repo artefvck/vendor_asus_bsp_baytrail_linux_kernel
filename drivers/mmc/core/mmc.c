@@ -42,8 +42,6 @@ static const unsigned int tacc_mant[] = {
 	35,	40,	45,	50,	55,	60,	70,	80,
 };
 
-static unsigned int rel_vol;	//xin_jin ++++
-
 #define UNSTUFF_BITS(resp,start,size)					\
 	({								\
 		const int __size = size;				\
@@ -324,16 +322,6 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		if (card->ext_csd.sectors > (2u * 1024 * 1024 * 1024) / 512)
 			mmc_card_set_blockaddr(card);
 	}
-
-	//xin_jin ++++
-	unsigned int vol = card->ext_csd.sectors >> 21;
-    if(vol<8)
-       rel_vol =8;
-    else if(vol >8 && vol <16)
-       rel_vol = 16;
-    else
-       rel_vol =32;
-	//xin_jin ----
 
 	card->ext_csd.raw_card_type = ext_csd[EXT_CSD_CARD_TYPE];
 	mmc_select_card_type(card);
@@ -683,8 +671,6 @@ MMC_DEV_ATTR(bkops_support, "%d\n", card->ext_csd.bkops);
 MMC_DEV_ATTR(bkops_enable, "%d\n", card->ext_csd.bkops_en);
 MMC_DEV_ATTR(rpmb_size, "%d\n", card->ext_csd.rpmb_size);
 
-MMC_DEV_ATTR(vol, "%d\n", rel_vol); //xin_jin ++++
-
 /* init gpp_wppart as an invalide GPP */
 static unsigned int gpp_wppart = EXT_CSD_PART_CONFIG_ACC_GP0 - 1;
 static ssize_t gpp_wppart_show(struct device *dev,
@@ -843,7 +829,6 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_bkops_support.attr,
 	&dev_attr_bkops_enable.attr,
 	&dev_attr_rpmb_size.attr,
-	&dev_attr_vol.attr,	//xin_jin ++++
 	&dev_attr_gpp_wppart.attr,
 	&dev_attr_gpp_wpgroup.attr,
 	&dev_attr_gpp_wp.attr,
@@ -1743,9 +1728,9 @@ static int mmc_suspend(struct mmc_host *host)
 	if (err)
 		goto out;
 
-	if (mmc_can_poweroff_notify(host->card))
+	if (mmc_can_poweroff_notify(host->card) && host->card->cid.manfid != 0x90)
 		err = mmc_poweroff_notify(host->card, EXT_CSD_POWER_OFF_SHORT);
-	else if (mmc_card_can_sleep(host))
+	else if (mmc_card_can_sleep(host) && host->card->cid.manfid != 0x90)
 		err = mmc_card_sleep(host);
 	else if (!mmc_host_is_spi(host))
 		err = mmc_deselect_cards(host);

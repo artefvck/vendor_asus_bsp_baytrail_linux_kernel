@@ -38,4 +38,7 @@ int rt5640_dsp_suspend(struct snd_soc_codec *codec);
 int rt5640_dsp_resume(struct snd_soc_codec *codec);
 #endif
 
+unsigned int rt5640_dsp_read(struct snd_soc_codec *codec, unsigned int reg);
+int rt5640_dsp_write(struct snd_soc_codec *codec, struct rt5640_dsp_param *param);
+
 #endif /* __RT5640_DSP_H__ */

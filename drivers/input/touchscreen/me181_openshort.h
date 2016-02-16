@@ -352,7 +352,8 @@ const u8 dsp_short[5120] = {
 #define MAX_DRIVER_NUM                  42
 #define MIN_SENSOR_NUM                  5
 #define MAX_SENSOR_NUM                  30
-
+#define DRIVER_NUM 						32
+#define SENSOR_NUM 						24
 
 
 #define GT9_DRV_HEAD    0x80
@@ -402,7 +403,7 @@ struct gt9xx_short_info
 
 #define MYBIG_ENDIAN                1
 #define MYLITLE_ENDIAN              0
-#define _BEYOND_REC_MAX           31*17//180:  32*24 // record beyond infomation max num
+#define _BEYOND_REC_MAX            768 // record beyond infomation max num
 
 #define	_BEYOND_MAX_LIMIT           0x0001
 #define _BEYOND_MIN_LIMIT           0x0002
@@ -423,6 +424,7 @@ struct gt9xx_short_info
 #define GTP_REG_READ_RAW            0x8040
 #define GTP_REG_RAW_READY           0x814E
 
+#define AREA_ACCORD_CHECK			1
 
 struct gt9xx_open_info
 {

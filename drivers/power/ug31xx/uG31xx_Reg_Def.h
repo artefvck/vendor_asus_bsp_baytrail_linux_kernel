@@ -631,7 +631,7 @@
     #define ITDELTACODE80_10_8        (7<<0)
   #define OTP2_BYTE4                  (INTERNAL_REGISTER_GROUP_L + 19)    ///< 0xF3
     #define ITDELTACODE80_7_0         (255<<0)
-  
+
   #define OTP3_BYTE1                  (INTERNAL_REGISTER_GROUP_L + 20)    ///< 0xF4
     #define DEVADDR_9_0               (63<<2)
     #define ADC1DELTACODE25_200_9     (1<<1)
@@ -665,4 +665,3 @@
     #define ADC2DELTACODE25_200_6_0   (127<<0)
   #define OTP5_BYTE4                  (INTERNAL_REGISTER_GROUP_L + 31)    ///< 0xFF
     #define ADC2DELTACODE80_200_7_0   (255<<0)
-

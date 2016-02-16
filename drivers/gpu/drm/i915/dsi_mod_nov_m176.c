@@ -93,6 +93,8 @@ bool m176_init(struct intel_dsi_device *dsi)
 	intel_dsi->clk_hs_to_lp_count = 0x0D;	//pbtest
 	intel_dsi->video_frmt_cfg_bits = 0x8;
 	intel_dsi->dphy_reg = 0x200F370B;		//pbtest
+	intel_dsi->pclk = 69270;
+	intel_dsi->burst_mode_ratio = 100; //liwei add
 
 	intel_dsi->backlight_off_delay = 20;
 	intel_dsi->backlight_on_delay = 134;		//sean test t8 > 8 frames 8 * 16.67
@@ -292,7 +294,7 @@ void m176_send_otp_cmds(struct intel_dsi_device *dsi)
 	}
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xCA, 0x00);
 	dsi_vc_dcs_write_1(intel_dsi, 0, 0xC0, 0x04);
-	
+
 	{
 		unsigned char data[] = {0xB3, 0x19, 0x19};
 		dsi_vc_dcs_write(intel_dsi, 0, data, 3);

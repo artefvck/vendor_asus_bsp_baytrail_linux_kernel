@@ -808,7 +808,6 @@ struct dwc3 {
 	void			*scratch_buffer[DWC3_MAX_HIBER_SCRATCHBUFS];
 	struct dwc3_hwregs	hwregs;
 	bool			hiber_enabled;
-	struct work_struct	reconnect_work;
 };
 
 /* -------------------------------------------------------------------------- */

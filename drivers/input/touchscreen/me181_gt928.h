@@ -352,6 +352,7 @@ extern u16 total_len;
 //***************************PART3:OTHER define*********************************
 #define GTP_DRIVER_VERSION          "V2.2<2014/01/14>"
 #define GTP_I2C_NAME                "Goodix-TS"
+#define MPU_I2C_NAME          		"GDIX1001" //Shouchung add, for L porting
 #define GT91XX_CONFIG_PROC_FILE     "gt9xx_config"
 #define GTP_POLL_TIME         10    
 #define GTP_ADDR_LENGTH       2

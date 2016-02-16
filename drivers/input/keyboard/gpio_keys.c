@@ -406,30 +406,13 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 	unsigned int type = button->type ?: EV_KEY;
 	int state =
 		(gpio_keys_getval(button->gpio) ? 1 : 0) ^ button->active_low;
-    static int last_state=-1;  //add by lambert
+
 	if (type == EV_ABS) {
 		if (state)
 			input_event(input, type, button->code, button->value);
-	} else {  //modified by lambert
-	    if(type == EV_KEY){
-		   if(button->code == KEY_POWER){
-			 if(state!=last_state){
-		        last_state=state;
-		        input_event(input, type, button->code, !!state);
-				printk("PRESS KEY_POWER %d\n",state);
-			 } else {
-			    printk("state=%d,last_sate equals current_state,do not send event\n",state);
-			 	}
-		   } else {
-			   input_event(input, type, button->code, !!state);
-		   	}
-	    }
-	    else
+	} else {
 		input_event(input, type, button->code, !!state);
 	}
-
-	//if((type == EV_KEY) && (button->code == KEY_POWER))
-	//	printk("PRESS KEY_POWER %d\n",state);
 	input_sync(input);
 }
 
@@ -745,20 +728,6 @@ static int gpio_keys_get_devtree_pdata(struct device *dev,
 
 #endif
 
-static struct input_dev *nrpt_dev;
-
-void asus_send_wakeup_key(void)
-{
-	if (!nrpt_dev) {
-		printk(KERN_ERR "nrpt_dev is null\n");
-		return;
-	}
-	input_report_key(nrpt_dev, KEY_WAKEUP, 1);
-	input_sync(nrpt_dev);
-	input_report_key(nrpt_dev, KEY_WAKEUP, 0);
-	input_sync(nrpt_dev);
-}
-
 static void gpio_remove_key(struct gpio_button_data *bdata)
 {
 	free_irq(bdata->irq, bdata);
@@ -840,17 +809,10 @@ static int gpio_keys_probe(struct platform_device *pdev)
 		goto fail2;
 	}
 
-	if (!strcmp(input->name, "gpio-lesskey-nrpt")) {
-		input->evbit[0] = BIT_MASK(EV_KEY);
-		set_bit(KEY_WAKEUP, input->keybit);
-		nrpt_dev = input;
-	}
-
 	error = input_register_device(input);
 	if (error) {
 		dev_err(dev, "Unable to register input device, error: %d\n",
 			error);
-		nrpt_dev = NULL;
 		goto fail3;
 	}
 
@@ -984,9 +946,8 @@ static struct platform_device_id gpio_keys_ids[] = {
 	{
 		.name = "gpio-keys",
 	}, {
-		.name = "gpio-lesskey-nrpt",
+		.name = "gpio-lesskey",
 	}, {
-		.name = "gpio-lesskey-rpt",
 	},
 };
 MODULE_DEVICE_TABLE(platform, gpio_keys_ids);

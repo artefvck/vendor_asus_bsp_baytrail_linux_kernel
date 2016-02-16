@@ -525,6 +525,15 @@ static void wakeup_source_deactivate(struct wakeup_source *ws)
 	trace_wakeup_source_deactivate(ws->name, cec);
 
 	split_counters(&cnt, &inpr);
+	if (debug_suspend_enabled) {
+		struct wakeup_source *ws_asus;
+		list_for_each_entry_rcu(ws_asus, &wakeup_sources, entry) {
+			if (ws_asus->active) {
+				pr_info("active wakeup source: %s , wakeup count : %u \n",
+					ws_asus->name, ws_asus->wakeup_count);
+			}
+		}
+	}
 	if (!inpr && waitqueue_active(&wakeup_count_wait_queue))
 		wake_up(&wakeup_count_wait_queue);
 }

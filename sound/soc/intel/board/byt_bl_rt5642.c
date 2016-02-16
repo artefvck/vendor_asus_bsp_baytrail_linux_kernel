@@ -20,8 +20,9 @@
  *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
-
+#define DEBUG 1
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -29,7 +30,7 @@
 #include <linux/device.h>
 #include <linux/gpio.h>
 #include <linux/slab.h>
-#include <linux/vlv2_plat_clock.h>
+#include <asm/intel_soc_pmc.h>
 #include <linux/acpi_gpio.h>
 #include <asm/intel-mid.h>
 #include <linux/mutex.h>
@@ -38,34 +39,14 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/jack.h>
+#include <linux/input.h>
 #include "../../codecs/rt5640.h"
+#include "audio_map.h"
 
 #ifdef CONFIG_SND_SOC_COMMS_SSP
 #include "byt_bl_rt5642.h"
 #include "../ssp/mid_ssp.h"
 #endif /* CONFIG_SND_SOC_COMMS_SSP */
-#include <linux/delay.h>
-#include <linux/mfd/intel_mid_pmic.h>
-
-#ifdef CONFIG_FACTORY_ITEMS
-#include <linux/lnw_gpio.h>
-#endif
-
-//terry_tao@asus.com++ audio debug mode
-#ifdef CONFIG_PROC_FS
-#include <linux/proc_fs.h>
-#include <linux/mm.h>
-#include <linux/kernel.h>
-#include <linux/syscalls.h>
-#include <linux/fs.h>
-#include <linux/file.h>
-#include <linux/string.h>
-#include <asm/unistd.h>
-#include <asm/uaccess.h>
-#endif
-//terry_tao@asus.com-- audio debug mode
-#include <asm/intel_vlv2.h>
-#define CODEC_RESET_N   (VV_NGPIO_SCORE + 16)	
 
 #define BYT_PLAT_CLK_3_HZ	25000000
 #define BYT_CODEC_GPIO_IDX      0
@@ -73,20 +54,14 @@
 
 #define BYT_JD_INTR_DEBOUNCE            0
 #define BYT_CODEC_INTR_DEBOUNCE         0
-#ifdef CONFIG_ME176C_CODEC_PARAMETER
-	#define BYT_HS_INSERT_DET_DELAY         1000
-	#define BYT_HS_DET_RETRY_COUNT          4
-#else
-	#define BYT_HS_INSERT_DET_DELAY         500
-	#define BYT_HS_DET_RETRY_COUNT          6
-#endif
+#define BYT_HS_INSERT_DET_DELAY         500
 #define BYT_HS_REMOVE_DET_DELAY         500
-#define BYT_BUTTON_DET_DELAY            100
 #define BYT_HS_DET_POLL_INTRVL          100
 #define BYT_BUTTON_EN_DELAY             1500
 
-#define ME176C_ME181C_BOARD_ER				0
-//#define ME176C_ME181C_BOARD_PR				1
+#define BYT_HS_DET_RETRY_COUNT          6
+
+extern void update_headset_status(int status);
 
 struct byt_mc_private {
 #ifdef CONFIG_SND_SOC_COMMS_SSP
@@ -180,15 +155,6 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 
 };
 
-#ifdef CONFIG_PROC_FS
-static int debug_gpio;
-#ifdef CONFIG_FACTORY_ITEMS
-static int uart_tx_gpio;
-#endif
-int g_bDebugMode = 0;
-EXPORT_SYMBOL(g_bDebugMode);
-#endif
-
 static inline void byt_force_enable_pin(struct snd_soc_codec *codec,
 			 const char *bias_widget, bool enable)
 {
@@ -197,7 +163,6 @@ static inline void byt_force_enable_pin(struct snd_soc_codec *codec,
 		snd_soc_dapm_force_enable_pin(&codec->dapm, bias_widget);
 	else
 		snd_soc_dapm_disable_pin(&codec->dapm, bias_widget);
-	snd_soc_dapm_sync(&codec->dapm);
 }
 
 static inline void byt_set_mic_bias_ldo(struct snd_soc_codec *codec, bool enable)
@@ -209,6 +174,26 @@ static inline void byt_set_mic_bias_ldo(struct snd_soc_codec *codec, bool enable
 		byt_force_enable_pin(codec, "micbias1", false);
 		byt_force_enable_pin(codec, "LDO2", false);
 	}
+	snd_soc_dapm_sync(&codec->dapm);
+}
+
+static inline void byt_jack_report(int status)
+{
+	switch (status) {
+		case SND_JACK_HEADPHONE:
+			//mid_extcon_headset_report(HEADSET_NO_MIC);
+			update_headset_status(HEADSET_NO_MIC);
+			break;
+		case SND_JACK_HEADSET:
+			//mid_extcon_headset_report(HEADSET_WITH_MIC);
+			update_headset_status(HEADSET_WITH_MIC);
+			break;
+		default:
+			//mid_extcon_headset_report(HEADSET_PULL_OUT);
+			update_headset_status(HEADSET_PULL_OUT);
+			break;
+	}
+	pr_debug("%s: headset reported: 0x%x\n", __func__, status);
 }
 
 /*if Soc Jack det is enabled, use it, otherwise use JD via codec */
@@ -255,6 +240,7 @@ static int byt_check_jack_type(void)
 		jack_type = 0;
 
 	pr_debug("Jack type detected:%d", jack_type);
+	byt_jack_report(jack_type);
 
 	return jack_type;
 }
@@ -268,10 +254,6 @@ static int byt_jack_codec_gpio_intr(void)
 	int status, jack_type = 0;
 	int ret;
 	struct byt_mc_private *ctx = container_of(jack, struct byt_mc_private, jack);
-
-#ifdef CONFIG_PROC_FS
-	if(g_bDebugMode) return jack_type;
-#endif
 
 	mutex_lock(&ctx->jack_mlock);
 	/* Initialize jack status with previous status. The delayed work will confirm
@@ -406,6 +388,7 @@ static void byt_check_hs_remove_status(struct work_struct *work)
 			status = rt5640_detect_hs_type(codec, false);
 			jack_type = 0;
 			byt_set_mic_bias_ldo(codec, false);
+			byt_jack_report(jack_type);
 
 		} else if (((jack->status & SND_JACK_HEADSET) == SND_JACK_HEADSET) && !ctx->process_button_events) {
 			/* Jack is still connected. We may come here if there was a spurious
@@ -414,8 +397,6 @@ static void byt_check_hs_remove_status(struct work_struct *work)
 			   But as soon as the interrupt thread(byt_jack/_bp_detection) detected a jack
 			   removal, button processing gets disabled. Hence re-enable button processing
 			   in the case of headset */
-			schedule_delayed_work(&ctx->hs_insert_work,
-					msecs_to_jiffies(ctx->hs_det_poll_intrvl));
 			pr_debug(" spurious Jack remove event for headset; re-enable button events");
 			ctx->process_button_events = true;
 		}
@@ -488,10 +469,6 @@ static int byt_jack_soc_gpio_intr(void)
 	struct byt_mc_private *ctx = container_of(jack, struct byt_mc_private, jack);
 	int ret;
 	int status;
-
-#ifdef CONFIG_PROC_FS
-	if(g_bDebugMode) return 0;
-#endif
 
 	mutex_lock(&ctx->jack_mlock);
 
@@ -578,7 +555,7 @@ static int platform_clock_control(struct snd_soc_dapm_widget *w,
 		return -EIO;
 	}
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
-		vlv2_plat_configure_clock(VLV2_PLAT_CLK_AUDIO,
+		pmc_pc_configure(VLV2_PLAT_CLK_AUDIO,
 				PLAT_CLK_FORCE_ON);
 		pr_debug("Platform clk turned ON\n");
 		snd_soc_codec_set_sysclk(codec, RT5640_SCLK_S_PLL1,
@@ -592,7 +569,7 @@ static int platform_clock_control(struct snd_soc_dapm_widget *w,
 		snd_soc_write(codec, RT5640_ADDA_CLK1, 0x7774);
 		snd_soc_codec_set_sysclk(codec, RT5640_SCLK_S_RCCLK,
 				0, 0, SND_SOC_CLOCK_IN);
-		vlv2_plat_configure_clock(VLV2_PLAT_CLK_AUDIO,
+		pmc_pc_configure(VLV2_PLAT_CLK_AUDIO,
 				PLAT_CLK_FORCE_OFF);
 		pr_debug("Platform clk turned OFF\n");
 	}
@@ -600,96 +577,14 @@ static int platform_clock_control(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
-static int Int_Mic_event(struct snd_soc_dapm_widget *w,
-			    struct snd_kcontrol *kcontrol, int event)
-{
-	struct snd_soc_dapm_context *dapm = w->dapm;
-	struct snd_soc_card *card = dapm->card;
-	struct snd_soc_codec *codec;
-
-	codec = byt_get_codec(card);
-	if (SND_SOC_DAPM_EVENT_ON(event)) {
-#ifdef CONFIG_ME176C_CODEC_PARAMETER
-		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1fa7);
-		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x210e);
-		snd_soc_write(codec, RT5640_DRC_AGC_1, 0xc206);
-#else
-		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1fa9);
-		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x20ce);
-		snd_soc_write(codec, RT5640_DRC_AGC_1, 0xc206);
-#endif
-	}else if(SND_SOC_DAPM_EVENT_OFF(event))
-	{
-//#ifdef CONFIG_ME176C_CODEC_PARAMETER
-		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1f00);
-		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x0000);
-		snd_soc_write(codec, RT5640_DRC_AGC_1, 0x2206);
-//#endif
-	}
-	
-	return 0;
-}
-
-static int Headset_Mic_event(struct snd_soc_dapm_widget *w,
-			    struct snd_kcontrol *kcontrol, int event)
-{
-	struct snd_soc_dapm_context *dapm = w->dapm;
-	struct snd_soc_card *card = dapm->card;
-	struct snd_soc_codec *codec;
-
-	codec = byt_get_codec(card);
-	if (SND_SOC_DAPM_EVENT_ON(event)) {
-#ifdef CONFIG_ME176C_CODEC_PARAMETER
-		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1faa);
-		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x210e);
-		snd_soc_write(codec, RT5640_DRC_AGC_1, 0xc206);
-#else
-		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1fa5);
-		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x20ce);
-		snd_soc_write(codec, RT5640_DRC_AGC_1, 0xc206);
-#endif
-	}else if(SND_SOC_DAPM_EVENT_OFF(event))
-	{
-//#ifdef CONFIG_ME176C_CODEC_PARAMETER
-		snd_soc_write(codec, RT5640_DRC_AGC_2, 0x1f00);
-		snd_soc_write(codec, RT5640_DRC_AGC_3, 0x0000);
-		snd_soc_write(codec, RT5640_DRC_AGC_1, 0x2206);
-//#endif
-	}
-	
-	return 0;
-}
-
 static const struct snd_soc_dapm_widget byt_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone", NULL),
-	SND_SOC_DAPM_MIC("Headset Mic", Headset_Mic_event),
-	SND_SOC_DAPM_MIC("Int Mic", Int_Mic_event),
+	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+	SND_SOC_DAPM_MIC("Int Mic", NULL),
 	SND_SOC_DAPM_SPK("Ext Spk", NULL),
 	SND_SOC_DAPM_SUPPLY("Platform Clock", SND_SOC_NOPM, 0, 0,
 			platform_clock_control, SND_SOC_DAPM_PRE_PMU|
 			SND_SOC_DAPM_POST_PMD),
-};
-
-static const struct snd_soc_dapm_route byt_audio_map[] = {
-	{"IN2P", NULL, "Headset Mic"},
-	{"IN2N", NULL, "Headset Mic"},
-	//terry_tao@asus.com++ change for Analog MIC, not Digital MIC
-	//{"DMIC1", NULL, "Int Mic"},
-	{"micbias1", NULL, "Int Mic"},
-	{"IN1P", NULL, "micbias1"},
-	{"IN1N", NULL, "micbias1"},
-	//terry_tao@asus.com--
-	{"Headphone", NULL, "HPOL"},
-	{"Headphone", NULL, "HPOR"},
-	{"Ext Spk", NULL, "SPOLP"},
-	{"Ext Spk", NULL, "SPOLN"},
-	{"Ext Spk", NULL, "SPORP"},
-	{"Ext Spk", NULL, "SPORN"},
-
-	{"Headphone", NULL, "Platform Clock"},
-	{"Headset Mic", NULL, "Platform Clock"},
-	{"Int Mic", NULL, "Platform Clock"},
-	{"Ext Spk", NULL, "Platform Clock"},
 };
 
 static const struct snd_kcontrol_new byt_mc_controls[] = {
@@ -1031,7 +926,8 @@ static int byt_init(struct snd_soc_pcm_runtime *runtime)
 
 	/* FFRD8 uses codec's JD1 for jack detection */
 	if (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, 8PR0) ||
-	    INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, 8PR1)) {
+	    INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, 8PR1) ||
+	    ASUS_USE_SOC_JD_GPIO) {
 		/* If SoC jack detect GPIO is used, disable JD functionality
 		   via codec. Also disable JD interrupt.*/
 		if (ctx->use_soc_jd_gpio) {
@@ -1041,7 +937,7 @@ static int byt_init(struct snd_soc_pcm_runtime *runtime)
 					RT5640_JD_MASK, RT5640_JD_DIS);
 		} else
 			snd_soc_update_bits(codec, RT5640_JD_CTRL,
-					RT5640_JD_MASK, RT5640_JD_JD2_IN4N);
+					RT5640_JD_MASK, RT5640_JD_JD1_IN4P);
 	}
 
 	ret = snd_soc_jack_new(codec, "Intel MID Audio Jack",
@@ -1051,6 +947,7 @@ static int byt_init(struct snd_soc_pcm_runtime *runtime)
 		pr_err("jack creation failed\n");
 		return ret;
 	}
+	snd_jack_set_key(ctx->jack.jack, SND_JACK_BTN_0, KEY_MEDIA);
 	ret = snd_soc_jack_add_gpios(&ctx->jack, ctx->num_jack_gpios, hs_gpio);
 	if (ret) {
 		pr_err("adding jack GPIO failed\n");
@@ -1080,7 +977,6 @@ static int byt_init(struct snd_soc_pcm_runtime *runtime)
 
 	/* Keep the voice call paths active during
 	suspend. Mark the end points ignore_suspend */
-	/*TODO: CHECK this */
 	snd_soc_dapm_ignore_suspend(dapm, "HPOL");
 	snd_soc_dapm_ignore_suspend(dapm, "HPOR");
 
@@ -1088,6 +984,12 @@ static int byt_init(struct snd_soc_pcm_runtime *runtime)
 	snd_soc_dapm_ignore_suspend(dapm, "SPOLN");
 	snd_soc_dapm_ignore_suspend(dapm, "SPORP");
 	snd_soc_dapm_ignore_suspend(dapm, "SPORN");
+	snd_soc_dapm_ignore_suspend(dapm, "AIF2 Playback");
+	snd_soc_dapm_ignore_suspend(dapm, "AIF2 Capture");
+	snd_soc_dapm_ignore_suspend(&card->dapm, "Headphone");
+	snd_soc_dapm_ignore_suspend(&card->dapm, "Headset Mic");
+	snd_soc_dapm_ignore_suspend(&card->dapm, "Ext Spk");
+	snd_soc_dapm_ignore_suspend(&card->dapm, "Int Mic");
 
 	snd_soc_dapm_enable_pin(dapm, "Headset Mic");
 	snd_soc_dapm_enable_pin(dapm, "Headphone");
@@ -1229,200 +1131,15 @@ static struct snd_soc_card snd_soc_card_byt = {
 	.num_dapm_routes = ARRAY_SIZE(byt_audio_map),
 };
 
-//terry_tao@asus.com++ Audio debug mode
-#ifdef CONFIG_PROC_FS
-#define Audio_debug_PROC_FILE  "driver/audio_debug"
-static struct proc_dir_entry *audio_debug_proc_file;
-
-static mm_segment_t oldfs;
-static void initKernelEnv(void)
-{
-    oldfs = get_fs();
-    set_fs(KERNEL_DS);
-}
-
-static void deinitKernelEnv(void)
-{
-    set_fs(oldfs);
-}
-
-static ssize_t audio_debug_proc_read(struct file *file, char __user *user_buf,
-				   size_t count, loff_t *ppos)
-{
-	int len = 0;
-	struct snd_soc_jack_gpio *gpio = &hs_gpio[BYT_CODEC_GPIO_IDX];
-	struct snd_soc_jack *jack = gpio->jack;
-	char state_buff[5];
-	if (!jack)
-		return 0;
-	switch(jack->status)
-	{
-		case SND_JACK_HEADSET:
-			len = sprintf(state_buff,"1\n");
-			break;
-		case SND_JACK_HEADPHONE:
-			len = sprintf(state_buff,"2\n");
-			break;
-		default:
-			len = sprintf(state_buff,"0\n");
-			break;
-	}
-	
-	return simple_read_from_buffer(user_buf,count,ppos,state_buff,len);
-}
-
-static ssize_t audio_debug_proc_write(struct file *filp, const char *buff, size_t len, loff_t *off)
-{
-    char messages[256];
-    struct snd_soc_jack_gpio *gpio = &hs_gpio[BYT_CODEC_GPIO_IDX];
-	struct snd_soc_jack *jack = gpio->jack;
-	//struct snd_soc_codec *codec = jack->codec;
-	struct byt_mc_private *ctx = container_of(jack, struct byt_mc_private, jack);
-	int jack_type = 0;
-    memset(messages, 0, sizeof(messages));
-
-    printk("[Audio Debug] audio_debug_proc_write\n");
-    if (len > 256)
-    {
-        len = 256;
-    }
-    if (copy_from_user(messages, buff, len))
-    {
-        return -EFAULT;
-    }
-    
-    initKernelEnv();
-
-    if(strncmp(messages, "1", 1) == 0)
-    {
-        cancel_delayed_work_sync(&ctx->hs_insert_work);
-        cancel_delayed_work_sync(&ctx->hs_button_en_work);
-        cancel_delayed_work_sync(&ctx->hs_button_work);
-        cancel_delayed_work_sync(&ctx->hs_remove_work);
-        snd_soc_jack_report(jack, jack_type, gpio->report);
-        
-        gpio_set_value(debug_gpio,0);
-#ifdef CONFIG_FACTORY_ITEMS
-        if(uart_tx_gpio > 0){
-            gpio_request(uart_tx_gpio,"uart_tx_gpio");
-            lnw_gpio_set_alt(uart_tx_gpio, LNW_ALT_1);
-        }
-#endif
-        g_bDebugMode = 1;
-        printk("%d Audio Debug Mode!!!\n",debug_gpio);
-    }
-    else if(strncmp(messages, "0", 1) == 0)
-    {
-        gpio_set_value(debug_gpio,1);
- #ifdef CONFIG_FACTORY_ITEMS
-        if(uart_tx_gpio > 0){
-            gpio_request(uart_tx_gpio,"uart_tx_gpio");
-            lnw_gpio_set_alt(uart_tx_gpio, LNW_GPIO);
-            gpio_direction_output(uart_tx_gpio,0);
-        }
-#endif
-        g_bDebugMode = 0;
-        printk("%d Audio Headset Normal Mode!!!\n",debug_gpio);
-        if(ctx->use_soc_jd_gpio)
-        {
-			byt_jack_soc_gpio_intr();
-		}
-		else
-		{
-			byt_jack_codec_gpio_intr();
-		}
-    }
-
-    deinitKernelEnv(); 
-    return len;
-}
-
-static struct file_operations audio_debug_proc_ops = {
-    .read = audio_debug_proc_read,
-    .write = audio_debug_proc_write,
-};
-
-static void create_audio_debug_proc_file(void)
-{
-    printk("[Audio] create_audio_debug_proc_file\n");
-    audio_debug_proc_file = proc_create(Audio_debug_PROC_FILE, 0666,NULL, &audio_debug_proc_ops);
-}
-
-static void remove_audio_debug_proc_file(void)
-{
-    extern struct proc_dir_entry proc_root;
-    printk("[Audio] remove_audio_debug_proc_file\n");   
-    remove_proc_entry(Audio_debug_PROC_FILE, &proc_root);
-}
-#endif //#ifdef CONFIG_PROC_FS
-//terry_tao@asus.com-- Audio debug mode
-
-static int get_Board_Type(void)
-{
-	int gpio0p6;
-#ifdef CONFIG_ME176C_CODEC_PARAMETER
-	int gpio1p5;
-	intel_mid_pmic_writeb(0x31,0x14);//PMIC GPIO0P6 CTLO
-	intel_mid_pmic_writeb(0x40,0x14);//PMIC GPIO1P5 CTLO
-
-	msleep(10);
-	gpio0p6 = intel_mid_pmic_readb(0x39) & 0x01;//PMIC GPIO0P6 CTLI
-	gpio1p5 = intel_mid_pmic_readb(0x48) & 0x01;//PMIC GPIO1P5 CTLI
-
-	return (gpio0p6|gpio1p5);//when these 2 gpios all equal 0,board is ER
-#else
-	intel_mid_pmic_writeb(0x31,0x14);//PMIC GPIO0P6 CTLO
-
-	msleep(10);
-	gpio0p6 = intel_mid_pmic_readb(0x39) & 0x01;//PMIC GPIO0P6 CTLI
-
-	return gpio0p6;
-#endif
-}
-
-static void PMIC_enable_codec(void)
-{
-	intel_mid_pmic_writeb(0x2e,0x23);
-}
-
-static void PMIC_disable_codec(void)
-{
-	intel_mid_pmic_writeb(0x2e,0x22);
-}
-
 static int snd_byt_mc_probe(struct platform_device *pdev)
 {
 	int ret_val = 0;
 	struct byt_mc_private *drv;
 	int codec_gpio;
-#ifdef CONFIG_PROC_FS
-	int debug_gpio_ret;
-#endif
-	int jd_gpio;
-
-	int codec_reset_gpio_ret;
-	if(get_Board_Type()==ME176C_ME181C_BOARD_ER){
-		PMIC_enable_codec();
-	}
-	else{
-		pr_debug("Request Codec_Reset_Gpio = %d\n",CODEC_RESET_N);
-		codec_reset_gpio_ret = gpio_request(CODEC_RESET_N,"codec_reset_gpio");
-		if(codec_reset_gpio_ret){
-			printk("codec reset gpio request FAIL!!!!!\n");
-		}
-		else{
-			pr_debug("Codec Reset Gpio Request SUCCESS!!!!!\n");
-		}
-		codec_reset_gpio_ret = gpio_direction_output(CODEC_RESET_N,1);
-		if(codec_reset_gpio_ret){
-			printk("gpio_direction_output FAIL!!!!!!\n");
-		}
-		else{
-			pr_debug("gpio_direction_output SUCCESS!!!!!!\n");
-		}
-	}
+	int jd_gpio, reset_gpio, err;
 
 	pr_debug("Entry %s\n", __func__);
+
 	drv = devm_kzalloc(&pdev->dev, sizeof(*drv), GFP_ATOMIC);
 	if (!drv) {
 		pr_err("allocation failed\n");
@@ -1457,7 +1174,7 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 	   codec interrupt is used for button press alone. On PR0 and RVP there is
 	   only one GPIO(codec->SoC)for Jack/Button detection. Hence both jack
 	   detection and button press are handled via codec interrupt. */
-	if (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, 8PR1)) {
+	if (INTEL_MID_BOARD(3, TABLET, BYT, BLK, PRO, 8PR1) || ASUS_USE_SOC_JD_GPIO) {
 		/*Get the direct jack detect GPIO (jack -> soc GPIO). */
 		jd_gpio = acpi_get_gpio("\\_SB.GPO2", 27);
 		if (jd_gpio >= 0) {
@@ -1469,21 +1186,20 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 			drv->use_soc_jd_gpio = true;
 		} else
 			pr_err("%s: Could not get Jack det GPIO. Use codec GPIO instead", __func__);
-
-
-		/* Configure GPIO_SCORE56 for BT SCO workaround on FFRD8 PR1 */
-		drv->tristate_buffer_gpio = acpi_get_gpio("\\_SB.GPO0", 56);
-		ret_val = devm_gpio_request_one(&pdev->dev,
-					drv->tristate_buffer_gpio,
-					GPIOF_OUT_INIT_LOW,
-					"byt_ffrd8_tristate_buffer_gpio");
-		if (ret_val) {
-			pr_err("Tri-state buffer gpio config failed %d\n",
-				ret_val);
-			return ret_val;
+		if (!ASUS_USE_SOC_JD_GPIO) {
+			/* Configure GPIO_SCORE56 for BT SCO workaround on FFRD8 PR1 */
+			drv->tristate_buffer_gpio = acpi_get_gpio("\\_SB.GPO0", 56);
+			ret_val = devm_gpio_request_one(&pdev->dev,
+						drv->tristate_buffer_gpio,
+						GPIOF_OUT_INIT_LOW,
+						"byt_ffrd8_tristate_buffer_gpio");
+			if (ret_val) {
+				pr_err("Tri-state buffer gpio config failed %d\n",
+					ret_val);
+				return ret_val;
+			}
 		}
 	}
-
 	/* register the soc card */
 	snd_soc_card_byt.dev = &pdev->dev;
 	snd_soc_card_set_drvdata(&snd_soc_card_byt, drv);
@@ -1494,19 +1210,16 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 	}
 	platform_set_drvdata(pdev, &snd_soc_card_byt);
 
-#ifdef CONFIG_PROC_FS
-	debug_gpio = acpi_get_gpio("\\_SB.GPO2", 8);
-#ifdef CONFIG_FACTORY_ITEMS
-	uart_tx_gpio = acpi_get_gpio("\\_SB.GPO0", 57);
-	pr_debug("uart_tx_gpio = %d\n",uart_tx_gpio);
-#endif
-	pr_info("debug_gpio = %d\n",debug_gpio);
-	debug_gpio_ret = gpio_request(debug_gpio,"debug_gpio");
-	if(debug_gpio_ret)pr_info("debug gpio request fail\n");
-	debug_gpio_ret = gpio_direction_output(debug_gpio,0);
-	if(debug_gpio_ret)pr_info("gpio_direction_output fail\n");
-	create_audio_debug_proc_file();
-#endif	
+	/* get the reset -> SoC GPIO */
+	reset_gpio = acpi_get_gpio_by_index(&pdev->dev, 2, NULL);
+	err = gpio_request(reset_gpio, "CODEC_RESET");
+	if(err)
+		pr_debug("%s: reset_gpio request failed", __func__);
+	else
+		pr_debug("%s: reset_gpio = %d", __func__, reset_gpio);
+	err = gpio_direction_output(reset_gpio, 1);
+	if(err)
+		pr_debug("%s: gpio_direction_output(reset_gpio, 0) failed", __func__);
 
 	pr_info("%s successful\n", __func__);
 	return ret_val;
@@ -1534,9 +1247,6 @@ static int snd_byt_mc_remove(struct platform_device *pdev)
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
 	platform_set_drvdata(pdev, NULL);
-#ifdef CONFIG_PROC_FS
-	remove_audio_debug_proc_file();
-#endif
 	return 0;
 }
 
@@ -1546,14 +1256,6 @@ static void snd_byt_mc_shutdown(struct platform_device *pdev)
 	struct byt_mc_private *drv = snd_soc_card_get_drvdata(soc_card);
 
 	pr_debug("In %s\n", __func__);
-
-	if(get_Board_Type()==ME176C_ME181C_BOARD_ER){
-		PMIC_disable_codec();
-	}
-	else{
-		gpio_free(CODEC_RESET_N);
-	}
-
 	snd_byt_unregister_jack(drv);
 }
 

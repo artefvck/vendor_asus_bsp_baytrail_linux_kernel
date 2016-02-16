@@ -65,6 +65,10 @@ int mmc_card_sleepawake(struct mmc_host *host, int sleep)
 	struct mmc_card *card = host->card;
 	int err;
 
+	// if it's Hynix 4.41 eMMC, don't send CMD5.
+	if(host->card->ext_csd.rev == 5 && host->card->cid.manfid == 0x90)
+		return 0;
+
 	if (sleep)
 		mmc_deselect_cards(host);
 

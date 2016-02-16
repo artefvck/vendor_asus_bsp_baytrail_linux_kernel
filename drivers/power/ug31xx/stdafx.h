@@ -46,4 +46,3 @@
 #endif	///< end of uG31xx_OS_ANDROID
 
 #endif  ///< end of BUILD_UG31XX_LIB
-

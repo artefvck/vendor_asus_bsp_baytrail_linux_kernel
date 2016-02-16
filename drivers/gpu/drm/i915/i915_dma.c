@@ -283,8 +283,7 @@ static int i915_dma_init(struct drm_device *dev, void *data,
 	return retcode;
 }
 
-/* Implement basically the same security restrictions as hardware does
- * for MI_BATCH_NON_SECURE.  These can be made stricter at any time.
+/* Implement check to validate batch buffer.
  *
  * Most of the calculations below involve calculating the size of a
  * particular instruction.  It's important to get the size right as
@@ -1140,7 +1139,7 @@ intel_alloc_mchbar_resource(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	int reg = INTEL_INFO(dev)->gen >= 4 ? MCHBAR_I965 : MCHBAR_I915;
-	u32 temp_lo, temp_hi = 0;
+	u32 temp_lo = 0, temp_hi = 0;
 	u64 mchbar_addr;
 	int ret;
 
@@ -1186,7 +1185,7 @@ intel_setup_mchbar(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	int mchbar_reg = INTEL_INFO(dev)->gen >= 4 ? MCHBAR_I965 : MCHBAR_I915;
-	u32 temp;
+	u32 temp = 0;
 	bool enabled;
 
 	dev_priv->mchbar_need_disable = false;
@@ -1223,7 +1222,7 @@ intel_teardown_mchbar(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	int mchbar_reg = INTEL_INFO(dev)->gen >= 4 ? MCHBAR_I965 : MCHBAR_I915;
-	u32 temp;
+	u32 temp = 0;
 
 	if (dev_priv->mchbar_need_disable) {
 		if (IS_I915G(dev) || IS_I915GM(dev)) {
@@ -1570,6 +1569,7 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	spin_lock_init(&dev_priv->mm.object_stat_lock);
 	mutex_init(&dev_priv->dpio_lock);
 	mutex_init(&dev_priv->new_dpio_lock);
+	mutex_init(&dev_priv->exec_lock);
 	mutex_init(&dev_priv->rps.hw_lock);
 	mutex_init(&dev_priv->modeset_restore_lock);
 
@@ -1659,7 +1659,7 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	 * behaviour if any general state is accessed within a page above 4GB,
 	 * which also needs to be handled carefully.
 	 */
-	if (IS_BROADWATER(dev) || IS_CRESTLINE(dev))
+	if (IS_BROADWATER(dev) || IS_CRESTLINE(dev) || IS_VALLEYVIEW(dev))
 		dma_set_coherent_mask(&dev->pdev->dev, DMA_BIT_MASK(32));
 
 	aperture_size = dev_priv->gtt.mappable_end;

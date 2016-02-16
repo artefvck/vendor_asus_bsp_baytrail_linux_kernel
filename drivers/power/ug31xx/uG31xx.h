@@ -46,7 +46,7 @@
 #define BIT_MACRO(x)		((_upi_u8_)1 << (x))
 
 #define MAX_CRATE_AVAILABLE     (20)
-					
+
 #define I2C_ADDRESS    0x70
 #define I2C_CLOCK      0x100
 
@@ -149,10 +149,10 @@ enum OCV_TABLE_IDX {
 #define LKM_OPTIONS_ENABLE_REVERSE_CURRENT  (1<<4)
 #define LKM_OPTIONS_ADJUST_DESIGN_CAPACITY  (1<<5)
 #define LKM_OPTIONS_DISABLE_BACHUP_FILE     (1<<6)
+#define LKM_OPTIONS_FORCE_RESET_TOTALLY     (1<<7)
 
 #define LKM_OPTIONS_DEBUG_LEVEL(x)          ((x & LKM_OPTIONS_ENABLE_DEBUG_LOG) >> 2)
 
 /// ===========================================
 /// End of uG31xx.h
 /// ===========================================
-
