@@ -4229,6 +4229,7 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 	bool is_dsi;
 	struct intel_program_clock_bending clockbend;
 	struct intel_program_clock_spread clockspread;
+	static bool first_boot = true; //TT-132403 workaround For Splendid cause screen will flash at first time
 
 	WARN_ON(!crtc->enabled);
 
@@ -4288,6 +4289,13 @@ static void valleyview_crtc_enable(struct drm_crtc *crtc)
 	for_each_encoder_on_crtc(dev, crtc, encoder) {
 			/* For DSI already enabled above */
 			encoder->enable(encoder);
+	}
+
+	//TT-132403 workaround For Splendid cause screen will flash at first time
+	if(first_boot == true) {
+	    printk("\n[Display] call intel_crtc_enable_gamma(crtc,PIPEA) when bootup\n");
+	    intel_crtc_enable_gamma(crtc,PIPEA);
+	    first_boot = false;
 	}
 }
 

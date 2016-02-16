@@ -407,6 +407,7 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 	int state =
 		(gpio_keys_getval(button->gpio) ? 1 : 0) ^ button->active_low;
 
+	printk("%s %s\n",button->desc, state?"pressed":"released");
 	if (type == EV_ABS) {
 		if (state)
 			input_event(input, type, button->code, button->value);

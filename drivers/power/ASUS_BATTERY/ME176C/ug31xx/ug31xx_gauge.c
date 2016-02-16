@@ -2939,6 +2939,24 @@ static const struct file_operations kbo_stop_ops = {
 	.release    = seq_release
 };
 #endif  ///< end of FEATRUE_K_BOARD_OFFSET
+
+/* Read the state-of-health information of the battery from DUT  */
+int ug31xx_get_proc_battery_soh(struct seq_file *m, void *p)
+{
+	seq_printf(m,"FCC=%d(mAh),DC=%d(mAh),RM=%d(mAh),TEMP=%d(°C),VOLT=%d(mV),CUR=%d(mA),CC=%d",ug31_module.get_full_charge_capacity(),ug31_module.get_design_capacity(),ug31_module.get_remaining_capacity(),(ug31_module.get_external_temperature()/10),ug31_module.get_voltage_now(),ug31_module.get_current_now(),ug31_module.get_cycle_count());
+	return 0;
+}
+static int proc_battery_soh_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ug31xx_get_proc_battery_soh, NULL);
+}
+static const struct file_operations proc_battery_soh_ops = {
+	.open       = proc_battery_soh_open,
+	.read       = seq_read,
+	.llseek     = seq_lseek,
+	.release    = seq_release
+};
+/* Read the state-of-health information of the battery from DUT */
 #endif
 #endif  ///< end of UG31XX_PROC_DEV
 
@@ -3772,6 +3790,11 @@ static void batt_probe_work_func(struct work_struct *work)
 		GAUGE_err("create /proc/kbo_stop fail\n");
 	}	
 #endif  ///< end of FEATRUE_K_BOARD_OFFSET
+	ent = proc_create("read_battery_soh", 0744, NULL, &proc_battery_soh_ops); 
+        if(!ent)
+	{
+		GAUGE_err("create /proc/proc_battery_soh_ops fail\n");
+	}
 #endif
 #endif	///< end of UG31XX_PROC_DEV
 

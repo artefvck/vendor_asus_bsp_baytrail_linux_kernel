@@ -130,8 +130,8 @@ static struct gpio_keys_button lesskey_button_vol[] = {
 };
 #else
 static struct gpio_keys_button lesskey_button_vol[] = {
-        {KEY_VOLUMEUP,          -1, 1, "volume_up",     EV_KEY, .acpi_idx = 2},
-        {KEY_VOLUMEDOWN,        -1, 1, "volume_down",   EV_KEY, .acpi_idx = 3},
+        {KEY_VOLUMEUP,          -1, 1, "volume_up",     EV_KEY, .acpi_idx = 2, 1},
+        {KEY_VOLUMEDOWN,        -1, 1, "volume_down",   EV_KEY, .acpi_idx = 3, 1},
 };
 #endif
 

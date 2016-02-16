@@ -2089,8 +2089,13 @@ int cpufreq_update_policy(unsigned int cpu)
 
 	/* BIOS might change freq behind our back
 	  -> ask driver for current freq and notify governors about a change */
-	if (cpufreq_driver->get) {
+	if (cpufreq_driver->get && !cpufreq_driver->setpolicy) {
 		policy.cur = cpufreq_driver->get(cpu);
+		if (WARN_ON(!policy.cur)) {
+			ret = -EIO;
+			goto unlock;
+		}
+
 		if (!data->cur) {
 			pr_debug("Driver did not initialize current freq");
 			data->cur = policy.cur;
@@ -2103,6 +2108,7 @@ int cpufreq_update_policy(unsigned int cpu)
 
 	ret = __cpufreq_set_policy(data, &policy);
 
+unlock:
 	unlock_policy_rwsem_write(cpu);
 
 fail:
